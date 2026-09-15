@@ -36,6 +36,28 @@
             <button class="primary-button" type="submit"><span>Continue to Shiftly</span><span class="button-arrow">→</span></button>
             <p class="auth-error hidden" id="auth-error"></p>
           </form>
+          <p class="auth-switch">New store? <button class="text-button" id="show-signup" type="button">Create a workspace</button></p>
+          <form class="auth-card hidden" id="sign-up-form">
+            <div class="section-heading"><div><p class="step">02 / SETUP</p><h2>Create your workspace</h2></div></div>
+            <p class="auth-help">Create a store, shared crew access, and your first manager account.</p>
+            <label class="field-label" for="signup-admin-key">Admin key</label>
+            <input class="text-input" id="signup-admin-key" type="password" autocomplete="off" required />
+            <label class="field-label" for="signup-store-name">Store name</label>
+            <input class="text-input" id="signup-store-name" type="text" autocomplete="organization" required />
+            <label class="field-label" for="signup-store-code">Store code</label>
+            <input class="text-input" id="signup-store-code" type="text" required />
+            <label class="field-label" for="signup-crew-password">Crew password</label>
+            <input class="text-input" id="signup-crew-password" type="password" minlength="8" required />
+            <label class="field-label" for="signup-manager-name">Manager name</label>
+            <input class="text-input" id="signup-manager-name" type="text" autocomplete="name" required />
+            <label class="field-label" for="signup-manager-password">Manager password</label>
+            <input class="text-input" id="signup-manager-password" type="password" minlength="8" autocomplete="new-password" required />
+            <label class="field-label" for="signup-manager-confirm">Confirm manager password</label>
+            <input class="text-input" id="signup-manager-confirm" type="password" minlength="8" autocomplete="new-password" required />
+            <button class="primary-button" type="submit"><span>Create workspace</span><span class="button-arrow">→</span></button>
+            <p class="auth-error hidden" id="signup-error"></p>
+            <p class="auth-switch"><button class="text-button" id="show-signin" type="button">Return to sign in</button></p>
+          </form>
         </div>
         <aside class="briefing-column">
           <div class="briefing-card">

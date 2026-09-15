@@ -22,6 +22,7 @@ ROOT = Path(__file__).parent
 MAX_BODY = 12 * 1024 * 1024
 REQUESTS = {}
 LOGIN_FAILURES = {}
+SIGNUP_ATTEMPTS = {}
 SESSION_TTL = 8 * 60 * 60
 DB_URL = ""
 JOB_WAKE = Event()
@@ -58,6 +59,7 @@ DB_URL = os.environ.get("DATABASE_URL", "").strip()
 REPORT_COOLDOWN_SECONDS = int(os.environ.get("REPORT_COOLDOWN_SECONDS", "60"))
 REPORT_SIMILARITY_THRESHOLD = 0.75
 SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "false").strip().casefold() in {"1", "true", "yes", "on"}
+ADMIN_SIGNUP_KEY = os.environ.get("ADMIN_SIGNUP_KEY", "").strip()
 
 try:
     import psycopg
@@ -91,15 +93,16 @@ def initialize_database():
         connection.commit()
 
 
-def verify_access_configuration():
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM manager_users WHERE active ORDER BY id LIMIT 1")
-            existing_manager = cursor.fetchone()
-            cursor.execute("SELECT 1 FROM stores WHERE active AND crew_password_hash IS NOT NULL LIMIT 1")
-            existing_store = cursor.fetchone()
-    if not existing_manager or not existing_store:
-        raise RuntimeError("No active store and manager are configured. Run setup_store.py to create the first access accounts.")
+def signup_rate_limited(handler):
+    now = time.time()
+    key = client_key(handler)
+    recent = [stamp for stamp in SIGNUP_ATTEMPTS.get(key, []) if now - stamp < 3600]
+    SIGNUP_ATTEMPTS[key] = recent
+    return len(recent) >= 5
+
+
+def record_signup_attempt(handler):
+    SIGNUP_ATTEMPTS.setdefault(client_key(handler), []).append(time.time())
 
 
 def database_reports(manager_id):
@@ -369,7 +372,7 @@ def session_store_id(handler, manager_id):
 
 
 def store_for_code(store_code):
-    code_hash = hashlib.sha256(store_code.encode()).hexdigest()
+    code_hash = hashlib.sha256(store_code.casefold().encode()).hexdigest()
     with db_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT id, name FROM stores WHERE access_code_hash = %s AND active", (code_hash,))
@@ -518,7 +521,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             except (RuntimeError, psycopg.Error):
                 database_ok = False
             openai_configured = bool(os.environ.get("OPENAI_API_KEY"))
-            healthy = database_ok and openai_configured
+            healthy = database_ok
             self.send_json(200 if healthy else 503, {
                 "status": "ok" if healthy else "degraded",
                 "openaiConfigured": openai_configured,
@@ -597,6 +600,9 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/login":
             self.login()
             return
+        if path == "/api/auth/signup":
+            self.signup()
+            return
         if path == "/api/auth/logout":
             manager_token = cookie_token(self, "shiftly_manager_session")
             crew_token = cookie_token(self, "shiftly_crew_session")
@@ -648,7 +654,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             return
         store_id, store_name = store
         if role == "crew":
-            candidate_hash = password_hash(password, f"shiftly-crew:{hashlib.sha256(store_code.encode()).hexdigest()}")
+            candidate_hash = password_hash(password, f"shiftly-crew:{hashlib.sha256(store_code.casefold().encode()).hexdigest()}")
             with db_connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT 1 FROM stores WHERE id = %s AND crew_password_hash = %s AND active", (store_id, candidate_hash))
@@ -710,6 +716,81 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json_bytes(response))
 
+    def signup(self):
+        if not ADMIN_SIGNUP_KEY:
+            self.send_json(503, {"error": "Workspace creation is not configured."})
+            return
+        if signup_rate_limited(self):
+            self.send_json(429, {"error": "Too many sign-up attempts. Try again later."})
+            return
+        record_signup_attempt(self)
+        try:
+            payload = parse_json(self)
+            store_name = clean(payload.get("storeName"), 120)
+            store_code = clean(payload.get("storeCode"), 40)
+            crew_password = str(payload.get("crewPassword", ""))
+            manager_username = clean(payload.get("managerUsername"), 80)
+            manager_password = str(payload.get("managerPassword", ""))
+            confirm_password = str(payload.get("confirmPassword", ""))
+            admin_key = str(payload.get("adminKey", ""))
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+            return
+        if not hmac.compare_digest(admin_key, ADMIN_SIGNUP_KEY):
+            self.send_json(403, {"error": "The admin key is incorrect."})
+            return
+        if not store_name or not store_code or not manager_username:
+            self.send_json(400, {"error": "Store name, store code, and manager name are required."})
+            return
+        if len(store_code) < 2 or len(crew_password) < 8:
+            self.send_json(400, {"error": "Store code must be at least 2 characters and the crew password at least 8 characters."})
+            return
+        if len(manager_username) < 2 or len(manager_password) < 8:
+            self.send_json(400, {"error": "Manager name must be at least 2 characters and the manager password at least 8 characters."})
+            return
+        if manager_password != confirm_password:
+            self.send_json(400, {"error": "Manager passwords do not match."})
+            return
+        code_hash = hashlib.sha256(store_code.casefold().encode()).hexdigest()
+        crew_hash = password_hash(crew_password, f"shiftly-crew:{code_hash}")
+        manager_salt = secrets.token_urlsafe(24)
+        manager_hash = password_hash(manager_password, manager_salt)
+        try:
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO stores (name, access_code_hash, crew_password_hash) VALUES (%s, %s, %s) RETURNING id",
+                        (store_name, code_hash, crew_hash),
+                    )
+                    store_id = cursor.fetchone()[0]
+                    cursor.execute(
+                        "INSERT INTO manager_users (username, email, password_salt, password_hash) VALUES (%s, NULL, %s, %s) RETURNING id",
+                        (manager_username, manager_salt, manager_hash),
+                    )
+                    manager_id = cursor.fetchone()[0]
+                    cursor.execute(
+                        "INSERT INTO store_memberships (manager_user_id, store_id, role) VALUES (%s, %s, 'manager')",
+                        (manager_id, store_id),
+                    )
+                connection.commit()
+        except psycopg.errors.UniqueViolation:
+            self.send_json(409, {"error": "That store code or manager name is already in use."})
+            return
+        token = secrets.token_urlsafe(32)
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
+                    (hashlib.sha256(token.encode()).hexdigest(), manager_id, store_id, SESSION_TTL),
+                )
+            connection.commit()
+        secure = "; Secure" if SECURE_COOKIES else ""
+        self.send_response(201)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={SESSION_TTL}")
+        self.end_headers()
+        self.wfile.write(json_bytes({"authenticated": True, "role": "manager", "storeName": store_name}))
+
     def save_heads_up(self):
         manager_id = is_manager(self)
         store_id = session_store_id(self, manager_id)
@@ -767,16 +848,10 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise SystemExit(
-            "OPENAI_API_KEY is missing. Start Shiftly with:\n"
-            '  OPENAI_API_KEY="sk-..." python3 server.py'
-        )
     if not DB_URL:
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
     try:
         initialize_database()
-        verify_access_configuration()
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
     except psycopg.OperationalError as error:

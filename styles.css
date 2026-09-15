@@ -152,6 +152,8 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .auth-card h2 { font-size: 24px; letter-spacing: -.05em; margin: 0 0 10px; }
 .auth-card p:not(.step):not(.auth-error) { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 0 0 24px; }
 .auth-error { color: #b34e3f; font-size: 11px; margin: 12px 0 0; }
+.auth-switch { color: var(--muted); font-size: 12px; text-align: center; margin: 18px 0 0; }
+.auth-help { color: #6d746c; font-size: 12px; line-height: 1.55; margin: -8px 0 22px; }
 .report-status { color: var(--deep-sage); font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 .pending-message { background: #f1f3ec; color: var(--deep-sage); padding: 13px; font-size: 11px; line-height: 1.5; }
 .failed-message { background: #f8e9e5; color: #a3483b; padding: 13px; font-size: 11px; line-height: 1.5; }

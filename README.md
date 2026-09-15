@@ -104,6 +104,28 @@ trustworthy:
 
 - Empty and low-quality reports are rejected before they enter the reporting
   system.
+
+  ## Starting a new workspace
+
+  Shiftly does not require seeded store data to start. When the database is
+  empty, the application can still start and display the sign-in page. A new
+  authorized administrator can configure the server-side `ADMIN_SIGNUP_KEY` and
+  select **Create a workspace** on the sign-in page to create:
+
+  - The store name and store code.
+  - The shared password used by crew members.
+  - The first manager account and password.
+
+  The first manager is signed in automatically after the workspace is created.
+  Store codes and passwords should be unique, difficult to guess, and shared only
+  with the intended team. The admin key is never stored in the database and must
+  be supplied through the hosting provider's secret environment-variable system.
+  The sign-up flow is rate-limited and creates the store, manager, and membership
+  together so an incomplete workspace is not left behind if account creation
+  fails.
+
+  Additional manager account administration can be added separately without
+  changing the crew reporting workflow or requiring seeded records.
 - Exact duplicates and highly similar repeat reports are limited.
 - Submission cooldowns, request limits, and size limits help prevent spam.
 - Reports are stored before AI processing begins.
