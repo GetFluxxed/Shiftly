@@ -32,22 +32,7 @@ button { cursor: pointer; }
 .section-heading h2 { font-size: 22px; letter-spacing: -.04em; margin: 0; }
 .step { margin-bottom: 8px; }
 .optional { color: var(--muted); text-transform: none; letter-spacing: 0; }
-.dropzone { border: 1px dashed #bdc6b8; min-height: 190px; position: relative; border-radius: 3px; transition: border-color .2s, background .2s; }
-.dropzone:hover, .dropzone.dragging { border-color: var(--deep-sage); background: #f0f3eb; }
-#image-input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; z-index: 2; }
-.dropzone-empty { min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }
-.dropzone-empty strong { color: var(--ink); font-size: 14px; }
-.dropzone-empty span { font-size: 12px; }
-.dropzone-empty small { color: #9ba19a; font: 10px var(--mono); margin-top: 8px; }
-.upload-icon { color: var(--coral); font-size: 30px; line-height: 1; margin-bottom: 2px; }
 .hidden { display: none !important; }
-.preview-state { height: 190px; position: relative; overflow: hidden; background: #dce2d6; }
-.preview-state img { width: 100%; height: 100%; object-fit: cover; }
-.preview-state:after { content: ""; position: absolute; inset: 55% 0 0; background: linear-gradient(transparent, rgba(20, 30, 20, .6)); pointer-events: none; }
-.remove-image { position: absolute; right: 12px; top: 12px; z-index: 3; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(20, 30, 20, .6); color: white; font-size: 21px; line-height: 1; }
-.preview-label { position: absolute; z-index: 2; bottom: 12px; left: 15px; right: 15px; color: white; font: 10px var(--mono); display: flex; gap: 8px; align-items: center; }
-.or-divider { display: flex; align-items: center; gap: 14px; color: #a3a9a1; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; margin: 25px 0 20px; }
-.or-divider:before, .or-divider:after { content: ""; height: 1px; flex: 1; background: var(--line); }
 .field-label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
 textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); background: rgba(255,255,255,.35); outline: none; transition: border-color .2s, box-shadow .2s; }
 input.text-input { width: 100%; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); background: rgba(255,255,255,.35); outline: none; padding: 11px 12px; font-size: 12px; transition: border-color .2s, box-shadow .2s; }

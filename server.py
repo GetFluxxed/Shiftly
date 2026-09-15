@@ -92,7 +92,7 @@ def database_reports():
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT r.id, r.employee, r.shift, r.notes, r.has_image, r.created_at,
+                SELECT r.id, r.employee, r.shift, r.notes, r.created_at,
                        j.status, j.last_error, b.summary, b.wins, b.risks, b.follow_up
                 FROM reports r
                 JOIN briefing_jobs j ON j.report_id = r.id
@@ -107,22 +107,21 @@ def database_reports():
             "employee": row[1],
             "shift": row[2],
             "notes": row[3],
-            "hasImage": row[4],
-            "date": row[5].strftime("%b %d"),
+            "date": row[4].strftime("%b %d"),
             "status": row[6],
             "error": row[7],
             "briefing": {
-                "summary": row[8],
-                "wins": row[9] or [],
-                "risks": row[10] or [],
-                "follow_up": row[11],
+                "summary": row[7],
+                "wins": row[8] or [],
+                "risks": row[9] or [],
+                "follow_up": row[10],
             } if row[8] is not None else None,
         }
         for row in rows
     ]
 
 
-def queue_report(employee, shift, notes, image):
+def queue_report(employee, shift, notes):
     report_hash = hashlib.sha256(f"{employee.lower()}|{shift}|{notes.lower()}".encode()).hexdigest()
     with db_connection() as connection:
         with connection.cursor() as cursor:
@@ -131,11 +130,11 @@ def queue_report(employee, shift, notes, image):
                 raise ValueError("This report matches a previous submission and was not sent again.")
             cursor.execute(
                 """
-                INSERT INTO reports (id, employee, shift, notes, has_image, image_data, report_hash)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO reports (id, employee, shift, notes, report_hash)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING id, created_at
                 """,
-                (str(uuid.uuid4()), employee, shift, notes, bool(image), image, report_hash),
+                (str(uuid.uuid4()), employee, shift, notes, report_hash),
             )
             report_id, created_at = cursor.fetchone()
             cursor.execute("INSERT INTO briefing_jobs (report_id) VALUES (%s)", (report_id,))
@@ -173,11 +172,11 @@ def claim_job():
 def job_report(report_id):
     with db_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id, employee, shift, notes, has_image FROM reports WHERE id = %s", (report_id,))
+            cursor.execute("SELECT id, employee, shift, notes FROM reports WHERE id = %s", (report_id,))
             row = cursor.fetchone()
     if not row:
         raise RuntimeError("Queued report no longer exists.")
-    return {"id": str(row[0]), "employee": row[1], "shift": row[2], "notes": row[3], "hasImage": row[4]}
+    return {"id": str(row[0]), "employee": row[1], "shift": row[2], "notes": row[3]}
 
 
 def complete_job(job_id, report, briefing):
@@ -269,40 +268,23 @@ def is_manager(handler):
     return authenticated
 
 
-def parse_multipart(handler):
+def parse_json(handler):
     length = int(handler.headers.get("Content-Length", "0"))
-    if length <= 0 or length > MAX_BODY:
+    if length <= 0 or length > 100_000:
         raise ValueError("Request is empty or too large.")
-    body = handler.rfile.read(length)
-    content_type = handler.headers.get("Content-Type", "")
-    boundary_match = re.search(r'boundary="?([^";]+)', content_type)
-    if not boundary_match:
-        raise ValueError("Expected a multipart form.")
-    boundary = b"--" + boundary_match.group(1).encode()
-    fields = {}
-    for part in body.split(boundary)[1:-1]:
-        header, separator, value = part.partition(b"\r\n\r\n")
-        if not separator:
-            continue
-        name_match = re.search(br'name="([^"]+)"', header)
-        if not name_match:
-            continue
-        name = name_match.group(1).decode("utf-8", "ignore")
-        value = value.rstrip(b"\r\n-")
-        if name == "image":
-            if len(value) > 10 * 1024 * 1024:
-                raise ValueError("Image is too large.")
-            fields["image"] = value
-        else:
-            fields[name] = value.decode("utf-8", "ignore")
-    return fields
+    try:
+        payload = json.loads(handler.rfile.read(length))
+    except json.JSONDecodeError as error:
+        raise ValueError("Invalid report format.") from error
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid report format.")
+    return payload
 
 
 def call_openai(report, system_prompt=SYSTEM_PROMPT):
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is not configured on the server.")
-    attachment_note = " A photo is attached for manager review." if report["hasImage"] else ""
-    content = [{"type": "input_text", "text": f"Employee: {report['employee']}\nShift: {report['shift']}\nNotes: {report['notes'] or '[No written notes]'}{attachment_note}"}]
+    content = [{"type": "input_text", "text": f"Employee: {report['employee']}\nShift: {report['shift']}\nNotes: {report['notes']}"}]
     request = {
         "model": MODEL,
         "input": [{"role": "system", "content": [{"type": "input_text", "text": system_prompt}]}, {"role": "user", "content": content}],
@@ -429,21 +411,20 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(429, {"error": "Too many submissions. Try again later."})
             return
         try:
-            fields = parse_multipart(self)
+            fields = parse_json(self)
             employee = clean(fields.get("employee"), 80)
             shift = clean(fields.get("shift"), 20)
             notes = clean(fields.get("notes"), 2000)
-            image = fields.get("image")
-            if not employee or not notes and not image:
-                raise ValueError("Add your name and shift notes, or attach a shift photo.")
+            if not employee or not notes:
+                raise ValueError("Add your name and meaningful shift notes.")
             if shift not in {"opening", "midday", "closing", "other"}:
                 raise ValueError("Choose a valid shift.")
-            report = {"employee": employee, "shift": shift, "notes": notes, "hasImage": bool(image)}
+            report = {"employee": employee, "shift": shift, "notes": notes}
             quality = validate_report(report)
             if quality.get("status") != "accepted":
                 self.send_json(422, {"error": quality.get("reason") or "Please add meaningful shift details and try again."})
                 return
-            _, created_at = queue_report(employee, shift, notes, image)
+            _, created_at = queue_report(employee, shift, notes)
             self.send_json(202, {"date": created_at.strftime("%b %d"), "status": "pending"})
         except ValueError as error:
             self.send_json(400, {"error": str(error)})

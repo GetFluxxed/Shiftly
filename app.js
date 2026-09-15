@@ -1,11 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
 
-const imageInput = $("#image-input");
-const dropzone = $("#dropzone");
-const dropzoneEmpty = $("#dropzone-empty");
-const previewState = $("#preview-state");
-const imagePreview = $("#image-preview");
-const fileName = $("#file-name");
 const notes = $("#notes");
 const generateButton = $("#generate-button");
 const emptyResult = $("#empty-result");
@@ -23,38 +17,6 @@ function showToast(message) {
   window.setTimeout(() => toast.classList.remove("show"), 2400);
 }
 
-function setImage(file) {
-  if (!file) return;
-  if (!file.type.startsWith("image/")) return showToast("Please choose an image file.");
-  if (file.size > 10 * 1024 * 1024) return showToast("That image is over 10 MB.");
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    imagePreview.src = reader.result;
-    fileName.textContent = file.name;
-    dropzoneEmpty.classList.add("hidden");
-    previewState.classList.remove("hidden");
-  });
-  reader.readAsDataURL(file);
-}
-
-imageInput.addEventListener("change", (event) => setImage(event.target.files[0]));
-["dragenter", "dragover"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
-  event.preventDefault();
-  dropzone.classList.add("dragging");
-}));
-["dragleave", "drop"].forEach((eventName) => dropzone.addEventListener(eventName, (event) => {
-  event.preventDefault();
-  dropzone.classList.remove("dragging");
-}));
-dropzone.addEventListener("drop", (event) => setImage(event.dataTransfer.files[0]));
-$("#remove-image").addEventListener("click", (event) => {
-  event.stopPropagation();
-  imageInput.value = "";
-  imagePreview.src = "";
-  previewState.classList.add("hidden");
-  dropzoneEmpty.classList.remove("hidden");
-});
-
 notes.addEventListener("input", () => {
   if (notes.value.length > MAX_CHARS) notes.value = notes.value.slice(0, MAX_CHARS);
   $("#character-count").textContent = `${notes.value.length.toLocaleString()} / ${MAX_CHARS.toLocaleString()}`;
@@ -64,10 +26,8 @@ function createBriefing() {
   const input = notes.value.trim();
   const employee = $("#employee").value.trim();
   const shift = $("#shift").value;
-  const hasImage = !previewState.classList.contains("hidden");
-  const source = input || (hasImage ? "The attached field photo provides today's visual context." : "");
-  if (!source) {
-    showToast("Add shift notes or a photo to send a report.");
+  if (!input) {
+    showToast("Add meaningful shift notes to send a report.");
     notes.focus();
     return;
   }
@@ -78,13 +38,11 @@ function createBriefing() {
   loadingState.style.display = "flex";
   generateButton.disabled = true;
 
-  const formData = new FormData();
-  formData.append("employee", employee);
-  formData.append("shift", shift);
-  formData.append("notes", input);
-  if (imageInput.files[0]) formData.append("image", imageInput.files[0]);
-
-  fetch("/api/reports", { method: "POST", body: formData })
+  fetch("/api/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ employee, shift, notes: input }),
+  })
     .then(async (response) => {
       const payload = await response.json();
       if (!response.ok) {
@@ -96,7 +54,6 @@ function createBriefing() {
     })
     .then((payload) => {
       $("#result-date").textContent = payload.date.toUpperCase();
-      $("#result-time").textContent = `${shift.toUpperCase()}${hasImage ? " · PHOTO" : ""}`;
       $("#result-summary").textContent = `${employee ? `${employee} · ` : ""}Your report was reviewed and submitted successfully for manager review.`;
       loadingState.classList.add("hidden");
       loadingState.style.display = "";
@@ -118,9 +75,12 @@ function createBriefing() {
 
 generateButton.addEventListener("click", createBriefing);
 $("#new-button").addEventListener("click", () => {
+  $("#employee").value = "";
+  $("#shift").value = "opening";
   notes.value = "";
   notes.dispatchEvent(new Event("input"));
   resultContent.classList.add("hidden");
   emptyResult.classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  generateButton.disabled = false;
+  $("#employee").focus();
 });

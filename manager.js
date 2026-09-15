@@ -41,7 +41,7 @@ function createManagerBriefing(report) {
   $("#manager-result").classList.remove("hidden");
   $("#manager-result-date").textContent = report.date.toUpperCase();
   $("#manager-result-title").textContent = `${report.employee || "Crewmember"} · ${report.shift} shift`;
-  $("#manager-result-summary").textContent = report.notes || "Photo attached for review.";
+  $("#manager-result-summary").textContent = report.notes;
   $("#manager-result-status").textContent = report.status.toUpperCase();
   $("#manager-briefing").classList.toggle("hidden", report.status !== "completed");
   $("#manager-pending").classList.toggle("hidden", report.status !== "pending" && report.status !== "processing");

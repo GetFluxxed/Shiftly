@@ -23,7 +23,7 @@
       <section class="hero">
         <p class="eyebrow">Shift Report / <span id="today"></span></p>
         <h1>Keep your manager<br /><em>in the loop.</em></h1>
-        <p class="intro">Share what happened on your shift. Add a quick photo or a few notes so your manager can follow the day from anywhere.</p>
+        <p class="intro">Share what happened on your shift so your manager can follow the day from anywhere.</p>
       </section>
 
       <section class="workspace-grid">
@@ -52,23 +52,6 @@
             </div>
           </div>
 
-          <div class="dropzone" id="dropzone">
-            <input type="file" id="image-input" accept="image/*" capture="environment" />
-            <div class="dropzone-empty" id="dropzone-empty">
-              <div class="upload-icon" aria-hidden="true">↥</div>
-              <strong>Add a shift photo</strong>
-              <span>Show a setup, issue, delivery, or anything your manager should see</span>
-              <small>JPG, PNG or HEIC · up to 10 MB</small>
-            </div>
-            <div class="preview-state hidden" id="preview-state">
-              <img id="image-preview" alt="Selected preview" />
-              <button class="remove-image" id="remove-image" type="button" aria-label="Remove image">×</button>
-              <div class="preview-label"><span class="status-dot"></span><span id="file-name">Image ready</span></div>
-            </div>
-          </div>
-
-          <div class="or-divider"><span>or add written notes</span></div>
-
           <label class="field-label" for="notes">What should your manager know?</label>
           <textarea id="notes" rows="5" placeholder="e.g. We had two call-outs and a late delivery. The team completed the reset before close..."></textarea>
           <div class="field-footer"><span>Include wins, issues, and anything that needs follow-up.</span><span id="character-count">0 / 2,000</span></div>
@@ -95,7 +78,7 @@
               <p>After you send it, you’ll see a confirmation here. Your manager’s separate briefing is not shown in the crewmember view.</p>
             </div>
             <div class="result-content hidden" id="result-content">
-              <div class="result-meta"><span id="result-date"></span><span class="result-time" id="result-time"></span></div>
+              <div class="result-meta"><span id="result-date"></span><span class="result-time">NOTES</span></div>
               <h3>Thanks — your shift report was sent.</h3>
               <p class="result-summary" id="result-summary"></p>
               <div class="next-step"><strong>What happens next</strong>Your manager will receive a separate Shiftly briefing with the key wins, risks, and follow-up items from the team.</div>

@@ -61,7 +61,7 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Empty submissions are rejected before calling OpenAI.
 - A quality gate rejects meaningless or unrelated reports before they are inserted into Postgres.
 - Duplicate employee/shift/note submissions are rejected by SHA-256 fingerprint.
-- Request bodies and note/image sizes are capped.
+- Request bodies and note sizes are capped.
 - Requests are rate-limited per client address.
 - Crew report submission remains public, but report retrieval requires the manager password.
 - Manager sessions are stored in Postgres as SHA-256 token hashes. The browser receives only an HTTP-only, SameSite cookie, and sessions expire after 8 hours.
@@ -71,5 +71,6 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Managers can see the original notes immediately and pending/failed/completed briefing status.
 - Saved briefings are read from Postgres and are not regenerated when the manager revisits the portal.
 - Failed jobs are retried up to three times, including after a server restart, for transient provider or network errors.
+- Reports are text-only; image upload was intentionally removed to keep the submission path lightweight.
 
 The manager route uses a single shared password for this first version. Replace it with real identity-based authentication before exposing it publicly or connecting a production database.
