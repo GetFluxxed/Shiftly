@@ -94,14 +94,37 @@ def initialize_database():
 
 
 def bootstrap_access():
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM manager_users WHERE active ORDER BY id LIMIT 1")
+            existing_manager = cursor.fetchone()
+    if not MANAGER_EMAIL or not MANAGER_PASSWORD:
+        if existing_manager:
+            return
+        raise RuntimeError(
+            "No manager account exists yet. Set MANAGER_EMAIL and MANAGER_PASSWORD "
+            "in .env for the initial setup."
+        )
+    if not STORE_CODE:
+        raise RuntimeError("STORE_CODE is required while bootstrapping the store.")
+
     code_hash = hashlib.sha256(STORE_CODE.encode()).hexdigest()
     password_hash = hashlib.pbkdf2_hmac("sha256", MANAGER_PASSWORD.encode(), MANAGER_EMAIL.encode(), 240000).hex()
     with db_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("INSERT INTO stores (name, access_code_hash) VALUES (%s, %s) ON CONFLICT (access_code_hash) DO UPDATE SET name = EXCLUDED.name RETURNING id", (STORE_NAME, code_hash))
             store_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO manager_users (email, password_hash) VALUES (%s, %s) ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash RETURNING id", (MANAGER_EMAIL, password_hash))
-            manager_id = cursor.fetchone()[0]
+            cursor.execute(
+                "INSERT INTO manager_users (email, password_hash) VALUES (%s, %s) "
+                "ON CONFLICT (email) DO NOTHING RETURNING id",
+                (MANAGER_EMAIL, password_hash),
+            )
+            manager = cursor.fetchone()
+            if manager:
+                manager_id = manager[0]
+            else:
+                cursor.execute("SELECT id FROM manager_users WHERE email = %s", (MANAGER_EMAIL,))
+                manager_id = cursor.fetchone()[0]
             cursor.execute("INSERT INTO store_memberships (manager_user_id, store_id, role) VALUES (%s, %s, 'manager') ON CONFLICT DO NOTHING", (manager_id, store_id))
             cursor.execute("UPDATE reports SET store_id = %s WHERE store_id IS NULL", (store_id,))
         connection.commit()
@@ -434,9 +457,6 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         self.submit_report()
 
     def login(self):
-        if not MANAGER_PASSWORD or not MANAGER_EMAIL:
-            self.send_json(503, {"error": "Manager authentication is not configured."})
-            return
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > 10_000:
             self.send_json(400, {"error": "Invalid login request."})
@@ -516,15 +536,13 @@ if __name__ == "__main__":
             "OPENAI_API_KEY is missing. Start Shiftly with:\n"
             '  OPENAI_API_KEY="sk-..." python3 server.py'
         )
-    if not MANAGER_PASSWORD or not MANAGER_EMAIL or not STORE_CODE:
-        raise SystemExit(
-            "MANAGER_PASSWORD is missing. Add it to .env before starting Shiftly."
-        )
     if not DB_URL:
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
     try:
         initialize_database()
         bootstrap_access()
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
     except psycopg.OperationalError as error:
         raise SystemExit(
             "Could not connect to Postgres. Check DATABASE_URL, the database "
