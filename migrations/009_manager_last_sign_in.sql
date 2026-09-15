@@ -1,0 +1,1 @@
+ALTER TABLE manager_users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ;

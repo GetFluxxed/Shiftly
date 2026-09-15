@@ -31,7 +31,25 @@
             <button class="primary-button" type="submit"><span>Continue to Shiftly</span><span class="button-arrow">→</span></button>
             <p class="auth-error hidden" id="auth-error"></p>
           </form>
+          <p class="auth-switch">Have a store but no account? <button class="text-button" id="show-manager-signup" type="button">Create New</button></p>
           <p class="auth-switch">New store? <button class="text-button" id="show-signup" type="button">Create a workspace</button></p>
+          <form class="auth-card hidden" id="manager-sign-up-form">
+            <div class="section-heading"><div><p class="step">02 / ACCESS</p><h2>Add A Manager</h2></div></div>
+            <p class="auth-help">Add a manager account to an existing store workspace.</p>
+            <label class="field-label" for="manager-signup-admin-key">Admin Key</label>
+            <input class="text-input" id="manager-signup-admin-key" type="password" autocomplete="off" required />
+            <label class="field-label" for="manager-signup-store-code">Store Code</label>
+            <input class="text-input" id="manager-signup-store-code" type="text" required />
+            <label class="field-label" for="manager-signup-name">Manager Name</label>
+            <input class="text-input" id="manager-signup-name" type="text" autocomplete="name" required />
+            <label class="field-label" for="manager-signup-password">Manager Password</label>
+            <input class="text-input" id="manager-signup-password" type="password" minlength="8" autocomplete="new-password" required />
+            <label class="field-label" for="manager-signup-confirm">Confirm Manager Password</label>
+            <input class="text-input" id="manager-signup-confirm" type="password" minlength="8" autocomplete="new-password" required />
+            <button class="primary-button" type="submit"><span>Create Manager</span><span class="button-arrow">→</span></button>
+            <p class="auth-error hidden" id="manager-signup-error"></p>
+            <p class="auth-switch"><button class="text-button" id="show-signin-from-manager" type="button">Return To Sign In</button></p>
+          </form>
           <form class="auth-card hidden" id="sign-up-form">
             <div class="section-heading"><div><p class="step">02 / SETUP</p><h2>Create your workspace</h2></div></div>
             <p class="auth-help">Create a store, shared crew access, and your first manager account.</p>

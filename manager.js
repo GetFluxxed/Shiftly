@@ -24,6 +24,7 @@ function showManager() {
   managerGrid.classList.remove("hidden");
   loadReports();
   loadHeadsUp();
+  loadManagers();
   loadWeeklyOverview();
 }
 
@@ -39,6 +40,38 @@ function loadHeadsUp() {
       $("#manager-heads-up").textContent = payload.message || "No manager notes have been posted yet.";
     })
     .catch(() => {});
+}
+
+function loadManagers() {
+  fetch("/api/managers")
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Manager accounts unavailable.");
+      return payload;
+    })
+    .then((payload) => {
+      const managerList = $("#manager-list");
+      const managers = [...payload.managers].sort((a, b) => {
+        if (!a.lastSignIn && !b.lastSignIn) return a.name.localeCompare(b.name);
+        if (!a.lastSignIn) return 1;
+        if (!b.lastSignIn) return -1;
+        const signInDifference = new Date(b.lastSignIn) - new Date(a.lastSignIn);
+        return signInDifference || a.name.localeCompare(b.name);
+      });
+      if (!managers.length) {
+        managerList.innerHTML = '<p class="pending-message">No manager accounts found.</p>';
+        return;
+      }
+      managerList.innerHTML = managers.map((manager) => `
+        <div class="manager-list-item">
+          <strong>${escapeHtml(manager.name)}</strong>
+          <small>${manager.lastSignIn ? `Last sign in · ${formatLocalDate(manager.lastSignIn)} ${new Date(manager.lastSignIn).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "No sign in recorded"}</small>
+        </div>
+      `).join("");
+    })
+    .catch(() => {
+      $("#manager-list").innerHTML = '<p class="failed-message">Manager accounts are temporarily unavailable.</p>';
+    });
 }
 
 function saveHeadsUp(event) {

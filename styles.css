@@ -147,6 +147,15 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .weekly-follow-up { background: #edf1e8; color: var(--deep-sage); padding: 13px; }
 .heads-up-display { min-height: 170px; color: var(--deep-sage); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
 .heads-up-update { display: block; margin-top: 16px; }
+.managers-quadrant { grid-column: 2; margin-top: -16px; }
+.manager-list { display: grid; gap: 8px; }
+.manager-list-item { border: 1px solid #d4dfca; border-radius: 3px; background: #edf1e8; padding: 12px 14px; }
+.manager-list-item strong, .manager-list-item small { display: block; }
+.manager-list-item strong { color: var(--deep-sage); font-size: 13px; }
+.manager-list-item small { color: var(--muted); font: 10px var(--mono); margin-top: 5px; text-transform: uppercase; letter-spacing: .04em; }
+@media (max-width: 900px) {
+  .managers-quadrant { margin-top: 0; }
+}
 .heads-up-modal { width: min(500px, calc(100% - 40px)); border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink); padding: 28px; }
 .heads-up-modal:not([open]) { display: none; }
 .heads-up-modal::backdrop { background: rgba(29, 36, 32, .35); }

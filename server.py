@@ -398,6 +398,26 @@ def heads_up(store_id):
     return {"message": row[0], "updatedAt": row[1].isoformat()} if row else {"message": "", "updatedAt": None}
 
 
+def manager_accounts(store_id):
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT m.username, m.last_sign_in_at
+                FROM manager_users m
+                JOIN store_memberships sm ON sm.manager_user_id = m.id AND sm.store_id = %s
+                WHERE m.active
+                ORDER BY m.last_sign_in_at DESC NULLS LAST, lower(m.username)
+                """,
+                (store_id,),
+            )
+            rows = cursor.fetchall()
+    return [
+        {"name": row[0], "lastSignIn": row[1].isoformat() if row[1] else None}
+        for row in rows
+    ]
+
+
 def is_crew(handler):
     token = cookie_token(handler, "shiftly_crew_session")
     if token:
@@ -568,6 +588,14 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 return
             self.send_json(200, heads_up(store_id))
             return
+        if path == "/api/managers":
+            manager_id = is_manager(self)
+            store_id = session_store_id(self, manager_id)
+            if not store_id:
+                self.send_json(401, {"error": "Manager sign-in required."})
+                return
+            self.send_json(200, {"managers": manager_accounts(store_id)})
+            return
         if path == "/api/weekly-overview":
             manager_id = is_manager(self)
             store_id = session_store_id(self, manager_id)
@@ -615,6 +643,9 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/auth/signup":
             self.signup()
+            return
+        if path == "/api/auth/add-manager":
+            self.add_manager()
             return
         if path == "/api/auth/logout":
             manager_token = cookie_token(self, "shiftly_manager_session")
@@ -736,6 +767,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                         "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
                         (hashlib.sha256(token.encode()).hexdigest(), manager[0], store_id, SESSION_TTL),
                     )
+                    cursor.execute("UPDATE manager_users SET last_sign_in_at = NOW() WHERE id = %s", (manager[0],))
                 connection.commit()
             cookie_name = "shiftly_manager_session"
             response = {"authenticated": True, "role": "manager", "managerName": manager_username(manager[0]), "storeName": store_name}
@@ -816,6 +848,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                     "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
                     (hashlib.sha256(token.encode()).hexdigest(), manager_id, store_id, SESSION_TTL),
                 )
+                cursor.execute("UPDATE manager_users SET last_sign_in_at = NOW() WHERE id = %s", (manager_id,))
             connection.commit()
         secure = "; Secure" if SECURE_COOKIES else ""
         self.send_response(201)
@@ -823,6 +856,75 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={SESSION_TTL}")
         self.end_headers()
         self.wfile.write(json_bytes({"authenticated": True, "role": "manager", "managerName": manager_username(manager_id), "storeName": store_name}))
+
+    def add_manager(self):
+        if not ADMIN_SIGNUP_KEY:
+            self.send_json(503, {"error": "Manager creation is not configured."})
+            return
+        if signup_rate_limited(self):
+            self.send_json(429, {"error": "Too many account creation attempts. Try again later."})
+            return
+        record_signup_attempt(self)
+        try:
+            payload = parse_json(self)
+            admin_key = str(payload.get("adminKey", ""))
+            store_code = clean(payload.get("storeCode"), 40)
+            manager_username = clean(payload.get("managerUsername"), 80)
+            manager_password = str(payload.get("managerPassword", ""))
+            confirm_password = str(payload.get("confirmPassword", ""))
+        except ValueError as error:
+            self.send_json(400, {"error": str(error)})
+            return
+        if not hmac.compare_digest(admin_key, ADMIN_SIGNUP_KEY):
+            self.send_json(403, {"error": "The admin key is incorrect."})
+            return
+        if not store_code or not manager_username:
+            self.send_json(400, {"error": "Store code and manager name are required."})
+            return
+        if len(manager_username) < 2 or len(manager_password) < 8:
+            self.send_json(400, {"error": "Manager name must be at least 2 characters and the manager password at least 8 characters."})
+            return
+        if manager_password != confirm_password:
+            self.send_json(400, {"error": "Manager passwords do not match."})
+            return
+        store = store_for_code(store_code)
+        if not store:
+            self.send_json(404, {"error": "That store could not be found."})
+            return
+        store_id, store_name = store
+        manager_salt = secrets.token_urlsafe(24)
+        manager_hash = password_hash(manager_password, manager_salt)
+        try:
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO manager_users (username, email, password_salt, password_hash) VALUES (%s, NULL, %s, %s) RETURNING id",
+                        (manager_username, manager_salt, manager_hash),
+                    )
+                    manager_id = cursor.fetchone()[0]
+                    cursor.execute(
+                        "INSERT INTO store_memberships (manager_user_id, store_id, role) VALUES (%s, %s, 'manager')",
+                        (manager_id, store_id),
+                    )
+                connection.commit()
+        except psycopg.errors.UniqueViolation:
+            self.send_json(409, {"error": "That manager name is already in use."})
+            return
+        token = secrets.token_urlsafe(32)
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
+                    (hashlib.sha256(token.encode()).hexdigest(), manager_id, store_id, SESSION_TTL),
+                )
+                cursor.execute("UPDATE manager_users SET last_sign_in_at = NOW() WHERE id = %s", (manager_id,))
+            connection.commit()
+        secure = "; Secure" if SECURE_COOKIES else ""
+        self.send_response(201)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={SESSION_TTL}")
+        self.end_headers()
+        self.wfile.write(json_bytes({"authenticated": True, "role": "manager", "managerName": manager_username, "storeName": store_name}))
 
     def save_heads_up(self):
         manager_id = is_manager(self)

@@ -2,19 +2,33 @@ const form = document.querySelector("#sign-in-form");
 const error = document.querySelector("#auth-error");
 const signupForm = document.querySelector("#sign-up-form");
 const signupError = document.querySelector("#signup-error");
-const signupSwitch = document.querySelector(".auth-switch");
+const managerSignupForm = document.querySelector("#manager-sign-up-form");
+const managerSignupError = document.querySelector("#manager-signup-error");
+const signinSwitches = document.querySelectorAll(".auth-switch");
+
+function showOnly(formToShow) {
+  form.classList.toggle("hidden", formToShow !== form);
+  signupForm.classList.toggle("hidden", formToShow !== signupForm);
+  managerSignupForm.classList.toggle("hidden", formToShow !== managerSignupForm);
+  signinSwitches.forEach((switchElement) => switchElement.classList.toggle("hidden", formToShow !== form));
+}
 
 document.querySelector("#show-signup").addEventListener("click", () => {
-  form.classList.add("hidden");
-  signupSwitch.classList.add("hidden");
-  signupForm.classList.remove("hidden");
+  showOnly(signupForm);
 });
 
 document.querySelector("#show-signin").addEventListener("click", () => {
-  signupForm.classList.add("hidden");
-  form.classList.remove("hidden");
-  signupSwitch.classList.remove("hidden");
+  showOnly(form);
   signupError.classList.add("hidden");
+});
+
+document.querySelector("#show-manager-signup").addEventListener("click", () => {
+  showOnly(managerSignupForm);
+});
+
+document.querySelector("#show-signin-from-manager").addEventListener("click", () => {
+  showOnly(form);
+  managerSignupError.classList.add("hidden");
 });
 
 fetch("/api/auth/status")
@@ -63,11 +77,36 @@ signupForm.addEventListener("submit", async (event) => {
         confirmPassword: document.querySelector("#signup-manager-confirm").value,
       }),
     });
+
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Unable to create the workspace.");
     window.location.replace("/manager.html");
   } catch (signupRequestError) {
     signupError.textContent = signupRequestError.message;
     signupError.classList.remove("hidden");
+  }
+});
+
+managerSignupForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  managerSignupError.classList.add("hidden");
+  try {
+    const response = await fetch("/api/auth/add-manager", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adminKey: document.querySelector("#manager-signup-admin-key").value,
+        storeCode: document.querySelector("#manager-signup-store-code").value.trim(),
+        managerUsername: document.querySelector("#manager-signup-name").value.trim(),
+        managerPassword: document.querySelector("#manager-signup-password").value,
+        confirmPassword: document.querySelector("#manager-signup-confirm").value,
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Unable to create the manager account.");
+    window.location.replace("/manager.html");
+  } catch (managerSignupRequestError) {
+    managerSignupError.textContent = managerSignupRequestError.message;
+    managerSignupError.classList.remove("hidden");
   }
 });
