@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f6f1" />
+    <title>Shiftly — Manager view</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell manager-shell">
+      <header class="topbar">
+        <a class="brand" href="index.html" aria-label="Shiftly employee report">✳ <span>Shiftly</span></a>
+        <span class="mode-pill"><span class="status-dot"></span> manager view</span>
+      </header>
+      <section class="hero manager-hero">
+        <p class="eyebrow">Manager Briefing / <span id="manager-date"></span></p>
+        <h1>See the shape<br /><em>of the day.</em></h1>
+        <p class="intro">Shiftly organizes crew reports into a concise operational briefing. This view is separate from the employee submission screen.</p>
+      </section>
+      <section class="manager-grid">
+        <div>
+          <div class="section-heading"><div><p class="step">01 / INBOX</p><h2>Shift reports</h2></div><span class="optional" id="manager-count"></span></div>
+          <div class="report-inbox" id="report-inbox"></div>
+        </div>
+        <div>
+          <div class="section-heading"><div><p class="step">02 / BRIEF</p><h2>Manager briefing</h2></div><span class="ai-badge">PRIVATE</span></div>
+          <div class="briefing-card manager-card" id="manager-card">
+            <div class="empty-result" id="manager-empty"><div class="sparkle">✳</div><h3>Your briefing will land here.</h3><p>Select a shift report to create the manager-only view.</p></div>
+            <div class="result-content hidden" id="manager-result">
+              <div class="result-meta"><span id="manager-result-date"></span><span>MANAGER ONLY</span></div>
+              <h3 id="manager-result-title"></h3>
+              <p class="result-summary" id="manager-result-summary"></p>
+              <div class="insight-list" id="manager-insights"></div>
+              <div class="next-step" id="manager-next-step"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <footer><span>SHIFTLY / MANAGER VIEW</span><span>v0.1 · local demo</span></footer>
+    </main>
+    <script src="manager.js"></script>
+  </body>
+</html>
