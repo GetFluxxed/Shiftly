@@ -141,8 +141,8 @@ function renderInbox() {
   }
   inbox.innerHTML = reports.map((report, index) => `
     <button class="report-row" type="button" data-index="${index}">
-      <span><strong>${report.employee || "Crewmember"}</strong><small>${report.shift} shift · ${formatLocalDate(report.date, { month: "short", day: "numeric" })}</small></span>
-      <span class="report-state">${report.status}</span>
+      <span><strong>${escapeHtml(report.employee || "Crewmember")}</strong><small>${escapeHtml(report.shift)} shift · ${formatLocalDate(report.date, { month: "short", day: "numeric" })}</small></span>
+      <span class="report-state">${escapeHtml(report.status)}</span>
       <span class="report-arrow">→</span>
     </button>
   `).join("");

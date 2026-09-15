@@ -334,7 +334,24 @@ def is_manager(handler):
     with db_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM manager_sessions WHERE expires_at <= NOW()")
-            cursor.execute("SELECT manager_user_id FROM manager_sessions WHERE token_hash = %s AND expires_at > NOW()", (token_hash,))
+            cursor.execute(
+                """
+                SELECT ms.manager_user_id
+                FROM manager_sessions ms
+                JOIN manager_users m ON m.id = ms.manager_user_id AND m.active
+                JOIN LATERAL (
+                    SELECT sm.store_id
+                    FROM store_memberships sm
+                    JOIN stores s ON s.id = sm.store_id AND s.active
+                    WHERE sm.manager_user_id = m.id
+                      AND (ms.store_id IS NULL OR sm.store_id = ms.store_id)
+                    ORDER BY sm.store_id
+                    LIMIT 1
+                ) active_membership ON TRUE
+                WHERE ms.token_hash = %s AND ms.expires_at > NOW()
+                """,
+                (token_hash,),
+            )
             row = cursor.fetchone()
         connection.commit()
     return row[0] if row else None
@@ -358,15 +375,18 @@ def session_store_id(handler, manager_id):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT COALESCE(ms.store_id, membership.store_id)
+                SELECT membership.store_id
                 FROM manager_sessions ms
+                JOIN manager_users m ON m.id = ms.manager_user_id AND m.active
                 LEFT JOIN LATERAL (
                     SELECT store_id
                     FROM store_memberships
                     WHERE manager_user_id = ms.manager_user_id
+                      AND (ms.store_id IS NULL OR store_id = ms.store_id)
                     ORDER BY store_id
                     LIMIT 1
                 ) membership ON TRUE
+                JOIN stores s ON s.id = membership.store_id AND s.active
                 WHERE ms.token_hash = %s AND ms.manager_user_id = %s AND ms.expires_at > NOW()
                 """,
                 (token_hash, manager_id),
@@ -426,7 +446,12 @@ def is_crew(handler):
             with connection.cursor() as cursor:
                 cursor.execute("DELETE FROM crew_sessions WHERE expires_at <= NOW()")
                 cursor.execute(
-                    "SELECT store_id FROM crew_sessions WHERE token_hash = %s AND expires_at > NOW()",
+                    """
+                    SELECT cs.store_id
+                    FROM crew_sessions cs
+                    JOIN stores s ON s.id = cs.store_id AND s.active
+                    WHERE cs.token_hash = %s AND cs.expires_at > NOW()
+                    """,
                     (token_hash,),
                 )
                 row = cursor.fetchone()
@@ -624,8 +649,20 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 return
             file_path = ROOT / "manager.html"
         else:
-            file_path = ROOT / path.lstrip("/")
-        if not file_path.is_file() or ROOT not in file_path.parents:
+            public_files = {
+                "/about.html": ROOT / "about.html",
+                "/app.js": ROOT / "app.js",
+                "/auth.js": ROOT / "auth.js",
+                "/crew.html": ROOT / "crew.html",
+                "/manager.js": ROOT / "manager.js",
+                "/manager.html": ROOT / "manager.html",
+                "/styles.css": ROOT / "styles.css",
+            }
+            file_path = public_files.get(path)
+            if file_path is None:
+                self.send_error(404)
+                return
+        if not file_path.is_file() or file_path.resolve().parent != ROOT.resolve():
             self.send_error(404)
             return
         content_type = "text/html" if file_path.suffix == ".html" else "text/css" if file_path.suffix == ".css" else "application/javascript"
