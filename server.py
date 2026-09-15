@@ -14,15 +14,13 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Event, Thread
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).parent
 HOST = "127.0.0.1"
 MAX_BODY = 12 * 1024 * 1024
 REQUESTS = {}
-SESSIONS = {}
-SESSION_LOCK = Lock()
 SESSION_TTL = 8 * 60 * 60
 DB_URL = ""
 JOB_WAKE = Event()
@@ -79,7 +77,13 @@ def db_connection():
 def initialize_database():
     with db_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute((ROOT / "schema.sql").read_text(encoding="utf-8"))
+            cursor.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+            for migration in sorted((ROOT / "migrations").glob("*.sql")):
+                cursor.execute("SELECT 1 FROM schema_migrations WHERE version = %s", (migration.name,))
+                if cursor.fetchone():
+                    continue
+                cursor.execute(migration.read_text(encoding="utf-8"))
+                cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (migration.name,))
         connection.commit()
 
 
@@ -253,14 +257,16 @@ def session_token(handler):
 
 def is_manager(handler):
     token = session_token(handler)
-    with SESSION_LOCK:
-        created = SESSIONS.get(token)
-        if not created:
-            return False
-        if time.time() - created > SESSION_TTL:
-            del SESSIONS[token]
-            return False
-        return True
+    if not token:
+        return False
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM manager_sessions WHERE expires_at <= NOW()")
+            cursor.execute("SELECT 1 FROM manager_sessions WHERE token_hash = %s AND expires_at > NOW()", (token_hash,))
+            authenticated = cursor.fetchone() is not None
+        connection.commit()
+    return authenticated
 
 
 def parse_multipart(handler):
@@ -374,8 +380,11 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/auth/logout":
             token = session_token(self)
-            with SESSION_LOCK:
-                SESSIONS.pop(token, None)
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (token_hash,))
+                connection.commit()
             self.send_json(200, {"authenticated": False})
             return
         self.submit_report()
@@ -398,8 +407,14 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "Incorrect manager password."})
             return
         token = secrets.token_urlsafe(32)
-        with SESSION_LOCK:
-            SESSIONS[token] = time.time()
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO manager_sessions (token_hash, expires_at) VALUES (%s, NOW() + (%s * INTERVAL '1 second'))",
+                    (token_hash, SESSION_TTL),
+                )
+            connection.commit()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}")

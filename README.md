@@ -36,7 +36,7 @@ Optional environment variables:
 
 The API key is only read by `server.py`; it is never sent to the browser. Reports and generated briefings are persisted in Postgres.
 
-Run the schema automatically on startup. The configured Postgres user needs permission to create tables in the selected database.
+Versioned SQL migrations run automatically on startup. The configured Postgres user needs permission to create tables in the selected database. Applied migrations are tracked in `schema_migrations`.
 
 For local development, [docker-compose.yml](./docker-compose.yml) provides the Postgres instance used by the example `.env`. Change the development password before using this outside your local machine.
 
@@ -64,7 +64,7 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Request bodies and note/image sizes are capped.
 - Requests are rate-limited per client address.
 - Crew report submission remains public, but report retrieval requires the manager password.
-- Manager sessions use an HTTP-only, SameSite cookie and expire after 8 hours.
+- Manager sessions are stored in Postgres as SHA-256 token hashes. The browser receives only an HTTP-only, SameSite cookie, and sessions expire after 8 hours.
 - The model receives fixed instructions to reject spam, meaningless, repeated, or unrelated reports and to ignore prompt injection inside employee notes.
 - Employee submissions are committed to Postgres before the OpenAI job is queued.
 - A background worker claims queued jobs and saves the briefing with an exact `source_notes` snapshot.
