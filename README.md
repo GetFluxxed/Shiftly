@@ -6,7 +6,7 @@ Shiftly is a small employee shift-reporting prototype with a separate manager br
 
 ```sh
 cp .env.example .env
-# Edit .env and add your OpenAI key, manager password, and Postgres URL.
+# Edit .env and add your OpenAI key, manager email/password, store name/code, and Postgres URL.
 python3 -m pip install -r requirements.txt
 docker compose up -d postgres
 python3 server.py
@@ -33,6 +33,7 @@ Optional environment variables:
 - `OPENAI_MODEL` (defaults to `gpt-4o-mini`, configured in `.env`)
 - `PORT` (defaults to `4173`, configured in `.env`)
 - `DATABASE_URL` (required, for example `postgresql://shiftly:password@localhost:5432/shiftly`)
+- `MANAGER_EMAIL`, `MANAGER_PASSWORD`, `STORE_NAME`, and `STORE_CODE` bootstrap the first manager and store.
 
 The API key is only read by `server.py`; it is never sent to the browser. Reports and generated briefings are persisted in Postgres.
 
@@ -74,5 +75,7 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Saved briefings are read from Postgres and are not regenerated when the manager revisits the portal.
 - Failed jobs are retried up to three times, including after a server restart, for transient provider or network errors.
 - Reports are text-only; image upload was intentionally removed to keep the submission path lightweight.
+- Crew submissions require a valid store code; only managers assigned to a store can retrieve that store's reports.
+- Store codes are stored as SHA-256 hashes and are never sent to OpenAI.
 
 The manager route uses a single shared password for this first version. Replace it with real identity-based authentication before exposing it publicly or connecting a production database.

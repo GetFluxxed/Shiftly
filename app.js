@@ -24,10 +24,11 @@ notes.addEventListener("input", () => {
 
 function createBriefing() {
   const input = notes.value.trim();
+  const storeCode = $("#store-code").value.trim();
   const employee = $("#employee").value.trim();
   const shift = $("#shift").value;
-  if (!input) {
-    showToast("Add meaningful shift notes to send a report.");
+  if (!storeCode || !employee || !input) {
+    showToast("Enter your store code, name, and meaningful shift notes.");
     notes.focus();
     return;
   }
@@ -41,7 +42,7 @@ function createBriefing() {
   fetch("/api/reports", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ employee, shift, notes: input }),
+    body: JSON.stringify({ storeCode, employee, shift, notes: input }),
   })
     .then(async (response) => {
       const payload = await response.json();
@@ -76,6 +77,7 @@ function createBriefing() {
 generateButton.addEventListener("click", createBriefing);
 $("#new-button").addEventListener("click", () => {
   $("#employee").value = "";
+  $("#store-code").value = "";
   $("#shift").value = "opening";
   notes.value = "";
   notes.dispatchEvent(new Event("input"));
