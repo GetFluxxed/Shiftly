@@ -1,91 +1,123 @@
 # Shiftly
 
-Shiftly is a small employee shift-reporting prototype with a separate manager briefing view.
+Shiftly gives our team a simple, consistent way to communicate what happened
+during each shift. Crewmembers can send notes from a phone or browser, and
+managers can review those notes, understand the shape of the day, and keep the
+team aligned without needing to be in the store.
 
-## Run locally
+## What Shiftly does
 
-```sh
-cp .env.example .env
-# Edit .env and add your OpenAI key and Postgres URL.
-python3 -m pip install -r requirements.txt
-docker compose up -d postgres
-python3 server.py
-```
+Shiftly turns everyday shift communication into a shared operational record.
+Crewmembers submit concise notes about their shift, including what went well,
+what needs attention, and anything the next person or manager should know.
+Shiftly preserves the original notes and uses an AI briefing process to help
+managers identify the most important information quickly.
 
-The Python client uses the `certifi` CA bundle for OpenAI HTTPS requests. This avoids certificate-chain errors on macOS Python installations whose system CA certificates are not configured.
+The result is a faster, more reliable handoff between the store and its
+managers, with less dependence on memory, scattered messages, or end-of-day
+catch-up conversations.
 
-Then open `http://127.0.0.1:4173/`.
+## Built for two different perspectives
 
-The server loads `.env` automatically. Do not put the key in `app.js`, `manager.js`, HTML, `.env.example`, or any committed file. `.env` is ignored by Git.
+### Crew workspace
 
-Seeing the terminal remain active is expected: the command starts the web server and waits for browser requests. A successful start prints the URL and a message telling you to leave the terminal open. Stop it with `Ctrl+C`.
+The crew workspace is intentionally lightweight and mobile-friendly so that
+employees can submit a report from the store without a complicated workflow.
+Crewmembers can:
 
-Check that the correct server is running with:
+- Sign in using their store's shared crew access.
+- Identify themselves and select the relevant shift.
+- Submit clear notes about the shift.
+- Receive confirmation that the report was received.
+- See the current store-wide Head's Up from management.
+- See when the Head's Up was last updated.
 
-```sh
-curl http://127.0.0.1:4173/api/health
-```
+Crewmembers send information upward to the manager. They do not see private
+manager briefings or other employees' reports.
 
-You should receive `{"status": "ok", "openaiConfigured": true}`. If port 4173 is already in use by another local server, stop that server first or start Shiftly on another port and open that matching URL.
+### Manager workspace
 
-Optional environment variables:
+The manager workspace is designed for review and decision-making. Managers can:
 
-- `OPENAI_MODEL` (defaults to `gpt-4o-mini`, configured in `.env`)
-- `PORT` (defaults to `4173`, configured in `.env`)
-- `DATABASE_URL` (required, for example `postgresql://shiftly:password@localhost:5432/shiftly`)
+- See reports from their assigned store.
+- Open the most recent report automatically.
+- Read the original crew notes alongside the generated briefing.
+- Track whether a briefing is pending, processing, complete, or needs attention.
+- Review an AI-generated Weekly Overview based on recent reports.
+- Publish one current Head's Up message for the crew.
+- Replace an outdated Head's Up without accumulating redundant messages.
 
-The API key is only read by `server.py`; it is never sent to the browser. Reports and generated briefings are persisted in Postgres.
+Each manager has an individual account, while store data remains separated from
+other stores.
 
-Versioned SQL migrations run automatically on startup. The configured Postgres user needs permission to create tables in the selected database. Applied migrations are tracked in `schema_migrations`.
+## Four areas of the manager dashboard
 
-For local development, [docker-compose.yml](./docker-compose.yml) provides the Postgres instance used by the example `.env`. Change the development password before using this outside your local machine.
+The manager view brings the most useful information into one place:
 
-The included Compose setup uses host port `55432` because another local Postgres container already occupies standard port `5432`. Shiftly's application port remains the standard development port `4173`.
+1. **Shift Reports** - The incoming reports from crewmembers.
+2. **Manager Briefing** - A concise briefing for the latest report.
+3. **Weekly Overview** - An AI-assisted view of recurring wins, risks, and
+   follow-up items from the past week.
+4. **Head's Up** - The current message managers want the entire crew to see.
 
-```sh
-docker compose down
-docker compose up -d postgres
-```
+This layout separates the crew's original observations from the manager's
+decision-support information while keeping both available during review.
 
-Your local `.env` should contain:
+## Why our team uses Shiftly
 
-```env
-DATABASE_URL=postgresql://shiftly:change-me@localhost:55432/shiftly
-POSTGRES_PORT=55432
-```
+- **Faster manager review:** Important details are organized into briefings
+  instead of requiring managers to read every note from scratch.
+- **Better shift handoffs:** Reports create continuity between opening,
+  mid-day, and closing teams.
+- **More consistent communication:** Every employee follows the same basic
+  reporting path, making patterns easier to recognize.
+- **Clear accountability:** Reports are associated with the submitting
+  crewmember and shift.
+- **Store-wide alignment:** A current Head's Up gives management one visible
+  place to share urgent context, priorities, or reminders.
+- **Useful weekly perspective:** The Weekly Overview helps surface repeated
+  issues and positive trends that may be missed in a single shift report.
+- **Less manager travel and interruption:** Managers can stay informed without
+  being physically present for every shift or relying on informal updates.
+- **Mobile-first simplicity:** Crew members can complete the workflow quickly
+  from an iPhone or any modern browser.
 
-If you intentionally use an existing Postgres server on port `5432`, replace the example credentials and database name with that server's values.
+## Responsible AI assistance
 
-## Creating access accounts
+Shiftly uses AI to support manager review, not to replace manager judgment.
+The original employee notes remain available so managers can compare the
+briefing with the source information and make their own decisions.
 
-Access credentials are stored in Postgres, not in `.env`. Create the first local store with:
+The briefing process is guided to focus on relevant shift information and to
+reject empty, meaningless, repetitive, spam, or unrelated submissions.
+Employee notes are treated as source material rather than instructions to the
+AI system.
 
-```sh
-python3 setup_store.py --reset --store-code 6022 --crew-password 6022Crew --manager Derek --manager-password 6022Manager
-```
+Briefings are saved with the exact notes used to create them. Managers can
+therefore understand what information informed a briefing, even after the
+report has been processed.
 
-`--reset` deletes existing reports, briefings, sessions, stores, and manager accounts while preserving the database schema. Omit it when adding another store or manager.
+## Operational safeguards
 
-## Current protections
+Shiftly includes protections intended to keep the reporting workflow useful and
+trustworthy:
 
-- Empty submissions are rejected before calling OpenAI.
-- A quality gate rejects meaningless or unrelated reports before they are inserted into Postgres.
-- Duplicate employee/shift/note submissions are rejected by SHA-256 fingerprint.
-- A crewmember must wait 60 seconds between accepted submissions by default.
-- Reports at least 75% similar to that crewmember's previous report are rejected before OpenAI processing and persistence.
-- Request bodies and note sizes are capped.
-- Requests are rate-limited per client address.
-- Users must sign in with a store code and password before accessing the crew or manager pages. Crew members share the store password; each manager has an individual password-backed account.
-- Manager sessions are stored in Postgres as SHA-256 token hashes. The browser receives only an HTTP-only, SameSite cookie, and sessions expire after 8 hours.
-- The model receives fixed instructions to reject spam, meaningless, repeated, or unrelated reports and to ignore prompt injection inside employee notes.
-- Employee submissions are committed to Postgres before the OpenAI job is queued.
-- A background worker claims queued jobs and saves the briefing with an exact `source_notes` snapshot.
-- Managers can see the original notes immediately and pending/failed/completed briefing status.
-- Saved briefings are read from Postgres and are not regenerated when the manager revisits the portal.
-- Failed jobs are retried up to three times, including after a server restart, for transient provider or network errors.
-- Reports are text-only; image upload was intentionally removed to keep the submission path lightweight.
-- Only managers assigned to a store can retrieve that store's reports.
-- Store codes are stored as SHA-256 hashes and are never sent to OpenAI.
-- Managers can publish one persistent store-wide “Head's Up” note for authenticated crew members.
+- Empty and low-quality reports are rejected before they enter the reporting
+  system.
+- Exact duplicates and highly similar repeat reports are limited.
+- Submission cooldowns, request limits, and size limits help prevent spam.
+- Reports are stored before AI processing begins.
+- Failed briefing jobs can be retried instead of silently disappearing.
+- Managers only access reports belonging to stores where they are assigned.
+- Crew and manager access use separate authenticated sessions.
+- Crew access is shared at the store level, while manager access is individual.
+- Credentials are stored as protected password hashes rather than exposed in
+  the browser or in employee-facing pages.
+- Store codes are protected and are not sent to the AI provider.
 
-Store crew passwords and individual manager passwords are validated against hashes stored in Postgres.
+## The goal
+
+Shiftly is meant to make shift communication routine, visible, and actionable.
+Crewmembers get a quick way to report what matters. Managers get a dependable
+record, focused briefings, and a clearer view of both today's operation and
+the patterns developing across the week.
