@@ -143,8 +143,32 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .manager-hero { padding-bottom: 60px; }
 .manager-page .hero { padding-top: 58px; }
 .manager-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
-.sign-in-page .hero { padding-top: 58px; }
 .sign-in-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
+.sign-in-page, .crew-page, .manager-page { position: relative; overflow-x: hidden; }
+.sign-in-page .shell, .crew-page .shell, .manager-page .shell { position: relative; z-index: 1; }
+.falling-leaves { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.falling-leaf { position: absolute; top: -80px; width: 52px; height: 21px; border-radius: 100% 0 100% 0; background: linear-gradient(135deg, #d1dbc4, #8ea38a); opacity: .34; animation: leaf-fall 19s linear infinite; }
+.falling-leaf-one { left: 8%; animation-delay: -4s; animation-duration: 17s; transform: rotate(24deg); }
+.falling-leaf-two { left: 25%; animation-delay: -13s; animation-duration: 22s; transform: rotate(146deg) scale(.75); }
+.falling-leaf-three { left: 46%; animation-delay: -8s; animation-duration: 20s; transform: rotate(42deg) scale(.9); }
+.falling-leaf-four { left: 64%; animation-delay: -16s; animation-duration: 24s; transform: rotate(158deg) scale(.65); }
+.falling-leaf-five { left: 79%; animation-delay: -2s; animation-duration: 18s; transform: rotate(18deg) scale(.8); }
+.falling-leaf-six { left: 92%; animation-delay: -11s; animation-duration: 21s; transform: rotate(132deg) scale(.72); }
+.falling-leaf-pink { background: linear-gradient(135deg, #f3b1a4, #d9786b); opacity: .4; }
+.falling-leaf-seven { left: 15%; animation-delay: -10s; animation-duration: 23s; transform: rotate(112deg) scale(.68); }
+.falling-leaf-eight { left: 35%; animation-delay: -18s; animation-duration: 19s; transform: rotate(28deg) scale(.82); }
+.falling-leaf-nine { left: 55%; animation-delay: -6s; animation-duration: 25s; transform: rotate(168deg) scale(.74); }
+.falling-leaf-ten { left: 71%; animation-delay: -14s; animation-duration: 20s; transform: rotate(54deg) scale(.9); }
+.falling-leaf-eleven { left: 86%; animation-delay: -3s; animation-duration: 22s; transform: rotate(146deg) scale(.62); }
+.falling-leaf-twelve { left: 98%; animation-delay: -20s; animation-duration: 26s; transform: rotate(8deg) scale(.78); }
+@keyframes leaf-fall {
+  0% { transform: translate3d(0, -10vh, 0) rotate(0deg); }
+  50% { transform: translate3d(42px, 50vh, 0) rotate(180deg); }
+  100% { transform: translate3d(-34px, 115vh, 0) rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .falling-leaf { animation: none; top: 18%; }
+}
 .manager-card { min-height: 430px; }
 .report-inbox { border-top: 1px solid var(--line); }
 .report-row { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 16px 0; display: flex; justify-content: space-between; text-align: left; color: var(--ink); }
