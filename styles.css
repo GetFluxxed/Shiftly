@@ -26,6 +26,13 @@ button { cursor: pointer; }
 .manager-page .brand { font-size: clamp(4rem, 10vw, 8rem); gap: 16px; line-height: .82; }
 .manager-page .brand-mark { font-size: .58em; }
 .manager-page .mode-pill { font-size: 14px; }
+.manager-menu { position: relative; }
+.manager-menu summary { list-style: none; cursor: pointer; }
+.manager-menu summary::-webkit-details-marker { display: none; }
+.menu-chevron { color: var(--coral); font-size: 18px; line-height: 10px; margin-left: 3px; }
+.manager-menu-panel { position: absolute; top: calc(100% + 12px); right: 0; z-index: 4; min-width: 150px; padding: 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); box-shadow: 0 10px 24px rgba(29,36,32,.08); }
+.manager-menu-panel button, .manager-menu-panel a { display: block; width: 100%; border: 0; background: transparent; color: var(--ink); padding: 10px 12px; text-align: left; font-size: 12px; text-decoration: none; }
+.manager-menu-panel button:hover, .manager-menu-panel a:hover { background: #edf1e8; color: var(--deep-sage); }
 .sign-in-page .brand { font-size: clamp(4rem, 10vw, 8rem); gap: 16px; line-height: .82; }
 .sign-in-page .brand-mark { font-size: .58em; }
 .sign-in-page .mode-pill { font-size: 14px; }
@@ -34,7 +41,13 @@ button { cursor: pointer; }
 .mode-pill { color: var(--muted); display: flex; align-items: center; gap: 8px; }
 .mode-pill a { color: var(--deep-sage); text-decoration: none; }
 .mode-pill a:hover { color: var(--coral); }
-.management-link { margin-left: 8px; }
+.management-link { margin-left: 0; }
+.crew-menu { position: relative; }
+.crew-menu summary { list-style: none; cursor: pointer; }
+.crew-menu summary::-webkit-details-marker { display: none; }
+.crew-menu-panel { position: absolute; top: calc(100% + 12px); right: 0; z-index: 4; min-width: 150px; padding: 8px; border: 1px solid var(--line); border-radius: 3px; background: var(--card); box-shadow: 0 10px 24px rgba(29,36,32,.08); }
+.crew-menu-panel button, .crew-menu-panel a { display: block; width: 100%; border: 0; background: transparent; color: var(--ink); padding: 10px 12px; text-align: left; font-size: 12px; text-decoration: none; }
+.crew-menu-panel button:hover, .crew-menu-panel a:hover { background: #edf1e8; color: var(--deep-sage); }
 .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #87a46f; }
 .hero { max-width: 610px; padding: 100px 0 76px; }
 .eyebrow, .step { color: var(--deep-sage); margin: 0 0 20px; }
@@ -144,6 +157,13 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .manager-page .hero { padding-top: 58px; }
 .manager-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
 .sign-in-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
+.about-grid .manager-quadrant { min-height: 300px; }
+.about-copy { color: #5e665d; font-size: 14px; line-height: 1.75; margin: 28px 0 20px; }
+.about-detail { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
+.about-home-link { color: var(--deep-sage); text-decoration: none; }
+.about-home-link:hover { color: var(--coral); }
+.creator-link { color: var(--deep-sage); text-decoration: none; }
+.creator-link:hover { color: var(--coral); }
 .sign-in-page, .crew-page, .manager-page { position: relative; overflow-x: hidden; }
 .sign-in-page .shell, .crew-page .shell, .manager-page .shell { position: relative; z-index: 1; }
 .falling-leaves { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }

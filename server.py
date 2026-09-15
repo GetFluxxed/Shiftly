@@ -340,6 +340,16 @@ def is_manager(handler):
     return row[0] if row else None
 
 
+def manager_username(manager_id):
+    if not manager_id:
+        return None
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT username FROM manager_users WHERE id = %s AND active", (manager_id,))
+            row = cursor.fetchone()
+    return row[0] if row else None
+
+
 def session_store_id(handler, manager_id):
     if not manager_id:
         return None
@@ -537,6 +547,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(200, {
                 "authenticated": bool(manager_id or crew_store_id),
                 "role": "manager" if manager_id else "crew" if crew_store_id else None,
+                "managerName": manager_username(manager_id) if manager_id else None,
             })
             return
         if path == "/api/reports":
@@ -727,7 +738,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                     )
                 connection.commit()
             cookie_name = "shiftly_manager_session"
-            response = {"authenticated": True, "role": "manager", "storeName": store_name}
+            response = {"authenticated": True, "role": "manager", "managerName": manager_username(manager[0]), "storeName": store_name}
         else:
             self.send_json(400, {"error": "Invalid sign-in role."})
             return
@@ -811,7 +822,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={SESSION_TTL}")
         self.end_headers()
-        self.wfile.write(json_bytes({"authenticated": True, "role": "manager", "storeName": store_name}))
+        self.wfile.write(json_bytes({"authenticated": True, "role": "manager", "managerName": manager_username(manager_id), "storeName": store_name}))
 
     def save_heads_up(self):
         manager_id = is_manager(self)

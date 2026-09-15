@@ -27,6 +27,10 @@ function showManager() {
   loadWeeklyOverview();
 }
 
+function applyManagerIdentity(payload) {
+  if (payload.managerName) $("#manager-name").textContent = payload.managerName;
+}
+
 function loadHeadsUp() {
   fetch("/api/heads-up")
     .then((response) => response.json())
@@ -139,6 +143,7 @@ function loadReports() {
         showLogin();
         return;
       }
+
       if (!response.ok) throw new Error(payload.error || "Reports could not be loaded.");
       reports = payload.reports;
       $("#manager-count").textContent = `${reports.length} RECEIVED`;
@@ -157,6 +162,11 @@ function loadReports() {
     });
 }
 
+$("#logout-button").addEventListener("click", () => {
+    fetch("/api/auth/logout", { method: "POST" })
+      .finally(() => window.location.replace("/"));
+});
+
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   authError.classList.add("hidden");
@@ -170,7 +180,10 @@ loginForm.addEventListener("submit", (event) => {
       if (!response.ok) throw new Error(payload.error || "Unable to sign in.");
       return payload;
     })
-    .then(showManager)
+    .then((payload) => {
+      applyManagerIdentity(payload);
+      showManager();
+    })
     .catch((error) => {
       authError.textContent = error.message;
       authError.classList.remove("hidden");
@@ -179,5 +192,9 @@ loginForm.addEventListener("submit", (event) => {
 
 fetch("/api/auth/status")
   .then((response) => response.json())
-  .then((payload) => payload.authenticated ? showManager() : showLogin())
+  .then((payload) => {
+    applyManagerIdentity(payload);
+    if (payload.authenticated && payload.role === "manager") showManager();
+    else showLogin();
+  })
   .catch(showLogin);

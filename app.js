@@ -28,6 +28,11 @@ fetch("/api/auth/status")
   })
   .catch(() => {});
 
+$("#crew-logout-button").addEventListener("click", () => {
+  fetch("/api/auth/logout", { method: "POST" })
+    .finally(() => window.location.replace("/"));
+});
+
 const today = new Date();
 $("#today").textContent = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
 
