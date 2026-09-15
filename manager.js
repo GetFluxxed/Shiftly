@@ -10,6 +10,9 @@ const authError = $("#auth-error");
 const formatLocalDate = (value, options = { month: "short", day: "numeric", year: "numeric" }) => (
   value ? new Date(value).toLocaleDateString("en-US", options) : ""
 );
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[character]));
 
 function showLogin() {
   authGate.classList.remove("hidden");
@@ -85,7 +88,7 @@ function loadWeeklyOverview() {
     })
     .then((payload) => {
       const points = [...(payload.wins || []), ...(payload.risks || [])];
-      $("#weekly-overview").innerHTML = `<p>${payload.summary || "No summary is available yet."}</p>${points.length ? `<div class="weekly-points">${points.map((point) => `<div class="insight"><span class="insight-mark">↳</span><span>${point}</span></div>`).join("")}</div>` : ""}<p class="weekly-follow-up">${payload.follow_up || ""}</p><small>${payload.reportCount} report${payload.reportCount === 1 ? "" : "s"} from the last 7 days</small>`;
+      $("#weekly-overview").innerHTML = `<p>${escapeHtml(payload.summary || "No summary is available yet.")}</p>${points.length ? `<div class="weekly-points">${points.map((point) => `<div class="insight"><span class="insight-mark">↳</span><span>${escapeHtml(point)}</span></div>`).join("")}</div>` : ""}<p class="weekly-follow-up">${escapeHtml(payload.follow_up || "")}</p><small>${Number(payload.reportCount) || 0} report${payload.reportCount === 1 ? "" : "s"} from the last 7 days</small>`;
     })
     .catch((error) => {
       console.error("Weekly overview failed:", error);
@@ -124,8 +127,8 @@ function createManagerBriefing(report) {
   if (report.status !== "completed") return;
   const insights = [...(briefing.wins || []), ...(briefing.risks || [])];
   $("#manager-insights").innerHTML = (insights.length ? insights : ["Review the submitted report and follow up with the team member if needed."])
-    .map((item) => `<div class="insight"><span class="insight-mark">↳</span><span>${item}</span></div>`).join("");
-  $("#manager-next-step").innerHTML = `<strong>Manager follow-up</strong>${briefing.follow_up || "Choose one action, assign an owner, and carry it into the next shift handoff."}`;
+    .map((item) => `<div class="insight"><span class="insight-mark">↳</span><span>${escapeHtml(item)}</span></div>`).join("");
+  $("#manager-next-step").innerHTML = `<strong>Manager follow-up</strong>${escapeHtml(briefing.follow_up || "Choose one action, assign an owner, and carry it into the next shift handoff.")}`;
 }
 
 function loadReports() {

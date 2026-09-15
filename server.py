@@ -19,9 +19,9 @@ from threading import Event, Thread
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).parent
-HOST = "127.0.0.1"
 MAX_BODY = 12 * 1024 * 1024
 REQUESTS = {}
+LOGIN_FAILURES = {}
 SESSION_TTL = 8 * 60 * 60
 DB_URL = ""
 JOB_WAKE = Event()
@@ -51,11 +51,13 @@ def load_env_file():
 
 
 load_env_file()
+HOST = os.environ.get("HOST", "127.0.0.1").strip()
 PORT = int(os.environ.get("PORT", "4173"))
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 DB_URL = os.environ.get("DATABASE_URL", "").strip()
 REPORT_COOLDOWN_SECONDS = int(os.environ.get("REPORT_COOLDOWN_SECONDS", "60"))
 REPORT_SIMILARITY_THRESHOLD = 0.75
+SECURE_COOKIES = os.environ.get("SECURE_COOKIES", "false").strip().casefold() in {"1", "true", "yes", "on"}
 
 try:
     import psycopg
@@ -290,6 +292,19 @@ def rate_limited(handler):
     return False
 
 
+def login_rate_limited(handler, store_code, role):
+    now = time.time()
+    key = f"{client_key(handler)}:{role}:{hashlib.sha256(store_code.encode()).hexdigest()}"
+    recent = [stamp for stamp in LOGIN_FAILURES.get(key, []) if now - stamp < 900]
+    LOGIN_FAILURES[key] = recent
+    return len(recent) >= 10
+
+
+def record_login_failure(handler, store_code, role):
+    key = f"{client_key(handler)}:{role}:{hashlib.sha256(store_code.encode()).hexdigest()}"
+    LOGIN_FAILURES.setdefault(key, []).append(time.time())
+
+
 def session_token(handler):
     cookie = handler.headers.get("Cookie", "")
     for item in cookie.split(";"):
@@ -468,6 +483,20 @@ Keep it concise, factual, and useful to the store manager. Do not invent details
 
 
 class ShiftlyHandler(BaseHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+        )
+        if SECURE_COOKIES:
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        super().end_headers()
+
     def send_json(self, status, value):
         body = json_bytes(value)
         self.send_response(status)
@@ -480,7 +509,22 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/health":
-            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")), "managerAuthConfigured": bool(DB_URL), "databaseConfigured": bool(DB_URL)})
+            database_ok = False
+            try:
+                with db_connection() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT 1")
+                        database_ok = cursor.fetchone() == (1,)
+            except (RuntimeError, psycopg.Error):
+                database_ok = False
+            openai_configured = bool(os.environ.get("OPENAI_API_KEY"))
+            healthy = database_ok and openai_configured
+            self.send_json(200 if healthy else 503, {
+                "status": "ok" if healthy else "degraded",
+                "openaiConfigured": openai_configured,
+                "databaseConfigured": database_ok,
+                "secureCookies": SECURE_COOKIES,
+            })
             return
         if path == "/api/auth/status":
             manager_id = is_manager(self)
@@ -565,8 +609,9 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 connection.commit()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
-            self.send_header("Set-Cookie", "shiftly_manager_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
-            self.send_header("Set-Cookie", "shiftly_crew_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
+            secure = "; Secure" if SECURE_COOKIES else ""
+            self.send_header("Set-Cookie", f"shiftly_manager_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
+            self.send_header("Set-Cookie", f"shiftly_crew_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
             body = json_bytes({"authenticated": False})
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -590,8 +635,15 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         store_code = clean(payload.get("storeCode"), 40)
         role = str(payload.get("role", "crew")).strip().casefold()
         password = str(payload.get("password", ""))
+        if role not in {"crew", "manager"}:
+            self.send_json(400, {"error": "Invalid sign-in role."})
+            return
+        if login_rate_limited(self, store_code, role):
+            self.send_json(429, {"error": "Too many failed sign-in attempts. Try again later."})
+            return
         store = store_for_code(store_code)
         if not store or not password:
+            record_login_failure(self, store_code, role)
             self.send_json(401, {"error": "Incorrect store code or password."})
             return
         store_id, store_name = store
@@ -602,6 +654,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                     cursor.execute("SELECT 1 FROM stores WHERE id = %s AND crew_password_hash = %s AND active", (store_id, candidate_hash))
                     authenticated = cursor.fetchone() is not None
             if not authenticated:
+                record_login_failure(self, store_code, role)
                 self.send_json(401, {"error": "Incorrect store code or password."})
                 return
             token = secrets.token_urlsafe(32)
@@ -634,6 +687,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 None,
             )
             if not manager:
+                record_login_failure(self, store_code, role)
                 self.send_json(401, {"error": "Incorrect store code or password."})
                 return
             token = secrets.token_urlsafe(32)
@@ -651,7 +705,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Set-Cookie", f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}")
+        secure = "; Secure" if SECURE_COOKIES else ""
+        self.send_header("Set-Cookie", f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={SESSION_TTL}")
         self.end_headers()
         self.wfile.write(json_bytes(response))
 
