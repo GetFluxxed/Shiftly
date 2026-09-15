@@ -87,7 +87,11 @@ function createBriefing() {
   fetch("/api/reports", { method: "POST", body: formData })
     .then(async (response) => {
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "The report could not be submitted.");
+      if (!response.ok) {
+        const error = new Error(payload.error || "The report could not be submitted.");
+        error.status = response.status;
+        throw error;
+      }
       return payload;
     })
     .then((payload) => {
@@ -104,6 +108,10 @@ function createBriefing() {
       loadingState.style.display = "";
       emptyResult.classList.remove("hidden");
       generateButton.disabled = false;
+      if (error.status === 422) {
+        notes.focus();
+        notes.select();
+      }
       showToast(error.message);
     });
 }

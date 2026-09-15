@@ -2,8 +2,6 @@ const $ = (selector) => document.querySelector(selector);
 const now = new Date();
 $("#manager-date").textContent = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
 
-// Fixed manager instructions keep every briefing consistent and out of the employee flow.
-const briefingInstructions = "Summarize the shift objectively for the store manager. Identify wins, operational risks, people or customer signals, and one concrete follow-up. Be concise, factual, and action-oriented.";
 let reports = [];
 const authGate = $("#manager-auth-gate");
 const managerGrid = $(".manager-grid");

@@ -59,6 +59,7 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 ## Current protections
 
 - Empty submissions are rejected before calling OpenAI.
+- A quality gate rejects meaningless or unrelated reports before they are inserted into Postgres.
 - Duplicate employee/shift/note submissions are rejected by SHA-256 fingerprint.
 - Request bodies and note/image sizes are capped.
 - Requests are rate-limited per client address.
