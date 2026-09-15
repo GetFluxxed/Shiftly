@@ -7,6 +7,19 @@ const resultContent = $("#result-content");
 const loadingState = $("#loading-state");
 const toast = $("#toast");
 const MAX_CHARS = 2000;
+const formatLocalDate = (value, options = { month: "short", day: "numeric", year: "numeric" }) => (
+  value ? new Date(value).toLocaleDateString("en-US", options) : ""
+);
+
+fetch("/api/heads-up")
+  .then((response) => response.ok ? response.json() : null)
+  .then((payload) => {
+    if (payload) {
+      $("#heads-up-message").textContent = payload.message || "No manager notes have been posted yet.";
+      $("#heads-up-date").textContent = payload.updatedAt ? `Updated ${formatLocalDate(payload.updatedAt)} ${new Date(payload.updatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
+    }
+  })
+  .catch(() => {});
 
 const today = new Date();
 $("#today").textContent = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
@@ -53,7 +66,7 @@ function createBriefing() {
       return payload;
     })
     .then((payload) => {
-      $("#result-date").textContent = payload.date.toUpperCase();
+      $("#result-date").textContent = formatLocalDate(payload.date).toUpperCase();
       $("#result-summary").textContent = `${employee ? `${employee} · ` : ""}Your report was reviewed and submitted successfully for manager review.`;
       loadingState.classList.add("hidden");
       loadingState.style.display = "";

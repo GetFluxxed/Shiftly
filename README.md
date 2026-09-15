@@ -86,5 +86,6 @@ python3 setup_store.py --reset --store-code 6022 --crew-password 6022Crew --mana
 - Reports are text-only; image upload was intentionally removed to keep the submission path lightweight.
 - Only managers assigned to a store can retrieve that store's reports.
 - Store codes are stored as SHA-256 hashes and are never sent to OpenAI.
+- Managers can publish one persistent store-wide “Head's Up” note for authenticated crew members.
 
 Store crew passwords and individual manager passwords are validated against hashes stored in Postgres.

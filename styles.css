@@ -10,7 +10,6 @@
   --mono: "DM Mono", monospace;
   --sans: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
 }
-
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); }
 button, textarea, select { font: inherit; }
@@ -18,6 +17,15 @@ button { cursor: pointer; }
 .shell { max-width: 1220px; margin: auto; padding: 30px 48px 24px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; }
 .brand { display: inline-flex; gap: 9px; align-items: center; color: var(--ink); font-weight: 800; font-size: 17px; letter-spacing: -.05em; text-decoration: none; }
+.crew-page { position: relative; overflow-x: hidden; }
+.crew-page .topbar { align-items: flex-start; }
+.crew-page .brand { font-size: clamp(4rem, 10vw, 8rem); gap: 16px; line-height: .82; }
+.crew-page .brand-mark { font-size: .58em; }
+.crew-page .mode-pill { font-size: 14px; }
+.manager-page .topbar { align-items: flex-start; }
+.manager-page .brand { font-size: clamp(4rem, 10vw, 8rem); gap: 16px; line-height: .82; }
+.manager-page .brand-mark { font-size: .58em; }
+.manager-page .mode-pill { font-size: 14px; }
 .brand-mark { color: var(--coral); font-size: 22px; line-height: 1; }
 .mode-pill, .step, .optional, .ai-badge, footer, .field-footer, .privacy-note, .result-meta, .history-heading { font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
 .mode-pill { color: var(--muted); display: flex; align-items: center; gap: 8px; }
@@ -25,6 +33,8 @@ button { cursor: pointer; }
 .hero { max-width: 610px; padding: 100px 0 76px; }
 .eyebrow, .step { color: var(--deep-sage); margin: 0 0 20px; }
 .hero h1 { font-size: clamp(3.5rem, 8vw, 6.2rem); letter-spacing: -.085em; line-height: .92; margin: 0; font-weight: 700; }
+.crew-page .hero { position: relative; padding-top: 58px; }
+.crew-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
 .hero h1 em { color: var(--coral); font-style: normal; }
 .intro { color: #6d746c; max-width: 390px; font-size: 15px; line-height: 1.65; margin: 30px 0 0; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr); gap: clamp(42px, 8vw, 115px); align-items: start; }
@@ -81,8 +91,52 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .history-item:hover .history-title { color: var(--coral); }
 .manager-link { text-align: right; margin: 18px 0 0; font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
 .manager-link a { color: var(--deep-sage); }
+.crew-page .workspace-grid { display: grid; grid-template-columns: minmax(0, 760px) minmax(220px, 1fr); gap: clamp(32px, 5vw, 76px); align-items: start; }
+.crew-page .capture-column, .crew-page .briefing-column { position: relative; max-width: 760px; }
+.crew-page .briefing-column { margin-top: 48px; }
+.botanical-art { display: none; }
+.botanical-leaf { position: absolute; display: block; width: 52px; height: 21px; border-radius: 100% 0 100% 0; background: linear-gradient(135deg, #d1dbc4, #8ea38a); opacity: .7; pointer-events: none; }
+
+@media (min-width: 1100px) {
+  .crew-page .botanical-art { display: block; position: absolute; z-index: 0; top: 0; right: 0; width: 100%; height: 100%; pointer-events: none; }
+  .leaf-one { top: 275px; right: 8%; transform: rotate(-28deg); }
+  .leaf-two { top: 540px; right: 29%; transform: rotate(148deg) scale(.8); }
+  .leaf-three { top: 820px; right: 12%; transform: rotate(-42deg) scale(.9); }
+  .leaf-four { top: 1060px; right: 35%; transform: rotate(142deg) scale(.72); }
+  }
+  .heads-up-card, .heads-up-editor { border: 1px solid var(--line); background: #edf1e8; border-radius: 3px; padding: 24px; }
+  .heads-up-card { grid-column: 2; grid-row: 1; margin-top: 48px; position: sticky; top: 28px; }
+  .heads-up-card .section-heading, .heads-up-editor .section-heading { margin-bottom: 10px; }
+  .heads-up-card p:last-child { color: var(--deep-sage); font-size: 13px; line-height: 1.65; margin: 0; white-space: pre-wrap; }
+  .heads-up-date { display: block; color: var(--muted); font: 10px var(--mono); margin-top: 16px; text-transform: uppercase; letter-spacing: .06em; }
+  .heads-up-editor { grid-column: 1 / -1; }
+  .heads-up-editor textarea { background: var(--card); }
+  @media (max-width: 900px) {
+    .crew-page .workspace-grid { display: block; }
+    .crew-page .heads-up-card { margin-top: 40px; position: static; }
+  }
 .manager-grid { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(360px, 1.25fr); gap: clamp(42px, 8vw, 90px); align-items: start; }
+.manager-page .manager-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; }
+.manager-quadrant { min-width: 0; border: 1px solid var(--line); background: var(--card); border-radius: 3px; padding: 24px; }
+.manager-quadrant .section-heading { margin-bottom: 16px; }
+.manager-quadrant .briefing-card { min-height: 390px; border: 0; padding: 0; background: transparent; }
+.manager-quadrant .empty-result { min-height: 320px; }
+.weekly-card { min-height: 320px; color: #5e665d; font-size: 13px; line-height: 1.7; }
+.weekly-card > p:first-child { margin-top: 0; }
+.weekly-card small { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.weekly-points { border-top: 1px solid var(--line); margin-top: 18px; }
+.weekly-follow-up { background: #edf1e8; color: var(--deep-sage); padding: 13px; }
+.heads-up-display { min-height: 170px; color: var(--deep-sage); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.heads-up-update { display: block; margin-top: 16px; }
+.heads-up-modal { width: min(500px, calc(100% - 40px)); border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink); padding: 28px; }
+.heads-up-modal:not([open]) { display: none; }
+.heads-up-modal::backdrop { background: rgba(29, 36, 32, .35); }
+.heads-up-modal textarea { margin-top: 10px; min-height: 130px; }
+.modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 22px; margin-top: 18px; }
+.modal-actions .primary-button { width: auto; min-width: 130px; margin-top: 0; }
 .manager-hero { padding-bottom: 60px; }
+.manager-page .hero { padding-top: 58px; }
+.manager-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
 .manager-card { min-height: 430px; }
 .report-inbox { border-top: 1px solid var(--line); }
 .report-row { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 16px 0; display: flex; justify-content: space-between; text-align: left; color: var(--ink); }
@@ -112,7 +166,7 @@ footer { display: flex; justify-content: space-between; color: #a3a9a1; margin-t
   .hero h1 { font-size: clamp(3.2rem, 17vw, 5.5rem); }
   .workspace-grid { display: block; }
   .manager-grid { display: block; }
-  .manager-grid > :last-child { margin-top: 70px; }
+  .manager-quadrant + .manager-quadrant { margin-top: 24px; }
   .briefing-column { margin-top: 70px; }
   footer { margin-top: 70px; gap: 20px; flex-direction: column; }
 }

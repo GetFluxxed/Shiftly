@@ -10,15 +10,15 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="manager-page">
     <main class="shell manager-shell">
       <header class="topbar">
         <a class="brand" href="index.html" aria-label="Shiftly employee report">✳ <span>Shiftly</span></a>
-        <span class="mode-pill"><span class="status-dot"></span> manager view</span>
+        <span class="mode-pill"><span class="status-dot"></span> Manager View</span>
       </header>
       <section class="hero manager-hero">
         <p class="eyebrow">Manager Briefing / <span id="manager-date"></span></p>
-        <h1>See the shape<br /><em>of the day.</em></h1>
+        <h1>See The Shape<br /><em>Of The Day.</em></h1>
         <p class="intro">Shiftly organizes crew reports into a concise operational briefing. This view is separate from the employee submission screen.</p>
       </section>
       <section class="manager-auth-gate hidden" id="manager-auth-gate">
@@ -37,14 +37,14 @@
         </div>
       </section>
       <section class="manager-grid">
-        <div>
-          <div class="section-heading"><div><p class="step">01 / INBOX</p><h2>Shift reports</h2></div><span class="optional" id="manager-count"></span></div>
+        <section class="manager-quadrant inbox-quadrant">
+          <div class="section-heading"><div><p class="step">01 / INBOX</p><h2>Shift Reports</h2></div><span class="optional" id="manager-count"></span></div>
           <div class="report-inbox" id="report-inbox"></div>
-        </div>
-        <div>
-          <div class="section-heading"><div><p class="step">02 / BRIEF</p><h2>Manager briefing</h2></div><span class="ai-badge">PRIVATE</span></div>
+        </section>
+        <section class="manager-quadrant briefing-quadrant">
+          <div class="section-heading"><div><p class="step">02 / BRIEF</p><h2>Manager Briefing</h2></div></div>
           <div class="briefing-card manager-card" id="manager-card">
-            <div class="empty-result" id="manager-empty"><div class="sparkle">✳</div><h3>Your briefing will land here.</h3><p>Select a shift report to create the manager-only view.</p></div>
+            <div class="empty-result" id="manager-empty"><div class="sparkle">✳</div><h3>Your Latest Briefing Will Appear Here.</h3><p>Your most recent shift report will open automatically.</p></div>
             <div class="result-content hidden" id="manager-result">
               <div class="result-meta"><span id="manager-result-date"></span><span>MANAGER ONLY</span></div>
               <h3 id="manager-result-title"></h3>
@@ -58,8 +58,25 @@
               </div>
             </div>
           </div>
-        </div>
+        </section>
+        <section class="manager-quadrant weekly-quadrant">
+          <div class="section-heading"><div><p class="step">03 / SUMMARY</p><h2>Weekly Overview</h2></div></div>
+          <div class="weekly-card" id="weekly-overview"><p class="pending-message">Preparing this week’s overview...</p></div>
+        </section>
+        <section class="manager-quadrant heads-up-quadrant">
+          <div class="section-heading"><div><p class="step">04 / NOTICE</p><h2>Head's Up</h2></div></div>
+          <div class="heads-up-display" id="manager-heads-up">No manager notes have been posted yet.</div>
+          <button class="text-button heads-up-update" id="heads-up-update" type="button">Update</button>
+        </section>
       </section>
+      <dialog class="heads-up-modal" id="heads-up-modal">
+        <form id="heads-up-form">
+          <div class="section-heading"><div><p class="step">STORE NOTICE</p><h2>Update Head's Up</h2></div></div>
+          <textarea id="heads-up-input" rows="5" maxlength="1000" placeholder="Add information the crew should see..."></textarea>
+          <p class="auth-error hidden" id="heads-up-status"></p>
+          <div class="modal-actions"><button class="text-button" id="heads-up-cancel" type="button">Cancel</button><button class="primary-button" id="heads-up-save" type="submit"><span>Save</span><span class="button-arrow">→</span></button></div>
+        </form>
+      </dialog>
       <footer><span>SHIFTLY / MANAGER VIEW</span><span>v0.1 · local demo</span></footer>
     </main>
     <script src="manager.js"></script>

@@ -10,35 +10,43 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="crew-page">
     <main class="shell">
       <header class="topbar">
         <a class="brand" href="#" aria-label="Shiftly home">
           <span class="brand-mark" aria-hidden="true">✳</span>
           <span>Shiftly</span>
         </a>
-        <span class="mode-pill"><span class="status-dot"></span> team workspace</span>
+        <span class="mode-pill"><span class="status-dot"></span> Team Workspace</span>
       </header>
 
       <section class="hero">
         <p class="eyebrow">Shift Report / <span id="today"></span></p>
-        <h1>Keep your manager<br /><em>in the loop.</em></h1>
+        <h1>Keep Your Manager<br /><em>In The Loop.</em></h1>
         <p class="intro">Share what happened on your shift so your manager can follow the day from anywhere.</p>
       </section>
 
       <section class="workspace-grid">
+        <aside class="heads-up-card" aria-live="polite">
+          <div class="section-heading">
+            <div><p class="step">03 / NOTICE</p><h2>Head's Up</h2></div>
+          </div>
+          <p id="heads-up-message">No manager notes have been posted yet.</p>
+          <small class="heads-up-date" id="heads-up-date"></small>
+        </aside>
+
         <div class="capture-column">
           <div class="section-heading">
             <div>
               <p class="step">01 / SUBMIT</p>
-              <h2>Tell us about your shift</h2>
+              <h2>Shift Notes</h2>
             </div>
-            <span class="optional">a few quick details</span>
+            <span class="optional">A Few Quick Details</span>
           </div>
 
           <div class="details-row report-details">
             <div class="field-group">
-              <label class="field-label" for="employee">Your name</label>
+              <label class="field-label" for="employee">Your Name</label>
               <input class="text-input" id="employee" type="text" autocomplete="name" placeholder="e.g. Jordan" />
             </div>
             <div class="field-group">
@@ -52,47 +60,54 @@
             </div>
           </div>
 
-          <label class="field-label" for="notes">What should your manager know?</label>
+          <label class="field-label" for="notes">What Should Your Manager Know?</label>
           <textarea id="notes" rows="5" placeholder="e.g. We had two call-outs and a late delivery. The team completed the reset before close..."></textarea>
           <div class="field-footer"><span>Include wins, issues, and anything that needs follow-up.</span><span id="character-count">0 / 2,000</span></div>
 
           <button class="primary-button" id="generate-button" type="button">
-            <span>Send shift report</span><span class="button-arrow">→</span>
+            <span>Send Shift Report</span><span class="button-arrow">→</span>
           </button>
           <p class="privacy-note"><span aria-hidden="true">⌁</span> Your report is prepared for your manager. Your store sign-in protects this workspace.</p>
-        </div>
 
-        <aside class="briefing-column" aria-live="polite">
+          <div class="briefing-column" aria-live="polite">
           <div class="section-heading result-heading">
             <div>
               <p class="step">02 / CONFIRM</p>
-              <h2>Report received</h2>
+              <h2>Report Overview</h2>
             </div>
-            <span class="ai-badge">PRIVATE TO YOU</span>
           </div>
 
           <div class="briefing-card" id="briefing-card">
             <div class="empty-result" id="empty-result">
               <div class="sparkle" aria-hidden="true">✳</div>
-              <h3>Your report will appear here.</h3>
+              <h3>Your Report Will Appear Here.</h3>
               <p>After you send it, you’ll see a confirmation here. Your manager’s separate briefing is not shown in the crewmember view.</p>
             </div>
             <div class="result-content hidden" id="result-content">
               <div class="result-meta"><span id="result-date"></span><span class="result-time">NOTES</span></div>
-              <h3>Thanks — your shift report was sent.</h3>
+              <h3>Thanks — Your Shift Report Was Sent.</h3>
               <p class="result-summary" id="result-summary"></p>
-              <div class="next-step"><strong>What happens next</strong>Your manager will receive a separate Shiftly briefing with the key wins, risks, and follow-up items from the team.</div>
-              <div class="result-actions"><button class="text-button muted" id="new-button" type="button">Send another report</button></div>
+              <div class="next-step"><strong>What Happens Next</strong>Your manager will receive a separate Shiftly briefing with the key wins, risks, and follow-up items from the team.</div>
+              <div class="result-actions"><button class="text-button muted" id="new-button" type="button">Send Another Report</button></div>
             </div>
             <div class="loading-state hidden" id="loading-state">
               <div class="loading-spinner"></div>
               <p>Finding the signal<span class="loading-dots">...</span></p>
             </div>
           </div>
+          </div>
+        </div>
 
-          <p class="manager-link"><a href="manager.html">Manager view →</a></p>
-        </aside>
+
+        </div>
       </section>
+
+      <div class="botanical-art" aria-hidden="true">
+        <span class="botanical-leaf leaf-one"></span>
+        <span class="botanical-leaf leaf-two"></span>
+        <span class="botanical-leaf leaf-three"></span>
+        <span class="botanical-leaf leaf-four"></span>
+      </div>
 
       <footer><span>SHIFTLY / KEEPING EVERY SHIFT IN SYNC</span><span>v0.1 · local demo</span></footer>
     </main>

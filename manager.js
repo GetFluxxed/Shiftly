@@ -7,6 +7,9 @@ const authGate = $("#manager-auth-gate");
 const managerGrid = $(".manager-grid");
 const loginForm = $("#login-form");
 const authError = $("#auth-error");
+const formatLocalDate = (value, options = { month: "short", day: "numeric", year: "numeric" }) => (
+  value ? new Date(value).toLocaleDateString("en-US", options) : ""
+);
 
 function showLogin() {
   authGate.classList.remove("hidden");
@@ -17,6 +20,77 @@ function showManager() {
   authGate.classList.add("hidden");
   managerGrid.classList.remove("hidden");
   loadReports();
+  loadHeadsUp();
+  loadWeeklyOverview();
+}
+
+function loadHeadsUp() {
+  fetch("/api/heads-up")
+    .then((response) => response.json())
+    .then((payload) => {
+      $("#heads-up-input").value = payload.message || "";
+      $("#manager-heads-up").textContent = payload.message || "No manager notes have been posted yet.";
+    })
+    .catch(() => {});
+}
+
+function saveHeadsUp(event) {
+  event.preventDefault();
+  const modal = $("#heads-up-modal");
+  const status = $("#heads-up-status");
+  fetch("/api/heads-up", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: $("#heads-up-input").value }),
+  })
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to save the note.");
+      return payload;
+    })
+    .then((payload) => {
+      $("#manager-heads-up").textContent = payload.message || "No manager notes have been posted yet.";
+      status.classList.add("hidden");
+      if (typeof modal.close === "function") modal.close();
+      else modal.removeAttribute("open");
+    })
+    .catch((error) => {
+      status.textContent = error.message;
+      status.classList.remove("hidden");
+    });
+}
+
+$("#heads-up-update").addEventListener("click", () => {
+  const modal = $("#heads-up-modal");
+  if (typeof modal.showModal === "function") {
+    modal.showModal();
+  } else {
+    modal.setAttribute("open", "");
+  }
+  $("#heads-up-input").focus();
+});
+$("#heads-up-form").addEventListener("submit", saveHeadsUp);
+$("#heads-up-cancel").addEventListener("click", () => {
+  const modal = $("#heads-up-modal");
+  if (typeof modal.close === "function") modal.close();
+  else modal.removeAttribute("open");
+});
+
+function loadWeeklyOverview() {
+  fetch("/api/weekly-overview")
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Weekly overview unavailable.");
+      return payload;
+    })
+    .then((payload) => {
+      const points = [...(payload.wins || []), ...(payload.risks || [])];
+      $("#weekly-overview").innerHTML = `<p>${payload.summary || "No summary is available yet."}</p>${points.length ? `<div class="weekly-points">${points.map((point) => `<div class="insight"><span class="insight-mark">↳</span><span>${point}</span></div>`).join("")}</div>` : ""}<p class="weekly-follow-up">${payload.follow_up || ""}</p><small>${payload.reportCount} report${payload.reportCount === 1 ? "" : "s"} from the last 7 days</small>`;
+    })
+    .catch((error) => {
+      console.error("Weekly overview failed:", error);
+      $("#weekly-overview").innerHTML = "<p class=\"failed-message\">Weekly overview is temporarily unavailable. Try refreshing the page.</p>";
+    });
 }
 
 function renderInbox() {
@@ -27,7 +101,7 @@ function renderInbox() {
   }
   inbox.innerHTML = reports.map((report, index) => `
     <button class="report-row" type="button" data-index="${index}">
-      <span><strong>${report.employee || "Crewmember"}</strong><small>${report.shift} shift · ${report.date}</small></span>
+      <span><strong>${report.employee || "Crewmember"}</strong><small>${report.shift} shift · ${formatLocalDate(report.date, { month: "short", day: "numeric" })}</small></span>
       <span class="report-state">${report.status}</span>
       <span class="report-arrow">→</span>
     </button>
@@ -39,7 +113,7 @@ function createManagerBriefing(report) {
   const briefing = report.briefing || {};
   $("#manager-empty").classList.add("hidden");
   $("#manager-result").classList.remove("hidden");
-  $("#manager-result-date").textContent = report.date.toUpperCase();
+  $("#manager-result-date").textContent = formatLocalDate(report.date, { month: "short", day: "numeric" }).toUpperCase();
   $("#manager-result-title").textContent = `${report.employee || "Crewmember"} · ${report.shift} shift`;
   $("#manager-result-summary").textContent = report.notes;
   $("#manager-result-status").textContent = report.status.toUpperCase();
@@ -66,6 +140,11 @@ function loadReports() {
       reports = payload.reports;
       $("#manager-count").textContent = `${reports.length} RECEIVED`;
       renderInbox();
+      if (reports.length && !$("#manager-result").classList.contains("hidden")) {
+        createManagerBriefing(reports[0]);
+      } else if (reports.length) {
+        createManagerBriefing(reports[0]);
+      }
       if (reports.some((report) => report.status === "pending" || report.status === "processing")) {
         window.setTimeout(loadReports, 2500);
       }
