@@ -61,6 +61,8 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Empty submissions are rejected before calling OpenAI.
 - A quality gate rejects meaningless or unrelated reports before they are inserted into Postgres.
 - Duplicate employee/shift/note submissions are rejected by SHA-256 fingerprint.
+- A crewmember must wait 60 seconds between accepted submissions by default.
+- Reports at least 75% similar to that crewmember's previous report are rejected before OpenAI processing and persistence.
 - Request bodies and note sizes are capped.
 - Requests are rate-limited per client address.
 - Crew report submission remains public, but report retrieval requires the manager password.

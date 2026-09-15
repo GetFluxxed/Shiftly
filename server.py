@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from difflib import SequenceMatcher
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Event, Thread
@@ -54,6 +55,8 @@ PORT = int(os.environ.get("PORT", "4173"))
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 MANAGER_PASSWORD = os.environ.get("MANAGER_PASSWORD", "").strip()
 DB_URL = os.environ.get("DATABASE_URL", "").strip()
+REPORT_COOLDOWN_SECONDS = int(os.environ.get("REPORT_COOLDOWN_SECONDS", "60"))
+REPORT_SIMILARITY_THRESHOLD = 0.75
 
 try:
     import psycopg
@@ -119,6 +122,36 @@ def database_reports():
         }
         for row in rows
     ]
+
+
+def normalized_notes(notes):
+    return re.sub(r"\s+", " ", notes.casefold()).strip()
+
+
+def ensure_submission_allowed(employee, notes):
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT notes, created_at
+                FROM reports
+                WHERE lower(employee) = lower(%s)
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (employee,),
+            )
+            previous = cursor.fetchone()
+    if not previous:
+        return
+    previous_notes, created_at = previous
+    seconds_since_previous = (time.time() - created_at.timestamp())
+    if seconds_since_previous < REPORT_COOLDOWN_SECONDS:
+        remaining = max(1, int(REPORT_COOLDOWN_SECONDS - seconds_since_previous))
+        raise ValueError(f"Please wait {remaining} seconds before sending another report.")
+    similarity = SequenceMatcher(None, normalized_notes(previous_notes), normalized_notes(notes)).ratio()
+    if similarity >= REPORT_SIMILARITY_THRESHOLD:
+        raise ValueError("This report is too similar to your previous report. Add the new details from this shift and try again.")
 
 
 def queue_report(employee, shift, notes):
@@ -420,6 +453,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             if shift not in {"opening", "midday", "closing", "other"}:
                 raise ValueError("Choose a valid shift.")
             report = {"employee": employee, "shift": shift, "notes": notes}
+            ensure_submission_allowed(employee, notes)
             quality = validate_report(report)
             if quality.get("status") != "accepted":
                 self.send_json(422, {"error": quality.get("reason") or "Please add meaningful shift details and try again."})
