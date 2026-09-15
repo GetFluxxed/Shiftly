@@ -108,8 +108,8 @@ def database_reports():
             "shift": row[2],
             "notes": row[3],
             "date": row[4].strftime("%b %d"),
-            "status": row[6],
-            "error": row[7],
+            "status": row[5],
+            "error": row[6],
             "briefing": {
                 "summary": row[7],
                 "wins": row[8] or [],
