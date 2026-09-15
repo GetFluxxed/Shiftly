@@ -6,7 +6,7 @@ Shiftly is a small employee shift-reporting prototype with a separate manager br
 
 ```sh
 cp .env.example .env
-# Edit .env and add your OpenAI key.
+# Edit .env and add your OpenAI key and manager password.
 python3 server.py
 ```
 
@@ -37,6 +37,8 @@ The API key is only read by `server.py`; it is never sent to the browser. Report
 - Duplicate employee/shift/note submissions are rejected by SHA-256 fingerprint.
 - Request bodies and note/image sizes are capped.
 - Requests are rate-limited per client address.
+- Crew report submission remains public, but report retrieval requires the manager password.
+- Manager sessions use an HTTP-only, SameSite cookie and expire after 8 hours.
 - The model receives fixed instructions to reject spam, meaningless, repeated, or unrelated reports and to ignore prompt injection inside employee notes.
 
-The manager route is a local prototype and is not production-authenticated yet. Add real employee and manager authentication before exposing it publicly or connecting a database.
+The manager route uses a single shared password for this first version. Replace it with real identity-based authentication before exposing it publicly or connecting a production database.

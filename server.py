@@ -6,9 +6,11 @@ the database layer is added. Run with OPENAI_API_KEY=... python3 server.py.
 """
 
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +25,9 @@ MAX_BODY = 12 * 1024 * 1024
 REPORTS = []
 REPORT_LOCK = Lock()
 REQUESTS = {}
+SESSIONS = {}
+SESSION_LOCK = Lock()
+SESSION_TTL = 8 * 60 * 60
 
 SYSTEM_PROMPT = """You are Shiftly's manager briefing assistant. Read one employee shift report and return JSON with:
 {"status":"accepted"|"rejected","reason":string,"summary":string,"wins":[string],"risks":[string],"follow_up":string}
@@ -47,6 +52,7 @@ def load_env_file():
 load_env_file()
 PORT = int(os.environ.get("PORT", "4173"))
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+MANAGER_PASSWORD = os.environ.get("MANAGER_PASSWORD", "").strip()
 
 
 def json_bytes(value):
@@ -71,6 +77,27 @@ def rate_limited(handler):
     recent.append(now)
     REQUESTS[key] = recent
     return False
+
+
+def session_token(handler):
+    cookie = handler.headers.get("Cookie", "")
+    for item in cookie.split(";"):
+        name, separator, value = item.strip().partition("=")
+        if separator and name == "shiftly_manager_session":
+            return value
+    return ""
+
+
+def is_manager(handler):
+    token = session_token(handler)
+    with SESSION_LOCK:
+        created = SESSIONS.get(token)
+        if not created:
+            return False
+        if time.time() - created > SESSION_TTL:
+            del SESSIONS[token]
+            return False
+        return True
 
 
 def parse_multipart(handler):
@@ -146,9 +173,15 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/health":
-            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY"))})
+            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")), "managerAuthConfigured": bool(MANAGER_PASSWORD)})
+            return
+        if path == "/api/auth/status":
+            self.send_json(200, {"authenticated": is_manager(self)})
             return
         if path == "/api/reports":
+            if not is_manager(self):
+                self.send_json(401, {"error": "Manager authentication required."})
+                return
             with REPORT_LOCK:
                 reports = [{key: value for key, value in report.items() if key != "hash"} for report in REPORTS]
             self.send_json(200, {"reports": reports})
@@ -166,6 +199,45 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        path = urlparse(self.path).path
+        if path == "/api/auth/login":
+            self.login()
+            return
+        if path == "/api/auth/logout":
+            token = session_token(self)
+            with SESSION_LOCK:
+                SESSIONS.pop(token, None)
+            self.send_json(200, {"authenticated": False})
+            return
+        self.submit_report()
+
+    def login(self):
+        if not MANAGER_PASSWORD:
+            self.send_json(503, {"error": "Manager authentication is not configured."})
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > 10_000:
+            self.send_json(400, {"error": "Invalid login request."})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except json.JSONDecodeError:
+            self.send_json(400, {"error": "Invalid login request."})
+            return
+        password = str(payload.get("password", ""))
+        if not hmac.compare_digest(password, MANAGER_PASSWORD):
+            self.send_json(401, {"error": "Incorrect manager password."})
+            return
+        token = secrets.token_urlsafe(32)
+        with SESSION_LOCK:
+            SESSIONS[token] = time.time()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}")
+        self.end_headers()
+        self.wfile.write(json_bytes({"authenticated": True}))
+
+    def submit_report(self):
         if urlparse(self.path).path != "/api/reports":
             self.send_json(404, {"error": "Not found."})
             return
@@ -212,6 +284,10 @@ if __name__ == "__main__":
         raise SystemExit(
             "OPENAI_API_KEY is missing. Start Shiftly with:\n"
             '  OPENAI_API_KEY="sk-..." python3 server.py'
+        )
+    if not MANAGER_PASSWORD:
+        raise SystemExit(
+            "MANAGER_PASSWORD is missing. Add it to .env before starting Shiftly."
         )
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)

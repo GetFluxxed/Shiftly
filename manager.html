@@ -21,6 +21,19 @@
         <h1>See the shape<br /><em>of the day.</em></h1>
         <p class="intro">Shiftly organizes crew reports into a concise operational briefing. This view is separate from the employee submission screen.</p>
       </section>
+      <section class="manager-auth-gate hidden" id="manager-auth-gate">
+        <div class="auth-card">
+          <p class="step">MANAGER ACCESS</p>
+          <h2>Enter the manager password</h2>
+          <p>Shift reports and AI briefings are private to managers.</p>
+          <form id="login-form">
+            <label class="field-label" for="manager-password">Password</label>
+            <input class="text-input" id="manager-password" type="password" autocomplete="current-password" required />
+            <button class="primary-button" type="submit"><span>Open manager view</span><span class="button-arrow">→</span></button>
+            <p class="auth-error hidden" id="auth-error"></p>
+          </form>
+        </div>
+      </section>
       <section class="manager-grid">
         <div>
           <div class="section-heading"><div><p class="step">01 / INBOX</p><h2>Shift reports</h2></div><span class="optional" id="manager-count"></span></div>

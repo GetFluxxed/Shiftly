@@ -5,6 +5,21 @@ $("#manager-date").textContent = now.toLocaleDateString("en-US", { month: "short
 // Fixed manager instructions keep every briefing consistent and out of the employee flow.
 const briefingInstructions = "Summarize the shift objectively for the store manager. Identify wins, operational risks, people or customer signals, and one concrete follow-up. Be concise, factual, and action-oriented.";
 let reports = [];
+const authGate = $("#manager-auth-gate");
+const managerGrid = $(".manager-grid");
+const loginForm = $("#login-form");
+const authError = $("#auth-error");
+
+function showLogin() {
+  authGate.classList.remove("hidden");
+  managerGrid.classList.add("hidden");
+}
+
+function showManager() {
+  authGate.classList.add("hidden");
+  managerGrid.classList.remove("hidden");
+  loadReports();
+}
 
 function renderInbox() {
   const inbox = $("#report-inbox");
@@ -34,15 +49,45 @@ function createManagerBriefing(report) {
   $("#manager-next-step").innerHTML = `<strong>Manager follow-up</strong>${briefing.follow_up || "Choose one action, assign an owner, and carry it into the next shift handoff."}`;
 }
 
-renderInbox();
+function loadReports() {
+  fetch("/api/reports")
+    .then(async (response) => {
+      const payload = await response.json();
+      if (response.status === 401) {
+        showLogin();
+        return;
+      }
+      if (!response.ok) throw new Error(payload.error || "Reports could not be loaded.");
+      reports = payload.reports;
+      $("#manager-count").textContent = `${reports.length} RECEIVED`;
+      renderInbox();
+    })
+    .catch(() => {
+      $("#manager-count").textContent = "UNAVAILABLE";
+    });
+}
 
-fetch("/api/reports")
-  .then((response) => response.json())
-  .then((payload) => {
-    reports = payload.reports;
-    $("#manager-count").textContent = `${reports.length} RECEIVED`;
-    renderInbox();
+loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  authError.classList.add("hidden");
+  fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: $("#manager-password").value }),
   })
-  .catch(() => {
-    $("#manager-count").textContent = "UNAVAILABLE";
-  });
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to sign in.");
+      return payload;
+    })
+    .then(showManager)
+    .catch((error) => {
+      authError.textContent = error.message;
+      authError.classList.remove("hidden");
+    });
+});
+
+fetch("/api/auth/status")
+  .then((response) => response.json())
+  .then((payload) => payload.authenticated ? showManager() : showLogin())
+  .catch(showLogin);
