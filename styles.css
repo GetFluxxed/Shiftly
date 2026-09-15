@@ -26,6 +26,9 @@ button { cursor: pointer; }
 .manager-page .brand { font-size: clamp(4rem, 10vw, 8rem); gap: 16px; line-height: .82; }
 .manager-page .brand-mark { font-size: .58em; }
 .manager-page .mode-pill { font-size: 14px; }
+.sign-in-page .brand { font-size: clamp(4rem, 10vw, 8rem); gap: 16px; line-height: .82; }
+.sign-in-page .brand-mark { font-size: .58em; }
+.sign-in-page .mode-pill { font-size: 14px; }
 .brand-mark { color: var(--coral); font-size: 22px; line-height: 1; }
 .mode-pill, .step, .optional, .ai-badge, footer, .field-footer, .privacy-note, .result-meta, .history-heading { font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
 .mode-pill { color: var(--muted); display: flex; align-items: center; gap: 8px; }
@@ -140,6 +143,8 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .manager-hero { padding-bottom: 60px; }
 .manager-page .hero { padding-top: 58px; }
 .manager-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
+.sign-in-page .hero { padding-top: 58px; }
+.sign-in-page .hero h1 { font-size: clamp(3rem, 7vw, 5.4rem); }
 .manager-card { min-height: 430px; }
 .report-inbox { border-top: 1px solid var(--line); }
 .report-row { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 16px 0; display: flex; justify-content: space-between; text-align: left; color: var(--ink); }

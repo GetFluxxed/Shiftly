@@ -9,30 +9,25 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="sign-in-page">
     <main class="shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="Shiftly home"><span class="brand-mark" aria-hidden="true">✳</span><span>Shiftly</span></a>
-        <span class="mode-pill"><span class="status-dot"></span> secure workspace</span>
+        <span class="mode-pill"><span class="status-dot"></span> Team Workspace</span>
       </header>
       <section class="hero">
         <p class="eyebrow">Shiftly / Sign in</p>
-        <h1>Keep your team<br /><em>in the loop.</em></h1>
+        <h1>Stay<br /><em>in the Loop.</em></h1>
         <p class="intro">Sign in to your store workspace to submit shift notes or review manager briefings.</p>
       </section>
       <section class="workspace-grid">
         <div class="capture-column">
-          <div class="section-heading"><div><p class="step">01 / ACCESS</p><h2>Enter your store credentials</h2></div><span class="optional">store code + password</span></div>
+          <div class="section-heading"><div><p class="step">01 / ACCESS</p><h2>Store Credentials</h2></div><span class="optional">Store Code + Password</span></div>
           <form class="auth-card" id="sign-in-form">
-            <label class="field-label" for="store-code">Store code</label>
+            <label class="field-label" for="store-code">Store Code</label>
             <input class="text-input" id="store-code" type="text" inputmode="numeric" autocomplete="organization" required />
             <label class="field-label" for="password">Password</label>
             <input class="text-input" id="password" type="password" autocomplete="current-password" required />
-            <fieldset>
-              <legend class="field-label">Sign in as</legend>
-              <label><input type="radio" name="role" value="crew" checked /> Crew member</label>
-              <label><input type="radio" name="role" value="manager" /> Manager</label>
-            </fieldset>
             <button class="primary-button" type="submit"><span>Continue to Shiftly</span><span class="button-arrow">→</span></button>
             <p class="auth-error hidden" id="auth-error"></p>
           </form>

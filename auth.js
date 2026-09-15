@@ -28,7 +28,6 @@ fetch("/api/auth/status")
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   error.classList.add("hidden");
-  const role = document.querySelector('input[name="role"]:checked').value;
   try {
     const response = await fetch("/api/auth/login", {
       method: "POST",
@@ -36,12 +35,11 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         storeCode: document.querySelector("#store-code").value.trim(),
         password: document.querySelector("#password").value,
-        role,
       }),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Unable to sign in.");
-    window.location.replace(role === "manager" ? "/manager.html" : "/crew.html");
+    window.location.replace(payload.role === "manager" ? "/manager.html" : "/crew.html");
   } catch (loginError) {
     error.textContent = loginError.message;
     error.classList.remove("hidden");

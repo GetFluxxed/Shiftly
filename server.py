@@ -641,9 +641,9 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "Invalid login request."})
             return
         store_code = clean(payload.get("storeCode"), 40)
-        role = str(payload.get("role", "crew")).strip().casefold()
+        role = str(payload.get("role", "auto")).strip().casefold()
         password = str(payload.get("password", ""))
-        if role not in {"crew", "manager"}:
+        if role not in {"auto", "crew", "manager"}:
             self.send_json(400, {"error": "Invalid sign-in role."})
             return
         if login_rate_limited(self, store_code, role):
@@ -655,6 +655,26 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(401, {"error": "Incorrect store code or password."})
             return
         store_id, store_name = store
+        if role == "auto":
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT m.password_salt, m.password_hash
+                        FROM manager_users m
+                        JOIN store_memberships sm ON sm.manager_user_id = m.id
+                        WHERE sm.store_id = %s AND m.active
+                        """,
+                        (store_id,),
+                    )
+                    manager_credentials = cursor.fetchall()
+            if any(
+                hmac.compare_digest(candidate_hash, password_hash(password, salt))
+                for salt, candidate_hash in manager_credentials
+            ):
+                role = "manager"
+            else:
+                role = "crew"
         if role == "crew":
             candidate_hash = password_hash(password, f"shiftly-crew:{hashlib.sha256(store_code.casefold().encode()).hexdigest()}")
             with db_connection() as connection:
