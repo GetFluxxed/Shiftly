@@ -30,6 +30,7 @@ function renderInbox() {
   inbox.innerHTML = reports.map((report, index) => `
     <button class="report-row" type="button" data-index="${index}">
       <span><strong>${report.employee || "Crewmember"}</strong><small>${report.shift} shift · ${report.date}</small></span>
+      <span class="report-state">${report.status}</span>
       <span class="report-arrow">→</span>
     </button>
   `).join("");
@@ -42,7 +43,13 @@ function createManagerBriefing(report) {
   $("#manager-result").classList.remove("hidden");
   $("#manager-result-date").textContent = report.date.toUpperCase();
   $("#manager-result-title").textContent = `${report.employee || "Crewmember"} · ${report.shift} shift`;
-  $("#manager-result-summary").textContent = briefing.summary || report.notes || "Photo attached for review.";
+  $("#manager-result-summary").textContent = report.notes || "Photo attached for review.";
+  $("#manager-result-status").textContent = report.status.toUpperCase();
+  $("#manager-briefing").classList.toggle("hidden", report.status !== "completed");
+  $("#manager-pending").classList.toggle("hidden", report.status !== "pending" && report.status !== "processing");
+  $("#manager-failed").classList.toggle("hidden", report.status !== "failed");
+  if (report.status === "failed") $("#manager-failed").textContent = report.error || "Briefing generation failed.";
+  if (report.status !== "completed") return;
   const insights = [...(briefing.wins || []), ...(briefing.risks || [])];
   $("#manager-insights").innerHTML = (insights.length ? insights : ["Review the submitted report and follow up with the team member if needed."])
     .map((item) => `<div class="insight"><span class="insight-mark">↳</span><span>${item}</span></div>`).join("");
@@ -61,6 +68,9 @@ function loadReports() {
       reports = payload.reports;
       $("#manager-count").textContent = `${reports.length} RECEIVED`;
       renderInbox();
+      if (reports.some((report) => report.status === "pending" || report.status === "processing")) {
+        window.setTimeout(loadReports, 2500);
+      }
     })
     .catch(() => {
       $("#manager-count").textContent = "UNAVAILABLE";

@@ -6,7 +6,9 @@ Shiftly is a small employee shift-reporting prototype with a separate manager br
 
 ```sh
 cp .env.example .env
-# Edit .env and add your OpenAI key and manager password.
+# Edit .env and add your OpenAI key, manager password, and Postgres URL.
+python3 -m pip install -r requirements.txt
+docker compose up -d postgres
 python3 server.py
 ```
 
@@ -28,8 +30,13 @@ Optional environment variables:
 
 - `OPENAI_MODEL` (defaults to `gpt-4o-mini`, configured in `.env`)
 - `PORT` (defaults to `4173`, configured in `.env`)
+- `DATABASE_URL` (required, for example `postgresql://shiftly:password@localhost:5432/shiftly`)
 
-The API key is only read by `server.py`; it is never sent to the browser. Reports are held in memory for this prototype and will be replaced with a database in the next step.
+The API key is only read by `server.py`; it is never sent to the browser. Reports and generated briefings are persisted in Postgres.
+
+Run the schema automatically on startup. The configured Postgres user needs permission to create tables in the selected database.
+
+For local development, [docker-compose.yml](./docker-compose.yml) provides the Postgres instance used by the example `.env`. Change the development password before using this outside your local machine.
 
 ## Current protections
 
@@ -40,5 +47,9 @@ The API key is only read by `server.py`; it is never sent to the browser. Report
 - Crew report submission remains public, but report retrieval requires the manager password.
 - Manager sessions use an HTTP-only, SameSite cookie and expire after 8 hours.
 - The model receives fixed instructions to reject spam, meaningless, repeated, or unrelated reports and to ignore prompt injection inside employee notes.
+- Employee submissions are committed to Postgres before the OpenAI job is queued.
+- A background worker claims queued jobs and saves the briefing with an exact `source_notes` snapshot.
+- Managers can see the original notes immediately and pending/failed/completed briefing status.
+- Saved briefings are read from Postgres and are not regenerated when the manager revisits the portal.
 
 The manager route uses a single shared password for this first version. Replace it with real identity-based authentication before exposing it publicly or connecting a production database.

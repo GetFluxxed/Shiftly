@@ -14,20 +14,21 @@ import secrets
 import time
 import urllib.error
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock, Thread
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).parent
 HOST = "127.0.0.1"
 MAX_BODY = 12 * 1024 * 1024
-REPORTS = []
-REPORT_LOCK = Lock()
 REQUESTS = {}
 SESSIONS = {}
 SESSION_LOCK = Lock()
 SESSION_TTL = 8 * 60 * 60
+DB_URL = ""
+JOB_WAKE = Event()
 
 SYSTEM_PROMPT = """You are Shiftly's manager briefing assistant. Read one employee shift report and return JSON with:
 {"status":"accepted"|"rejected","reason":string,"summary":string,"wins":[string],"risks":[string],"follow_up":string}
@@ -53,6 +54,160 @@ load_env_file()
 PORT = int(os.environ.get("PORT", "4173"))
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 MANAGER_PASSWORD = os.environ.get("MANAGER_PASSWORD", "").strip()
+DB_URL = os.environ.get("DATABASE_URL", "").strip()
+
+try:
+    import psycopg
+except ImportError:
+    psycopg = None
+
+
+def db_connection():
+    if psycopg is None:
+        raise RuntimeError("psycopg is not installed. Run: python3 -m pip install -r requirements.txt")
+    if not DB_URL:
+        raise RuntimeError("DATABASE_URL is not configured.")
+    return psycopg.connect(DB_URL)
+
+
+def initialize_database():
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute((ROOT / "schema.sql").read_text(encoding="utf-8"))
+        connection.commit()
+
+
+def database_reports():
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT r.id, r.employee, r.shift, r.notes, r.has_image, r.created_at,
+                       j.status, j.last_error, b.summary, b.wins, b.risks, b.follow_up
+                FROM reports r
+                JOIN briefing_jobs j ON j.report_id = r.id
+                LEFT JOIN briefings b ON b.report_id = r.id
+                ORDER BY r.created_at DESC
+                """
+            )
+            rows = cursor.fetchall()
+    return [
+        {
+            "id": str(row[0]),
+            "employee": row[1],
+            "shift": row[2],
+            "notes": row[3],
+            "hasImage": row[4],
+            "date": row[5].strftime("%b %d"),
+            "status": row[6],
+            "error": row[7],
+            "briefing": {
+                "summary": row[8],
+                "wins": row[9] or [],
+                "risks": row[10] or [],
+                "follow_up": row[11],
+            } if row[8] is not None else None,
+        }
+        for row in rows
+    ]
+
+
+def queue_report(employee, shift, notes, image):
+    report_hash = hashlib.sha256(f"{employee.lower()}|{shift}|{notes.lower()}".encode()).hexdigest()
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM reports WHERE report_hash = %s", (report_hash,))
+            if cursor.fetchone():
+                raise ValueError("This report matches a previous submission and was not sent again.")
+            cursor.execute(
+                """
+                INSERT INTO reports (id, employee, shift, notes, has_image, image_data, report_hash)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, created_at
+                """,
+                (str(uuid.uuid4()), employee, shift, notes, bool(image), image, report_hash),
+            )
+            report_id, created_at = cursor.fetchone()
+            cursor.execute("INSERT INTO briefing_jobs (report_id) VALUES (%s)", (report_id,))
+        connection.commit()
+    JOB_WAKE.set()
+    return report_id, created_at
+
+
+def claim_job():
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH next_job AS (
+                    SELECT id FROM briefing_jobs
+                    WHERE status = 'pending' OR (status = 'processing' AND locked_at < NOW() - INTERVAL '5 minutes')
+                    ORDER BY created_at
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+                UPDATE briefing_jobs j
+                SET status = 'processing', locked_at = NOW(), attempts = j.attempts + 1
+                FROM next_job
+                WHERE j.id = next_job.id
+                RETURNING j.id, j.report_id
+                """
+            )
+            job = cursor.fetchone()
+        connection.commit()
+    return job
+
+
+def job_report(report_id):
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id, employee, shift, notes, has_image FROM reports WHERE id = %s", (report_id,))
+            row = cursor.fetchone()
+    if not row:
+        raise RuntimeError("Queued report no longer exists.")
+    return {"id": str(row[0]), "employee": row[1], "shift": row[2], "notes": row[3], "hasImage": row[4]}
+
+
+def complete_job(job_id, report, briefing):
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            if briefing.get("status") != "accepted":
+                cursor.execute("UPDATE briefing_jobs SET status = 'failed', last_error = %s, finished_at = NOW() WHERE id = %s", (briefing.get("reason") or "Report rejected by briefing rules.", job_id))
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO briefings (report_id, source_notes, summary, wins, risks, follow_up, model)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (report_id) DO NOTHING
+                    """,
+                    (report["id"], report["notes"], briefing.get("summary", ""), briefing.get("wins", []), briefing.get("risks", []), briefing.get("follow_up", ""), MODEL),
+                )
+                cursor.execute("UPDATE briefing_jobs SET status = 'completed', finished_at = NOW(), last_error = NULL WHERE id = %s", (job_id,))
+        connection.commit()
+
+
+def fail_job(job_id, error):
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE briefing_jobs SET status = 'failed', last_error = %s, finished_at = NOW() WHERE id = %s", (str(error)[:500], job_id))
+        connection.commit()
+
+
+def worker_loop():
+    while True:
+        job_id = None
+        try:
+            job = claim_job()
+            if job:
+                job_id, report_id = job
+                report = job_report(report_id)
+                complete_job(job_id, report, call_openai(report))
+                continue
+        except Exception as error:
+            if job_id is not None:
+                fail_job(job_id, error)
+        JOB_WAKE.wait(2)
+        JOB_WAKE.clear()
 
 
 def json_bytes(value):
@@ -173,7 +328,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/health":
-            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")), "managerAuthConfigured": bool(MANAGER_PASSWORD)})
+            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")), "managerAuthConfigured": bool(MANAGER_PASSWORD), "databaseConfigured": bool(DB_URL)})
             return
         if path == "/api/auth/status":
             self.send_json(200, {"authenticated": is_manager(self)})
@@ -182,9 +337,10 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             if not is_manager(self):
                 self.send_json(401, {"error": "Manager authentication required."})
                 return
-            with REPORT_LOCK:
-                reports = [{key: value for key, value in report.items() if key != "hash"} for report in REPORTS]
-            self.send_json(200, {"reports": reports})
+            try:
+                self.send_json(200, {"reports": database_reports()})
+            except RuntimeError as error:
+                self.send_json(503, {"error": str(error)})
             return
         file_path = ROOT / ("index.html" if path == "/" else path.lstrip("/"))
         if not file_path.is_file() or ROOT not in file_path.parents:
@@ -254,20 +410,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 raise ValueError("Add your name and shift notes, or attach a shift photo.")
             if shift not in {"opening", "midday", "closing", "other"}:
                 raise ValueError("Choose a valid shift.")
-            report_hash = hashlib.sha256(f"{employee.lower()}|{shift}|{notes.lower()}".encode()).hexdigest()
-            with REPORT_LOCK:
-                if any(report["hash"] == report_hash for report in REPORTS):
-                    raise ValueError("This report matches a previous submission and was not sent again.")
-            report = {"employee": employee, "shift": shift, "notes": notes, "hasImage": bool(image), "date": time.strftime("%b %d"), "hash": report_hash}
-            moderation = call_openai(report)
-            if moderation.get("status") != "accepted":
-                self.send_json(422, {"error": moderation.get("reason") or "This report could not be accepted."})
-                return
-            report["briefing"] = moderation
-            with REPORT_LOCK:
-                REPORTS.insert(0, report)
-                del REPORTS[50:]
-            self.send_json(201, {"date": report["date"]})
+            _, created_at = queue_report(employee, shift, notes, image)
+            self.send_json(202, {"date": created_at.strftime("%b %d"), "status": "pending"})
         except ValueError as error:
             self.send_json(400, {"error": str(error)})
         except RuntimeError as error:
@@ -289,6 +433,10 @@ if __name__ == "__main__":
         raise SystemExit(
             "MANAGER_PASSWORD is missing. Add it to .env before starting Shiftly."
         )
+    if not DB_URL:
+        raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
+    initialize_database()
+    Thread(target=worker_loop, daemon=True).start()
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)
     print("Leave this terminal open while using the app. Press Ctrl+C to stop.", flush=True)

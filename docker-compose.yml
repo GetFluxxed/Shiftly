@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-shiftly}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-shiftly}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - shiftly-postgres:/var/lib/postgresql/data
+
+volumes:
+  shiftly-postgres:

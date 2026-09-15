@@ -46,9 +46,14 @@
             <div class="result-content hidden" id="manager-result">
               <div class="result-meta"><span id="manager-result-date"></span><span>MANAGER ONLY</span></div>
               <h3 id="manager-result-title"></h3>
+              <p class="report-status" id="manager-result-status"></p>
               <p class="result-summary" id="manager-result-summary"></p>
-              <div class="insight-list" id="manager-insights"></div>
-              <div class="next-step" id="manager-next-step"></div>
+              <p class="pending-message hidden" id="manager-pending">Briefing generation is in progress. This report will update automatically.</p>
+              <p class="failed-message hidden" id="manager-failed"></p>
+              <div id="manager-briefing">
+                <div class="insight-list" id="manager-insights"></div>
+                <div class="next-step" id="manager-next-step"></div>
+              </div>
             </div>
           </div>
         </div>
