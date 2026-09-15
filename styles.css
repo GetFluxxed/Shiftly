@@ -31,6 +31,7 @@ button { cursor: pointer; }
 .mode-pill { color: var(--muted); display: flex; align-items: center; gap: 8px; }
 .mode-pill a { color: var(--deep-sage); text-decoration: none; }
 .mode-pill a:hover { color: var(--coral); }
+.management-link { margin-left: 8px; }
 .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #87a46f; }
 .hero { max-width: 610px; padding: 100px 0 76px; }
 .eyebrow, .step { color: var(--deep-sage); margin: 0 0 20px; }

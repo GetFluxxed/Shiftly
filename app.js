@@ -21,6 +21,13 @@ fetch("/api/heads-up")
   })
   .catch(() => {});
 
+fetch("/api/auth/status")
+  .then((response) => response.json())
+  .then((payload) => {
+    if (payload.role === "manager") $("#management-link").classList.remove("hidden");
+  })
+  .catch(() => {});
+
 const today = new Date();
 $("#today").textContent = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }).toUpperCase();
 
