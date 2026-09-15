@@ -11,6 +11,7 @@ import json
 import os
 import re
 import secrets
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -60,6 +61,11 @@ try:
     import psycopg
 except ImportError:
     psycopg = None
+
+try:
+    import certifi
+except ImportError:
+    certifi = None
 
 
 def db_connection():
@@ -141,7 +147,9 @@ def claim_job():
                 """
                 WITH next_job AS (
                     SELECT id FROM briefing_jobs
-                    WHERE status = 'pending' OR (status = 'processing' AND locked_at < NOW() - INTERVAL '5 minutes')
+                    WHERE status = 'pending'
+                       OR (status = 'processing' AND locked_at < NOW() - INTERVAL '5 minutes')
+                       OR (status = 'failed' AND attempts < 3)
                     ORDER BY created_at
                     FOR UPDATE SKIP LOCKED
                     LIMIT 1
@@ -302,7 +310,8 @@ def call_openai(report):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(http_request, timeout=30) as response:
+        ssl_context = ssl.create_default_context(cafile=certifi.where()) if certifi else ssl.create_default_context()
+        with urllib.request.urlopen(http_request, timeout=30, context=ssl_context) as response:
             payload = json.loads(response.read())
     except urllib.error.HTTPError as error:
         raise RuntimeError(f"OpenAI request failed ({error.code}).") from error

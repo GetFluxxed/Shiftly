@@ -12,6 +12,8 @@ docker compose up -d postgres
 python3 server.py
 ```
 
+The Python client uses the `certifi` CA bundle for OpenAI HTTPS requests. This avoids certificate-chain errors on macOS Python installations whose system CA certificates are not configured.
+
 Then open `http://127.0.0.1:4173/`.
 
 The server loads `.env` automatically. Do not put the key in `app.js`, `manager.js`, HTML, `.env.example`, or any committed file. `.env` is ignored by Git.
@@ -67,5 +69,6 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - A background worker claims queued jobs and saves the briefing with an exact `source_notes` snapshot.
 - Managers can see the original notes immediately and pending/failed/completed briefing status.
 - Saved briefings are read from Postgres and are not regenerated when the manager revisits the portal.
+- Failed jobs are retried up to three times, including after a server restart, for transient provider or network errors.
 
 The manager route uses a single shared password for this first version. Replace it with real identity-based authentication before exposing it publicly or connecting a production database.
