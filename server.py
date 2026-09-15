@@ -435,7 +435,14 @@ if __name__ == "__main__":
         )
     if not DB_URL:
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
-    initialize_database()
+    try:
+        initialize_database()
+    except psycopg.OperationalError as error:
+        raise SystemExit(
+            "Could not connect to Postgres. Check DATABASE_URL, the database "
+            "password, and that the configured port matches docker-compose.yml.\n"
+            f"Connection detail: {error}"
+        ) from error
     Thread(target=worker_loop, daemon=True).start()
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)

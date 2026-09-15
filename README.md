@@ -38,6 +38,22 @@ Run the schema automatically on startup. The configured Postgres user needs perm
 
 For local development, [docker-compose.yml](./docker-compose.yml) provides the Postgres instance used by the example `.env`. Change the development password before using this outside your local machine.
 
+The included Compose setup defaults to host port `55432` so it does not collide with another Postgres service already using `5432`. If you already copied `.env.example`, recreate your local database container and make sure `.env` points to the same port:
+
+```sh
+docker compose down
+docker compose up -d postgres
+```
+
+Your local `.env` should contain:
+
+```env
+DATABASE_URL=postgresql://shiftly:change-me@localhost:55432/shiftly
+POSTGRES_PORT=55432
+```
+
+If you intentionally use an existing Postgres server on port `5432`, keep `DATABASE_URL` on `5432` but replace `shiftly`, `change-me`, and `shiftly` with that server's actual database credentials and database name.
+
 ## Current protections
 
 - Empty submissions are rejected before calling OpenAI.
