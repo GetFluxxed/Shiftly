@@ -1,0 +1,1 @@
+ALTER TABLE manager_users ALTER COLUMN email DROP NOT NULL;

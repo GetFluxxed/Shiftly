@@ -81,7 +81,7 @@ loginForm.addEventListener("submit", (event) => {
   fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: $("#manager-email").value, password: $("#manager-password").value }),
+    body: JSON.stringify({ storeCode: $("#manager-store-code").value, password: $("#manager-password").value, role: "manager" }),
   })
     .then(async (response) => {
       const payload = await response.json();

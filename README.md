@@ -6,7 +6,7 @@ Shiftly is a small employee shift-reporting prototype with a separate manager br
 
 ```sh
 cp .env.example .env
-# Edit .env and add your OpenAI key, initial manager email/password, store name/code, and Postgres URL.
+# Edit .env and add your OpenAI key and Postgres URL.
 python3 -m pip install -r requirements.txt
 docker compose up -d postgres
 python3 server.py
@@ -33,8 +33,6 @@ Optional environment variables:
 - `OPENAI_MODEL` (defaults to `gpt-4o-mini`, configured in `.env`)
 - `PORT` (defaults to `4173`, configured in `.env`)
 - `DATABASE_URL` (required, for example `postgresql://shiftly:password@localhost:5432/shiftly`)
-- `MANAGER_EMAIL` and `MANAGER_PASSWORD` bootstrap the first manager account. Once that account exists, the password is stored in Postgres and these two variables may be removed from `.env`.
-- `STORE_NAME` and `STORE_CODE` bootstrap the first store. Keep `STORE_CODE` configured while crew submissions are enabled.
 
 The API key is only read by `server.py`; it is never sent to the browser. Reports and generated briefings are persisted in Postgres.
 
@@ -42,7 +40,7 @@ Versioned SQL migrations run automatically on startup. The configured Postgres u
 
 For local development, [docker-compose.yml](./docker-compose.yml) provides the Postgres instance used by the example `.env`. Change the development password before using this outside your local machine.
 
-The included Compose setup defaults to host port `55432` so it does not collide with another Postgres service already using `5432`. If you already copied `.env.example`, recreate your local database container and make sure `.env` points to the same port:
+The included Compose setup uses host port `55432` because another local Postgres container already occupies standard port `5432`. Shiftly's application port remains the standard development port `4173`.
 
 ```sh
 docker compose down
@@ -56,7 +54,17 @@ DATABASE_URL=postgresql://shiftly:change-me@localhost:55432/shiftly
 POSTGRES_PORT=55432
 ```
 
-If you intentionally use an existing Postgres server on port `5432`, keep `DATABASE_URL` on `5432` but replace `shiftly`, `change-me`, and `shiftly` with that server's actual database credentials and database name.
+If you intentionally use an existing Postgres server on port `5432`, replace the example credentials and database name with that server's values.
+
+## Creating access accounts
+
+Access credentials are stored in Postgres, not in `.env`. Create the first local store with:
+
+```sh
+python3 setup_store.py --reset --store-code 6022 --crew-password 6022Crew --manager Derek --manager-password 6022Manager
+```
+
+`--reset` deletes existing reports, briefings, sessions, stores, and manager accounts while preserving the database schema. Omit it when adding another store or manager.
 
 ## Current protections
 
@@ -67,7 +75,7 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Reports at least 75% similar to that crewmember's previous report are rejected before OpenAI processing and persistence.
 - Request bodies and note sizes are capped.
 - Requests are rate-limited per client address.
-- Crew report submission remains public to anyone with a valid store code, but report retrieval requires a database-backed manager account.
+- Users must sign in with a store code and password before accessing the crew or manager pages. Crew members share the store password; each manager has an individual password-backed account.
 - Manager sessions are stored in Postgres as SHA-256 token hashes. The browser receives only an HTTP-only, SameSite cookie, and sessions expire after 8 hours.
 - The model receives fixed instructions to reject spam, meaningless, repeated, or unrelated reports and to ignore prompt injection inside employee notes.
 - Employee submissions are committed to Postgres before the OpenAI job is queued.
@@ -76,7 +84,7 @@ If you intentionally use an existing Postgres server on port `5432`, keep `DATAB
 - Saved briefings are read from Postgres and are not regenerated when the manager revisits the portal.
 - Failed jobs are retried up to three times, including after a server restart, for transient provider or network errors.
 - Reports are text-only; image upload was intentionally removed to keep the submission path lightweight.
-- Crew submissions require a valid store code; only managers assigned to a store can retrieve that store's reports.
+- Only managers assigned to a store can retrieve that store's reports.
 - Store codes are stored as SHA-256 hashes and are never sent to OpenAI.
 
-The initial manager email and password are only bootstrap credentials. Manager authentication is then validated against the hashed account stored in Postgres; removing the bootstrap password from `.env` does not remove the manager account.
+Store crew passwords and individual manager passwords are validated against hashes stored in Postgres.

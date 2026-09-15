@@ -53,10 +53,6 @@ def load_env_file():
 load_env_file()
 PORT = int(os.environ.get("PORT", "4173"))
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-MANAGER_PASSWORD = os.environ.get("MANAGER_PASSWORD", "").strip()
-MANAGER_EMAIL = os.environ.get("MANAGER_EMAIL", "").strip().casefold()
-STORE_NAME = os.environ.get("STORE_NAME", "Main Store").strip()
-STORE_CODE = os.environ.get("STORE_CODE", "").strip()
 DB_URL = os.environ.get("DATABASE_URL", "").strip()
 REPORT_COOLDOWN_SECONDS = int(os.environ.get("REPORT_COOLDOWN_SECONDS", "60"))
 REPORT_SIMILARITY_THRESHOLD = 0.75
@@ -93,41 +89,15 @@ def initialize_database():
         connection.commit()
 
 
-def bootstrap_access():
+def verify_access_configuration():
     with db_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT id FROM manager_users WHERE active ORDER BY id LIMIT 1")
             existing_manager = cursor.fetchone()
-    if not MANAGER_EMAIL or not MANAGER_PASSWORD:
-        if existing_manager:
-            return
-        raise RuntimeError(
-            "No manager account exists yet. Set MANAGER_EMAIL and MANAGER_PASSWORD "
-            "in .env for the initial setup."
-        )
-    if not STORE_CODE:
-        raise RuntimeError("STORE_CODE is required while bootstrapping the store.")
-
-    code_hash = hashlib.sha256(STORE_CODE.encode()).hexdigest()
-    password_hash = hashlib.pbkdf2_hmac("sha256", MANAGER_PASSWORD.encode(), MANAGER_EMAIL.encode(), 240000).hex()
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("INSERT INTO stores (name, access_code_hash) VALUES (%s, %s) ON CONFLICT (access_code_hash) DO UPDATE SET name = EXCLUDED.name RETURNING id", (STORE_NAME, code_hash))
-            store_id = cursor.fetchone()[0]
-            cursor.execute(
-                "INSERT INTO manager_users (email, password_hash) VALUES (%s, %s) "
-                "ON CONFLICT (email) DO NOTHING RETURNING id",
-                (MANAGER_EMAIL, password_hash),
-            )
-            manager = cursor.fetchone()
-            if manager:
-                manager_id = manager[0]
-            else:
-                cursor.execute("SELECT id FROM manager_users WHERE email = %s", (MANAGER_EMAIL,))
-                manager_id = cursor.fetchone()[0]
-            cursor.execute("INSERT INTO store_memberships (manager_user_id, store_id, role) VALUES (%s, %s, 'manager') ON CONFLICT DO NOTHING", (manager_id, store_id))
-            cursor.execute("UPDATE reports SET store_id = %s WHERE store_id IS NULL", (store_id,))
-        connection.commit()
+            cursor.execute("SELECT 1 FROM stores WHERE active AND crew_password_hash IS NOT NULL LIMIT 1")
+            existing_store = cursor.fetchone()
+    if not existing_manager or not existing_store:
+        raise RuntimeError("No active store and manager are configured. Run setup_store.py to create the first access accounts.")
 
 
 def database_reports(manager_id):
@@ -329,8 +299,17 @@ def session_token(handler):
     return ""
 
 
+def cookie_token(handler, cookie_name):
+    cookie = handler.headers.get("Cookie", "")
+    for item in cookie.split(";"):
+        name, separator, value = item.strip().partition("=")
+        if separator and name == cookie_name:
+            return value
+    return ""
+
+
 def is_manager(handler):
-    token = session_token(handler)
+    token = cookie_token(handler, "shiftly_manager_session")
     if not token:
         return False
     token_hash = hashlib.sha256(token.encode()).hexdigest()
@@ -347,9 +326,30 @@ def store_for_code(store_code):
     code_hash = hashlib.sha256(store_code.encode()).hexdigest()
     with db_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM stores WHERE access_code_hash = %s AND active", (code_hash,))
+            cursor.execute("SELECT id, name FROM stores WHERE access_code_hash = %s AND active", (code_hash,))
             row = cursor.fetchone()
+    return row if row else None
+
+
+def is_crew(handler):
+    token = cookie_token(handler, "shiftly_crew_session")
+    if not token:
+        return None
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM crew_sessions WHERE expires_at <= NOW()")
+            cursor.execute(
+                "SELECT store_id FROM crew_sessions WHERE token_hash = %s AND expires_at > NOW()",
+                (token_hash,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
     return row[0] if row else None
+
+
+def password_hash(password, salt):
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 240000).hex()
 
 
 def parse_json(handler):
@@ -413,10 +413,15 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/health":
-            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")), "managerAuthConfigured": bool(MANAGER_PASSWORD), "databaseConfigured": bool(DB_URL)})
+            self.send_json(200, {"status": "ok", "openaiConfigured": bool(os.environ.get("OPENAI_API_KEY")), "managerAuthConfigured": bool(DB_URL), "databaseConfigured": bool(DB_URL)})
             return
         if path == "/api/auth/status":
-            self.send_json(200, {"authenticated": bool(is_manager(self))})
+            manager_id = is_manager(self)
+            crew_store_id = is_crew(self)
+            self.send_json(200, {
+                "authenticated": bool(manager_id or crew_store_id),
+                "role": "manager" if manager_id else "crew" if crew_store_id else None,
+            })
             return
         if path == "/api/reports":
             manager_id = is_manager(self)
@@ -428,7 +433,24 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             except RuntimeError as error:
                 self.send_json(503, {"error": str(error)})
             return
-        file_path = ROOT / ("index.html" if path == "/" else path.lstrip("/"))
+        if path in {"/", "/index.html"}:
+            file_path = ROOT / "index.html"
+        elif path == "/crew.html":
+            if not is_crew(self):
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            file_path = ROOT / "crew.html"
+        elif path == "/manager.html":
+            if not is_manager(self):
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            file_path = ROOT / "manager.html"
+        else:
+            file_path = ROOT / path.lstrip("/")
         if not file_path.is_file() or ROOT not in file_path.parents:
             self.send_error(404)
             return
@@ -446,13 +468,23 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.login()
             return
         if path == "/api/auth/logout":
-            token = session_token(self)
-            token_hash = hashlib.sha256(token.encode()).hexdigest()
+            manager_token = cookie_token(self, "shiftly_manager_session")
+            crew_token = cookie_token(self, "shiftly_crew_session")
             with db_connection() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (token_hash,))
+                    if manager_token:
+                        cursor.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (hashlib.sha256(manager_token.encode()).hexdigest(),))
+                    if crew_token:
+                        cursor.execute("DELETE FROM crew_sessions WHERE token_hash = %s", (hashlib.sha256(crew_token.encode()).hexdigest(),))
                 connection.commit()
-            self.send_json(200, {"authenticated": False})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Set-Cookie", "shiftly_manager_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
+            self.send_header("Set-Cookie", "shiftly_crew_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0")
+            body = json_bytes({"authenticated": False})
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         self.submit_report()
 
@@ -466,34 +498,81 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self.send_json(400, {"error": "Invalid login request."})
             return
-        email = str(payload.get("email", "")).strip().casefold()
+        store_code = clean(payload.get("storeCode"), 40)
+        role = str(payload.get("role", "crew")).strip().casefold()
         password = str(payload.get("password", ""))
-        password_hash = hashlib.pbkdf2_hmac("sha256", password.encode(), email.encode(), 240000).hex()
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT id FROM manager_users WHERE email = %s AND password_hash = %s AND active", (email, password_hash))
-                manager = cursor.fetchone()
-        if not manager:
-            self.send_json(401, {"error": "Incorrect manager email or password."})
+        store = store_for_code(store_code)
+        if not store or not password:
+            self.send_json(401, {"error": "Incorrect store code or password."})
             return
-        token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO manager_sessions (token_hash, manager_user_id, expires_at) VALUES (%s, %s, NOW() + (%s * INTERVAL '1 second'))",
-                    (token_hash, manager[0], SESSION_TTL),
-                )
-            connection.commit()
+        store_id, store_name = store
+        if role == "crew":
+            candidate_hash = password_hash(password, f"shiftly-crew:{hashlib.sha256(store_code.encode()).hexdigest()}")
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1 FROM stores WHERE id = %s AND crew_password_hash = %s AND active", (store_id, candidate_hash))
+                    authenticated = cursor.fetchone() is not None
+            if not authenticated:
+                self.send_json(401, {"error": "Incorrect store code or password."})
+                return
+            token = secrets.token_urlsafe(32)
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO crew_sessions (token_hash, store_id, expires_at) VALUES (%s, %s, NOW() + (%s * INTERVAL '1 second'))",
+                        (hashlib.sha256(token.encode()).hexdigest(), store_id, SESSION_TTL),
+                    )
+                connection.commit()
+            cookie_name = "shiftly_crew_session"
+            response = {"authenticated": True, "role": "crew", "storeName": store_name}
+        elif role == "manager":
+            password_candidates = []
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT m.id, m.password_salt, m.password_hash
+                        FROM manager_users m
+                        JOIN store_memberships sm ON sm.manager_user_id = m.id
+                        WHERE sm.store_id = %s AND m.active
+                        """,
+                        (store_id,),
+                    )
+                    password_candidates = cursor.fetchall()
+            manager = next(
+                (candidate for candidate in password_candidates
+                 if hmac.compare_digest(candidate[2], password_hash(password, candidate[1]))),
+                None,
+            )
+            if not manager:
+                self.send_json(401, {"error": "Incorrect store code or password."})
+                return
+            token = secrets.token_urlsafe(32)
+            with db_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "INSERT INTO manager_sessions (token_hash, manager_user_id, expires_at) VALUES (%s, %s, NOW() + (%s * INTERVAL '1 second'))",
+                        (hashlib.sha256(token.encode()).hexdigest(), manager[0], SESSION_TTL),
+                    )
+                connection.commit()
+            cookie_name = "shiftly_manager_session"
+            response = {"authenticated": True, "role": "manager", "storeName": store_name}
+        else:
+            self.send_json(400, {"error": "Invalid sign-in role."})
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}")
+        self.send_header("Set-Cookie", f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={SESSION_TTL}")
         self.end_headers()
-        self.wfile.write(json_bytes({"authenticated": True}))
+        self.wfile.write(json_bytes(response))
 
     def submit_report(self):
         if urlparse(self.path).path != "/api/reports":
             self.send_json(404, {"error": "Not found."})
+            return
+        store_id = is_crew(self)
+        if not store_id:
+            self.send_json(401, {"error": "Crew sign-in required."})
             return
         if rate_limited(self):
             self.send_json(429, {"error": "Too many submissions. Try again later."})
@@ -503,14 +582,10 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             employee = clean(fields.get("employee"), 80)
             shift = clean(fields.get("shift"), 20)
             notes = clean(fields.get("notes"), 2000)
-            store_code = clean(fields.get("storeCode"), 40)
-            if not store_code or not employee or not notes:
-                raise ValueError("Enter your store code, name, and meaningful shift notes.")
+            if not employee or not notes:
+                raise ValueError("Enter your name and meaningful shift notes.")
             if shift not in {"opening", "midday", "closing", "other"}:
                 raise ValueError("Choose a valid shift.")
-            store_id = store_for_code(store_code)
-            if not store_id:
-                raise ValueError("That store code is not valid.")
             report = {"employee": employee, "shift": shift, "notes": notes}
             ensure_submission_allowed(store_id, employee, notes)
             quality = validate_report(report)
@@ -540,7 +615,7 @@ if __name__ == "__main__":
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
     try:
         initialize_database()
-        bootstrap_access()
+        verify_access_configuration()
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
     except psycopg.OperationalError as error:
