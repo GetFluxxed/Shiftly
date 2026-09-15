@@ -390,19 +390,21 @@ def heads_up(store_id):
 
 def is_crew(handler):
     token = cookie_token(handler, "shiftly_crew_session")
-    if not token:
-        return None
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM crew_sessions WHERE expires_at <= NOW()")
-            cursor.execute(
-                "SELECT store_id FROM crew_sessions WHERE token_hash = %s AND expires_at > NOW()",
-                (token_hash,),
-            )
-            row = cursor.fetchone()
-        connection.commit()
-    return row[0] if row else None
+    if token:
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM crew_sessions WHERE expires_at <= NOW()")
+                cursor.execute(
+                    "SELECT store_id FROM crew_sessions WHERE token_hash = %s AND expires_at > NOW()",
+                    (token_hash,),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+        if row:
+            return row[0]
+    manager_id = is_manager(handler)
+    return session_store_id(handler, manager_id) if manager_id else None
 
 
 def password_hash(password, salt):

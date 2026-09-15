@@ -29,6 +29,8 @@ button { cursor: pointer; }
 .brand-mark { color: var(--coral); font-size: 22px; line-height: 1; }
 .mode-pill, .step, .optional, .ai-badge, footer, .field-footer, .privacy-note, .result-meta, .history-heading { font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; }
 .mode-pill { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.mode-pill a { color: var(--deep-sage); text-decoration: none; }
+.mode-pill a:hover { color: var(--coral); }
 .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #87a46f; }
 .hero { max-width: 610px; padding: 100px 0 76px; }
 .eyebrow, .step { color: var(--deep-sage); margin: 0 0 20px; }
