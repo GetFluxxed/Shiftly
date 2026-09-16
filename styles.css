@@ -113,16 +113,7 @@ select { padding: 11px 12px; appearance: auto; font-size: 12px; }
 .crew-page .workspace-grid { display: grid; grid-template-columns: minmax(0, 760px) minmax(220px, 1fr); gap: clamp(32px, 5vw, 76px); align-items: start; }
 .crew-page .capture-column, .crew-page .briefing-column { position: relative; max-width: 760px; }
 .crew-page .briefing-column { margin-top: 48px; }
-.botanical-art { display: none; }
-.botanical-leaf { position: absolute; display: block; width: 52px; height: 21px; border-radius: 100% 0 100% 0; background: linear-gradient(135deg, #d1dbc4, #8ea38a); opacity: .7; pointer-events: none; }
 
-@media (min-width: 1100px) {
-  .crew-page .botanical-art { display: block; position: absolute; z-index: 0; top: 0; right: 0; width: 100%; height: 100%; pointer-events: none; }
-  .leaf-one { top: 275px; right: 8%; transform: rotate(-28deg); }
-  .leaf-two { top: 540px; right: 29%; transform: rotate(148deg) scale(.8); }
-  .leaf-three { top: 820px; right: 12%; transform: rotate(-42deg) scale(.9); }
-  .leaf-four { top: 1060px; right: 35%; transform: rotate(142deg) scale(.72); }
-  }
   .heads-up-card, .heads-up-editor { border: 1px solid var(--line); background: #edf1e8; border-radius: 3px; padding: 24px; }
   .heads-up-card { grid-column: 2; grid-row: 1; margin-top: 48px; position: sticky; top: 28px; }
   .heads-up-card .section-heading, .heads-up-editor .section-heading { margin-bottom: 10px; }

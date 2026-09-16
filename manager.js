@@ -200,6 +200,11 @@ $("#logout-button").addEventListener("click", () => {
       .finally(() => window.location.replace("/"));
 });
 
+$("#add-manager").addEventListener("click", () => {
+  fetch("/api/auth/logout", { method: "POST" })
+    .finally(() => window.location.replace("/?manager=1"));
+});
+
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   authError.classList.add("hidden");

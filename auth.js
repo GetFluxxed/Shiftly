@@ -5,6 +5,7 @@ const signupError = document.querySelector("#signup-error");
 const managerSignupForm = document.querySelector("#manager-sign-up-form");
 const managerSignupError = document.querySelector("#manager-signup-error");
 const signinSwitches = document.querySelectorAll(".auth-switch");
+const managerSignupRequested = new URLSearchParams(window.location.search).get("manager") === "1";
 
 function showOnly(formToShow) {
   form.classList.toggle("hidden", formToShow !== form);
@@ -12,6 +13,8 @@ function showOnly(formToShow) {
   managerSignupForm.classList.toggle("hidden", formToShow !== managerSignupForm);
   signinSwitches.forEach((switchElement) => switchElement.classList.toggle("hidden", formToShow !== form));
 }
+
+if (managerSignupRequested) showOnly(managerSignupForm);
 
 document.querySelector("#show-signup").addEventListener("click", () => {
   showOnly(signupForm);
