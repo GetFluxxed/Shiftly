@@ -58,6 +58,30 @@ docker stop shiftly-test-db
 GitHub Actions runs the suite with Python 3.12 and a disposable PostgreSQL 16
 service, supplying `TEST_DATABASE_URL` explicitly.
 
+## Planned coverage for the next modules
+
+These checks are future acceptance requirements from
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), not existing test claims.
+
+| Area | Required evidence |
+| --- | --- |
+| FastAPI migration | Old/new transport contract parity, cookies, validation errors, security headers and browser flows |
+| Worker reliability | Restart/lease recovery, nested failures, bounded retries, duplicate delivery and heartbeat alerts |
+| Authorization | Named actor permissions, revocation, selected-store scope and nested cross-store object denial |
+| Stock history | Balance rebuilds, atomic posting, transfers, reversals, idempotency and concurrent conflicts |
+| Partial inventory | Full/tare weights, decimal conversion, invalid measurements, versioned profiles and the 7,000 g worked example |
+| Camera counts | Duplicate/overlapping pictures, unknown items, hidden stock, incomplete coverage and reviewed proposals |
+| Media | Invalid/oversized images, private retrieval, metadata handling, deletion and interrupted upload |
+| Sales/forecasting | Import replay, refunds, recipe/yield mappings, stale inputs, unit consistency and no double usage deduction |
+| Stretch receiving | Barcode pack mappings, legitimate repeat scans, duplicate network events, discrepancies and partial receipts |
+| Mobile app | Real iPhone/Android capture, installation, permission denial, saved drafts, reconnect conflicts and shared-device logout |
+
+Add persistent browser tests to CI during the foundation phase. Separate
+deterministic provider mocks from controlled real-photo/forecast evaluations;
+record pilot ground truth, quality thresholds, correction effort, latency and
+cost before enabling automation broadly. Routine test runs must not incur AI
+charges or access production images.
+
 ## Safety rules
 
 - Use disposable local data only.

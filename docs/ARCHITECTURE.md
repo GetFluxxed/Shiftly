@@ -1,56 +1,140 @@
-# Architecture baseline
+# Shiftly architecture: current baseline and target
 
-## Current state
+Updated: 2026-09-20. Delivery authority: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-The repo currently implements a modularity gap rather than a modular app. The application is organized as a single Python server that handles:
+## Current runtime
 
-- HTTP routes
-- authentication and session validation
-- PostgreSQL queries
-- AI call orchestration
-- background briefing job processing
-- static file serving
+At baseline `53fdd36`, Shiftly is a Python application with extracted modules:
+`config.py`, `database.py`, `auth.py`, `security.py`, `store_service.py`,
+`reporting.py`, and `routes.py`. `server.py` still owns HTTP dispatch, static
+assets, migration startup, and an in-process worker thread. Routes still depend
+on server globals, so module boundaries are incomplete.
 
-This structure is easy to operate, but it couples transport, business logic, persistence, and worker behavior in one file.
+PostgreSQL stores accounts, sessions, memberships, reports, briefing jobs,
+briefings, Head's Up, and the weekly cache. The existing client is HTML/CSS/JS.
+Tests and CI exist; FastAPI, inventory, media storage, sales ingestion, and a
+separate worker deployment do not yet exist.
 
-## Observed boundaries
+## Target application
 
-### Persistence
-- PostgreSQL via psycopg
-- Migrations under migrations/*.sql
-- Database initialization happens at startup in initialize_database()
+One Shiftly application will expose a FastAPI backend and an installable mobile
+web client. A separately supervised worker processes durable jobs. PostgreSQL
+remains the transaction authority; private object storage holds inventory images.
 
-### HTTP layer
-- ThreadingHTTPServer + ShiftlyHandler
-- Routing is handled inside do_GET and do_POST
+The manager app has Operations and Inventory spaces. Both use the same account
+and selected-store context. A later native client uses the versioned API rather
+than reimplementing stock calculations or permissions.
 
-### AI/report processing
-- validate_report() calls OpenAI for quality gate checks.
-- call_openai() wraps the OpenAI Responses API.
-- worker_loop() polls briefing_jobs and processes queued report briefings.
+FastAPI routers will group module endpoints, with shared authorization and
+resource dependencies. This follows its supported [router/dependency structure](https://fastapi.tiangolo.com/tutorial/bigger-applications/).
 
-### Session model
-- manager_sessions and crew_sessions store expiration metadata.
-- Store membership is used to authorize manager access to store-scoped views.
+Proposed organization, to be introduced incrementally:
 
-## Target direction
+```text
+backend/shiftly/
+  app.py                  application factory and router registration
+  core/                   settings, database resources, errors, logging
+  identity/               accounts, sessions, memberships, permissions
+  stores/                 store configuration and selected-store context
+  reports/                existing report and briefing workflows
+  inventory/
+    catalog/              items, conversions, weights and pars
+    locations/            areas, shelves, bins and assignments
+    ledger/               movements, balances, transfers and reversals
+    counts/               sessions, observations, weighing and approval
+  media/                  private uploads, evidence and retention
+  vision/                 count proposals, provider adapters and evaluation
+  sales/                  ingestion, recipes and usage mappings
+  forecasting/            shortage estimates and explanations
+  receiving/              invoices, scans and receipt posting
+  jobs/                   durable queue, handlers and worker entry point
+web/
+  app-shell/              routing, navigation, installation and sync status
+  operations/             existing manager workflows
+  inventory/              tracker, shelves, count review and receiving
+  shared/                 authenticated API client and reusable controls
+```
 
-The handoff brief describes a modular monolith path, with business logic extracted gradually around:
+These directories are a target, not a claim that they are present. Choose client
+build tooling in the app-shell work package; preserve existing pages while
+introducing feature modules and a consistent API client.
 
-- configuration
-- database access
-- security/auth services
-- reports and AI services
-- worker entry point
-- future mobile/API clients
+## Boundary rules
 
-## Recommended minimal extraction sequence
+- HTTP adapters parse requests, authorize, and translate responses. Business
+  services own workflows; repositories own SQL.
+- Domain services do not import HTTP handlers or `server.py`. Inject settings,
+  the authenticated actor/store context, database resources, clock, and provider
+  interfaces where required.
+- Inventory owns stock posting. Vision, receiving, and forecasting cannot write
+  balances directly; they submit reviewed observations or approved movement
+  commands through inventory services.
+- The ledger records one atomic posting and updates its balance projection in
+  the same transaction. Jobs can run more than once; commands remain idempotent.
+- Keep existing psycopg/SQL and migrations initially. A new web framework does
+  not require a simultaneous ORM or database rewrite.
+- Do not call blocking database/AI work directly inside an async event loop.
+  Use bounded synchronous execution initially or deliberately adopt compatible
+  async clients; image processing belongs in durable workers.
+- Store-level authorization applies to nested IDs, media, jobs, count approval,
+  invoice lines, exports, and all retry/sync paths.
 
-1. Configuration loading
-2. Database access helpers
-3. Session and access checks
-4. Report validation and queue logic
-5. Briefing worker entry point
-6. Route adapters
+## FastAPI transition
 
-This sequence preserves behavior and allows testing between each boundary.
+1. Extract services and capture the current behavior in contract tests.
+2. Introduce the app factory and routers alongside the current server for
+   development/staging. The old `BaseHTTPRequestHandler` is not an ASGI app;
+   port its adapters rather than pretending it can be mounted unchanged.
+3. Keep current `/api/...` routes and static entry pages during migration.
+   Explicitly map validation/status/cookie differences. New modules use
+   `/api/v1/...`; document compatibility and deprecation separately.
+4. Use FastAPI [lifespan](https://fastapi.tiangolo.com/advanced/events/) to open
+   and close application resources. Run a coordinated migration command before
+   web and worker startup, with compatible additive migrations.
+5. Move durable work into an independently started, supervised process using
+   the existing PostgreSQL queue as the initial foundation. Image analysis,
+   imports, and stock-affecting work are not request-lifetime background tasks.
+   FastAPI's [background-task guidance](https://fastapi.tiangolo.com/tutorial/background-tasks/)
+   distinguishes lightweight in-process tasks from heavier work.
+6. Preserve data, sessions, and route contracts through staging verification,
+   cutover, and a rehearsed rollback. Retire the old transport only after parity.
+
+## Runtime and failure behavior
+
+Use liveness for process availability, readiness for required dependencies and
+schema compatibility, and separate worker heartbeat/queue-age indicators. A
+healthy database alone does not prove jobs are being processed.
+
+Workers need bounded attempts, delayed retry, lease recovery, dead-letter/manual
+retry controls, and exception handling that survives failure to record another
+failure. Save sanitized diagnostics and correlation IDs without credentials or
+unnecessary report/photo content. Preserve original notes during AI outages.
+
+The current login budget and weekly concurrency cap are process-local. Before
+adding web replicas, introduce coordinated admission and shared limits. Keep
+database pool sizes and worker concurrency within a documented deployment budget.
+Migration locking and queue ownership must work across processes.
+
+## Client and media behavior
+
+The confirmed first app is an installable mobile web app. Add an app manifest,
+same-origin HTTPS delivery, an asset-only service-worker cache policy, explicit
+draft/sync states, and refresh/version handling. Keep final inventory posting
+online; saved drafts recheck authorization and versions on reconnect.
+
+Use phone capture with an upload fallback. Private image storage, validation,
+limited retention, evidence links, and provider isolation belong to the media
+and vision modules. Camera permission policy changes are scoped to capture
+surfaces. Native app packaging, device credentials, and push integrations are
+later work using the same backend.
+
+## Data ownership
+
+Current store IDs remain the authorization boundary. Decide whether a future
+organization groups multiple stores before introducing shared catalogs; do not
+invent an organization migration as a prerequisite for a single-store pilot.
+Inventory IDs and relationships remain store-scoped either way.
+
+See [INVENTORY.md](INVENTORY.md) for measurement rules, count reconciliation,
+movement history, forecasts, and receiving. See [DATABASE.md](DATABASE.md) for
+implemented schema versus proposed additions.

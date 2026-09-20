@@ -65,3 +65,26 @@ and a deployment-wide generation cap.
 - verify AI key configuration and startup behavior in staging
 - test the health endpoint and key user flows before production promotion
 - keep the existing browser app working while introducing modular changes
+
+## Planned FastAPI and inventory deployment
+
+This section describes future work. The current startup and `render.yaml` are
+unchanged by the plan revision.
+
+- Run FastAPI behind an ASGI server with bounded database resources, and start
+  durable workers separately. Coordinate migrations once before either begins
+  processing traffic; do not launch a job worker in every API lifespan.
+- Introduce separate staging resources, a tested restore procedure, contract
+  and browser smoke tests, and a documented transport cutover/rollback.
+- Provide private object storage and lifecycle rules for inventory evidence;
+  define upload/processing limits and per-store AI budgets.
+- Serve the installable mobile web app over HTTPS. Apply camera permissions to
+  capture pages and test the asset-only service-worker cache/update policy.
+- Use store feature flags for catalog, manual inventory, camera proposals,
+  sales insights and stretch receiving. Enable each after its acceptance gate.
+- Monitor error rates, pool usage, worker heartbeat, oldest queued job, media
+  failures, provider usage, count conflicts and forecast input freshness.
+- Log IDs and operational outcomes without secrets or unnecessary raw employee
+  notes/images. Rehearse provider outage, worker restart and failed import paths.
+- Keep current reports available during inventory rollout and use compatible
+  migrations so a UI/API rollback preserves posted stock history and evidence.

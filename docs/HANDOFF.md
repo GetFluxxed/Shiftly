@@ -1,32 +1,54 @@
-# Handoff record
+# Shiftly handoff
 
-## Current transfer state
+Updated: 2026-09-20.
 
-- Branch: main
-- Commit: b289865
-- Baseline status: verified and tested
-- Test status: pytest passes for the baseline flows
-- Remaining risks: no production staging config, no independent worker separation, no inventory or mobile architecture yet
+## Baseline
 
-## Verified artifacts
+- Application: Shiftly; repository folder: Shift-Observer.
+- Assessed implementation: `main` at `53fdd36`.
+- Recent security/cache fixes are committed. Last verified suite: 78 passing
+  tests; CI succeeded for that commit.
+- Current runtime: modular Python files, the existing HTTP server, PostgreSQL,
+  HTML/CSS/JS client, and an in-process briefing worker.
+- FastAPI, inventory, camera analysis, partial-weight tracking, sales forecasting,
+  receiving, and an installable app shell are planned, not implemented.
 
-- [docs/IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md)
-- [docs/PRODUCT.md](PRODUCT.md)
-- [docs/ARCHITECTURE.md](ARCHITECTURE.md)
-- [docs/API.md](API.md)
-- [docs/DATABASE.md](DATABASE.md)
-- [docs/SECURITY.md](SECURITY.md)
-- [docs/TESTING.md](TESTING.md)
-- [docs/DEPLOYMENT.md](DEPLOYMENT.md)
-- [docs/TASKS.md](TASKS.md)
+## Current direction
 
-## Next bounded task
+The user confirmed **installable mobile web first, native later**. Add a
+separate Inventory workspace reachable from the manager window. Its core scope
+includes shelves, pars, running stock, camera-assisted counts, explicitly
+calibrated partial weights, and shortage insights. Barcode/SKU invoice receiving
+is the stretch goal.
 
-The next task is to keep the current app stable while extracting configuration and reworking the app boundaries in small, reviewable steps without changing the browser contracts.
+Read in this order:
 
-## Exit condition for this phase
+1. [Implementation plan](IMPLEMENTATION_PLAN.md)
+2. [Inventory specification](INVENTORY.md)
+3. [Architecture](ARCHITECTURE.md)
+4. [Work packages](TASKS.md)
+5. [API contracts](API.md), [database](DATABASE.md), [security](SECURITY.md),
+   [testing](TESTING.md), and [deployment](DEPLOYMENT.md)
 
-- documentation is usable
-- critical tests pass
-- current user flows are smoke-tested
-- remaining risks are explicit
+## Preserved parallel work
+
+The `codex/reports-module` worktree is based on `b289865` and has uncommitted
+changes. Preserve it. Compare and selectively port useful work onto current
+main through the F0 package; its structure is not automatically the target.
+
+## Immediate task and known gaps
+
+Begin F0: current-contract capture and worker recovery. A reviewed failure path
+allows the worker to exit if recording a job failure also fails. Current health
+checks do not establish worker progress. Then introduce FastAPI through F1.
+
+The first paired assignments and integration protocol are in
+[Round 1](parallel/ROUND_01.md), with reusable prompts for
+[Codex](prompts/CODEX_FOUNDATION.md) and
+[GitHub Copilot](prompts/COPILOT_FOUNDATION.md). They are prepared instructions;
+neither implementation has been launched by this planning update.
+
+Staging/restore evidence, durable independent workers, browser CI, shared limits
+for multiple API processes, and inventory-specific authorization remain work
+items. The plan revision changed documentation only; it did not implement these
+features or alter production configuration.

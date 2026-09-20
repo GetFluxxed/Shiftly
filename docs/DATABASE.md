@@ -1,5 +1,8 @@
 # Database baseline
 
+Baseline: `53fdd36`. The inventory additions at the end are planned; only the
+existing schema and migrations listed below are currently implemented.
+
 ## Current schema overview
 
 The app uses PostgreSQL and runs SQL migrations in order. Startup ensures all migration files are applied before the server begins handling routes.
@@ -72,3 +75,35 @@ The current design stores the original employee notes and saves the AI-generated
 ## Future migration guidance
 
 Additive schema changes only. Preserve historical records, avoid rewriting applied migrations, and validate backfills before cutover.
+
+## Planned inventory schema boundaries
+
+The detailed model and invariants are in [INVENTORY.md](INVENTORY.md). Add these
+groups incrementally in their implementation phases, not as one speculative
+migration:
+
+- Store items, decimal base units, versioned pack/weight/tare conversions, and
+  internal SKU versus supplier/barcode mappings.
+- Store-owned shelf/location hierarchy, assignments, par history and optional
+  shelf targets.
+- Append-only stock movement events and transactionally maintained balance
+  projections, with linked reversals and paired transfers.
+- Count sessions, coverage, baseline versions, camera/manual observations,
+  open-container measurements and approval records.
+- Private media metadata, durable analysis jobs and versioned provider results.
+- Deduplicated sales batches, line-item/recipe mappings and forecast snapshots.
+- Invoice/receipt lines, scan events, discrepancies and unique posting references.
+
+Enforce store ownership across relationships, unit compatibility and replay
+uniqueness. Posting a count or receipt must not partially update its movement
+history and current balance. Historical records preserve the conversion and
+configuration versions that produced them; archive referenced catalog entries.
+
+Separate observed physical stock, book balances and sales projections. A photo
+is not a receipt, and a forecast is not a confirmed stock movement. Repeated
+uploads, approval retries and invoice imports must not duplicate quantities.
+
+Retain migrations 001–011 unchanged. Coordinate new migration numbers across
+worktrees. During FastAPI deployment work, introduce a serialized migration
+entry point and test upgrade, repeat startup, compatible rollback and forward
+recovery against disposable PostgreSQL and staging copies.

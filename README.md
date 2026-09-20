@@ -1,5 +1,13 @@
 # Shiftly
 
+The next release plan covers FastAPI, an installable mobile web app, and a
+dedicated manager Inventory workspace with shelf information, camera counts,
+partial weights, pars, shortage insights, and stretch barcode receiving. These
+features are planned; the current capabilities are described below.
+
+See the [implementation plan](docs/IMPLEMENTATION_PLAN.md),
+[inventory specification](docs/INVENTORY.md), and [work packages](docs/TASKS.md).
+
 Shiftly gives our team a simple, consistent way to communicate what happened
 during each shift. Crewmembers can send notes from a phone or browser, and
 managers can review those notes, understand the shape of the day, and keep the

@@ -1,5 +1,9 @@
 # API baseline
 
+Updated: 2026-09-20. The first sections describe implemented behavior. The
+versioned inventory routes below are proposed contracts for the
+[implementation plan](IMPLEMENTATION_PLAN.md), not available endpoints.
+
 ## Authentication endpoints
 
 ### POST /api/auth/login
@@ -29,7 +33,7 @@
 - Returns reports for the authenticated manager’s stores
 
 ### POST /api/reports
-- Requires crew authentication
+- Requires crew access, including an authorized manager's selected-store session
 - Validates payload, checks duplicate/cooldown protections, runs quality gate, and queues report
 - Returns 202 while job is pending
 
@@ -49,7 +53,10 @@
 
 ### GET /api/weekly-overview
 - Requires manager authentication
-- Returns AI-generated summary of the last seven days of reports for the session store
+- Returns a validated, cached summary for the session store
+- Includes `reportCount`, `includedReportCount`, and `truncated` to disclose coverage
+- Returns 202 with `status: pending` and `retryAfter` when generation is busy
+- Returns 503 for a handled generation failure
 
 ## Health endpoint
 
@@ -60,3 +67,61 @@
 ## Compatibility note
 
 These routes are treated as the compatibility contract for the current browser app. Any future changes should preserve the path, payload structure, cookies, and response codes unless an explicit contract update is planned.
+
+The FastAPI transition must deliberately preserve existing validation errors and
+cookie behavior. Add contract tests before replacing adapters; a framework's
+default response format is not an approved breaking change.
+
+## Proposed inventory API
+
+New module base: `/api/v1/stores/{store_id}`. Resolve the authenticated actor's
+membership and action permission for this store, then verify that every nested
+item/location/photo/job/invoice ID belongs to it. A client-supplied store ID is
+never sufficient authorization.
+
+| Method and relative path | Planned purpose |
+| --- | --- |
+| GET/POST `/inventory/items` | Paginated catalog and item creation |
+| GET/PATCH `/inventory/items/{item_id}` | Item, pack and weight-profile configuration with version checks |
+| GET/POST `/inventory/locations` | Shelf/location hierarchy and assignments |
+| GET/PUT `/inventory/items/{item_id}/par` | Store-item par and change history |
+| GET `/inventory/balances` | Book quantities, sealed/open breakdown, locations and verification timestamps |
+| GET `/inventory/movements` | Paginated movement history and evidence references |
+| POST `/inventory/adjustments` | Authorized manual adjustment, waste or usage with reason |
+| POST `/inventory/transfers` | Atomic paired movement between authorized locations |
+| POST `/inventory/counts` | Start a scoped draft with server-recorded baseline versions |
+| POST `/inventory/counts/{count_id}/observations` | Manual counts and weighed container readings |
+| POST `/media/uploads` | Create an authorized inventory-image upload |
+| POST `/media/uploads/{upload_id}/complete` | Validate the uploaded object and enqueue processing |
+| GET `/jobs/{job_id}` | Authorized durable job status and reviewable result references |
+| GET `/inventory/counts/{count_id}` | Coverage, proposals, partial measurements and proposed stock differences |
+| POST `/inventory/counts/{count_id}/commit` | Approve and atomically reconcile a reviewed count |
+| POST `/inventory/counts/{count_id}/corrections` | Begin an auditable correction of a posted count |
+| POST `/inventory/sales/imports` | Import and deduplicate sales input for usage estimation |
+| GET `/inventory/insights` | Par gaps, shortage estimates, inputs, freshness and confidence |
+| POST `/inventory/receiving/invoices` | Expected invoice lines; structured/manual input first |
+| POST `/inventory/receiving/scans` | Stretch: map a scan event to a draft receipt line and pack size |
+| POST `/inventory/receiving/receipts` | Manual or scan-assisted draft accepted delivery quantities |
+| POST `/inventory/receiving/receipts/{receipt_id}/commit` | Post the accepted delivery exactly once |
+
+Finalize request/response schemas with each work package and publish OpenAPI
+contracts. Suggested common fields are stable IDs, explicit units, decimal
+quantities serialized as strings, actor/source references, UTC timestamps,
+store timezone where relevant, and record versions.
+
+Require `Idempotency-Key` for stock-posting and replayable upload/import/scan
+commands. The same key and body return the original result; reuse with a
+different body returns a conflict. Recheck authorization even on replay.
+Validate draft `expectedVersion` and stored scope baselines at approval; stale
+counts return 409 with a review path and no partial posting.
+
+For the new API, document 401 for missing authentication, 403 for missing action
+permission, scoped not-found responses that do not expose other stores, 409 for
+conflicts, 422 for validated input errors, 429 for admission limits, and 503 for
+unavailable dependencies. Use a consistent error code/message/request ID shape.
+Do not apply that new shape retroactively to legacy clients without adapters.
+
+Return 202 plus an authorized job reference for analysis/import work. A camera
+result is a proposal; completion of analysis does not mean stock was posted.
+Separate book quantity, observed quantity, and estimated quantity in responses,
+including freshness, coverage and conversion versions.

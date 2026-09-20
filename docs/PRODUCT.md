@@ -1,48 +1,65 @@
-# Product baseline
+# Shiftly product direction
 
-## Product summary
+Updated: 2026-09-20. Full delivery plan:
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-Shiftly is a store-facing shift communication app for crew reports and manager review. Crew members submit shift updates; managers review report summaries, weekly overviews, and a current Head’s Up message.
+## Existing product
 
-## User flows
+Shiftly supports shared crew sign-in, shift reports, manager review, AI
+briefings, weekly overviews, and a store Head's Up message. Original notes stay
+available alongside generated summaries. Current inventory functionality is
+not implemented.
 
-### Crew flow
-- Sign in to a store using a shared crew code and password.
-- Submit shift report with employee name, shift type, and notes.
-- Report must pass a quality gate before it is accepted.
-- Accepted reports are queued for AI briefing.
-- Crew sees current store Head’s Up information.
+## Expanded product
 
-### Manager flow
-- Sign in to a manager account associated with a store membership.
-- See reports from assigned stores.
-- See briefing status and the corresponding saved summary.
-- Trigger or review a weekly overview for the store.
-- Publish and replace a store-level Head’s Up message.
+Shiftly will become an installable mobile web application backed by FastAPI.
+Native iPhone/Android clients are a later phase.
 
-## Current product scope
+The manager window will offer two distinct spaces:
 
-This checkout is intentionally limited to:
-- crew reporting
-- manager review
-- AI-assisted briefing
-- weekly overview
-- store-level messaging
+- **Operations:** existing reports, briefings, weekly overview, and Head's Up.
+- **Inventory:** a running digital tracker, shelf/location setup, pars, camera
+  counts, partial weights, shortage insights, and eventually invoice receiving.
 
-No inventory, mobile client, or camera counting module exists yet.
+Both spaces retain the same authenticated account and visible selected store.
+Existing crew reporting remains available while the manager app evolves.
 
-## Non-goals for the current phase
+## Inventory capabilities in scope
 
-- No FastAPI cutover
-- No full identity redesign
-- No frontend replacement
-- No inventory implementation
-- No camera AI feature
-- No production deployment migration in the same change set
+| Capability | Intended user outcome |
+| --- | --- |
+| Catalog and units | Identify every item and its pack sizes and measurement units |
+| Shelves | Store explicit area/rack/shelf/bin information, assignments and capacity |
+| Par management | Update store-item targets with history; see items below target |
+| Running tracker | See stock, source, freshness, location, and posted changes |
+| Partial stock | Weigh opened inventory using explicit full weights and tare profiles |
+| Phone photos | Review camera-proposed counts of visible stock and reconcile them |
+| Shortage insight | Compare inventory with par and mapped sales demand, with explanations |
+| App experience | Install on a phone, capture conveniently, and recover interrupted drafts |
+| Stretch receiving | Scan codes against invoice lines and post accepted deliveries once |
 
-## Phase 1 working constraints
+Partial weights are part of the core inventory scope, not an optional stretch.
+SKU/barcode invoice receiving is the stretch goal. The detailed workflows and
+acceptance examples are in [INVENTORY.md](INVENTORY.md).
 
-- Preserve existing endpoint paths and response contracts.
-- Keep the current browser flow working.
-- Add tests before refactoring logic.
-- Add documentation before architecture churn.
+## Trust and usability rules
+
+- Clearly distinguish physical observations, book inventory, and estimates.
+- Human review precedes camera-generated stock changes.
+- Open containers and sealed packages must never be counted twice.
+- A repeat count reconciles stock rather than adding the entire count again.
+- Typed employee names do not authorize inventory actions.
+- Missing images or unavailable sales data are visible gaps, not invented values.
+- A manager can inspect and correct history without silently deleting it.
+- Manual counting, weighing, and receiving remain usable if AI is unavailable.
+
+## Delivery boundaries
+
+The next phases explicitly include FastAPI and inventory; the former
+baseline-only exclusions no longer apply. Preserve current data and browser
+contracts throughout the transport migration.
+
+Native distribution, unattended camera stock posting, automatic purchasing,
+connected-scale hardware, and automatic invoice OCR are outside the initial
+release. Each can be considered after the underlying approved workflows work
+reliably. Camera quality and forecast claims require real-store pilot evidence.
