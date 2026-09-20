@@ -56,28 +56,7 @@ class DummyHandler:
 
 
 @pytest.fixture(scope="function")
-def reset_db():
-    security.REQUESTS.clear()
-    security.LOGIN_FAILURES.clear()
-    security.SIGNUP_ATTEMPTS.clear()
-    server.initialize_database()
-    with psycopg.connect(server.DB_URL) as connection:
-        with connection.cursor() as cursor:
-            for table in [
-                "store_heads_up",
-                "crew_sessions",
-                "manager_sessions",
-                "briefings",
-                "briefing_jobs",
-                "reports",
-                "store_memberships",
-                "manager_users",
-                "stores",
-            ]:
-                cursor.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE")
-            cursor.execute("DELETE FROM schema_migrations")
-        connection.commit()
-    server.initialize_database()
+def reset_db(isolated_database):
     yield
 
 
@@ -131,14 +110,14 @@ def test_load_settings_reads_env_and_defaults(monkeypatch):
     monkeypatch.delenv("PORT", raising=False)
     monkeypatch.setenv("HOST", "0.0.0.0")
     monkeypatch.setenv("PORT", "4242")
+    monkeypatch.setenv("SECURE_COOKIES", "false")
     settings = load_settings()
     assert settings.host == "0.0.0.0"
     assert settings.port == 4242
     assert settings.secure_cookies is False
 
 
-def test_db_connection_uses_database_url(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql://shiftly:change-me@localhost:55432/shiftly")
+def test_db_connection_uses_database_url(isolated_database):
     connection = db_connection()
     assert connection is not None
     connection.close()

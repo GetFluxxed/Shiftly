@@ -1,5 +1,6 @@
 import hashlib
 
+from auth import is_manager, session_store_id
 from database import db_connection
 from security import cookie_token, hash_store_code
 
@@ -53,21 +54,23 @@ def manager_accounts(store_id):
 
 def is_crew(handler):
     cookie = cookie_token(handler, "shiftly_crew_session")
-    if not cookie:
-        return None
-    token_hash = hashlib.sha256(cookie.encode()).hexdigest()
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM crew_sessions WHERE expires_at <= NOW()")
-            cursor.execute(
-                """
-                SELECT cs.store_id
-                FROM crew_sessions cs
-                JOIN stores s ON s.id = cs.store_id AND s.active
-                WHERE cs.token_hash = %s AND cs.expires_at > NOW()
-                """,
-                (token_hash,),
-            )
-            row = cursor.fetchone()
-        connection.commit()
-    return row[0] if row else None
+    if cookie:
+        token_hash = hashlib.sha256(cookie.encode()).hexdigest()
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM crew_sessions WHERE expires_at <= NOW()")
+                cursor.execute(
+                    """
+                    SELECT cs.store_id
+                    FROM crew_sessions cs
+                    JOIN stores s ON s.id = cs.store_id AND s.active
+                    WHERE cs.token_hash = %s AND cs.expires_at > NOW()
+                    """,
+                    (token_hash,),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+        if row:
+            return row[0]
+    manager_id = is_manager(handler)
+    return session_store_id(handler, manager_id) if manager_id else None

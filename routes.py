@@ -20,10 +20,20 @@ def _server_module():
 def login(handler, store_code=None, role=None, password=None):
     server = _server_module()
     if store_code is None or role is None or password is None:
-        payload = parse_json(handler)
-        store_code = clean(payload.get("storeCode"), 40)
-        role = str(payload.get("role", "auto")).strip().casefold()
-        password = str(payload.get("password", ""))
+        try:
+            payload = parse_json(handler, max_body=10_000)
+            raw_store_code = payload.get("storeCode")
+            if raw_store_code is not None and not isinstance(raw_store_code, str):
+                raise ValueError("Store code must be text.")
+            store_code = clean(raw_store_code, 40)
+            role = str(payload.get("role", "auto")).strip().casefold()
+            password = str(payload.get("password", ""))
+        except (ValueError, TypeError, UnicodeError):
+            handler.send_json(400, {"error": "Invalid login request."})
+            return
+    if role not in {"auto", "crew", "manager"}:
+        handler.send_json(400, {"error": "Invalid sign-in role."})
+        return
     if login_rate_limited(handler, store_code, role):
         handler.send_json(429, {"error": "Too many failed sign-in attempts. Try again later."})
         return

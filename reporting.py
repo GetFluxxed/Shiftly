@@ -42,18 +42,19 @@ def queue_report(employee, shift, notes, store_id):
     report_hash = hashlib.sha256(f"{employee.lower()}|{shift}|{notes.lower()}".encode()).hexdigest()
     with db_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM reports WHERE store_id = %s AND report_hash = %s", (store_id, report_hash))
-            if cursor.fetchone():
-                raise ValueError("This report matches a previous submission and was not sent again.")
             cursor.execute(
                 """
                 INSERT INTO reports (id, store_id, employee, shift, notes, report_hash)
                 VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (store_id, report_hash) DO NOTHING
                 RETURNING id, created_at
                 """,
                 (str(uuid.uuid4()), store_id, employee, shift, notes, report_hash),
             )
-            report_id, created_at = cursor.fetchone()
+            saved = cursor.fetchone()
+            if saved is None:
+                raise ValueError("This report matches a previous submission and was not sent again.")
+            report_id, created_at = saved
             cursor.execute("INSERT INTO briefing_jobs (report_id) VALUES (%s)", (report_id,))
         connection.commit()
     JOB_WAKE.set()

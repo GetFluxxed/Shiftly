@@ -20,12 +20,13 @@ jobs:
         options: >-
           --health-cmd="pg_isready -U shiftly -d shiftly"
           --health-interval=10s
-          --timeout=5s
-          --retries=5
+          --health-timeout=5s
+          --health-retries=5
     env:
       OPENAI_API_KEY: test-key
       OPENAI_MODEL: gpt-4o-mini
       DATABASE_URL: postgresql://shiftly:change-me@localhost:55432/shiftly
+      TEST_DATABASE_URL: postgresql://shiftly:change-me@localhost:55432/shiftly
       REPORT_COOLDOWN_SECONDS: "60"
       ADMIN_SIGNUP_KEY: test-admin-key
       HOST: 0.0.0.0

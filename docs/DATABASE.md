@@ -42,6 +42,14 @@ The migration sequence currently includes:
 - 007_allow_username_managers.sql
 - 008_store_heads_up.sql
 - 009_manager_last_sign_in.sql
+- 010_store_scoped_report_hash.sql
+
+Migration 010 replaces the original global report-hash uniqueness constraint
+with uniqueness on `(store_id, report_hash)`. Identical reports at different
+stores are allowed; duplicates within the same store are rejected atomically,
+including simultaneous submissions. Legacy reports with no store retain their
+own unique-hash index. Existing report hashes, IDs, jobs and briefings are
+preserved.
 
 ## Data governance note
 

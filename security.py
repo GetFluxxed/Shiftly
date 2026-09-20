@@ -29,9 +29,9 @@ def cookie_token(handler, cookie_name):
     return ""
 
 
-def parse_json(handler):
+def parse_json(handler, *, max_body=100_000):
     length = int(handler.headers.get("Content-Length", "0"))
-    if length <= 0 or length > 100_000:
+    if length <= 0 or length > max_body:
         raise ValueError("Request is empty or too large.")
     try:
         payload = json.loads(handler.rfile.read(length))

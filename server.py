@@ -9,6 +9,8 @@ from pathlib import Path
 from threading import Thread
 from urllib.parse import urlparse
 
+import psycopg
+
 from auth import is_manager, session_store_id
 from config import load_settings
 from database import db_connection

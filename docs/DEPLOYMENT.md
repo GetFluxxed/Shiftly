@@ -30,6 +30,19 @@ The wider roadmap expects a separate staging configuration before any deployment
 - Validate application startup after restoring a database snapshot
 - Capture last-known-good migration version and deployment commit
 
+## Migration 010 rollout
+
+Startup applies migration 010 in a transaction before accepting requests. It
+builds the store-scoped report-hash constraint and a legacy-report index, then
+drops the old global constraint. Existing data is preserved. Adding these
+constraints can lock the reports table while the indexes are built; allow for
+this during rollout on a large database.
+
+An application rollback can retain migration 010. Do not restore the old global
+unique constraint after different stores have submitted identical reports:
+those are valid records under the new schema. Recover through a tested backup
+or a forward migration if a schema change is needed.
+
 ## Required deployment decisions before rollout
 
 - confirm environment variables are supplied securely by the hosting platform
