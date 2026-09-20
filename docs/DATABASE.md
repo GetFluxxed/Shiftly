@@ -1,0 +1,52 @@
+# Database baseline
+
+## Current schema overview
+
+The app uses PostgreSQL and runs SQL migrations in order. Startup ensures all migration files are applied before the server begins handling routes.
+
+### Core tables
+- reports
+- briefing_jobs
+- briefings
+- stores
+- manager_users
+- store_memberships
+- manager_sessions
+- crew_sessions
+- store_heads_up
+- schema_migrations
+
+### Key relationships
+- reports belong to a store
+- briefing_jobs reference a report
+- briefings reference a report
+- manager_users are linked to stores through store_memberships
+- sessions are associated with a store or manager user depending on role
+
+### Notable constraints
+- reports are keyed by UUID
+- report_hash is unique per store and employee+shift+notes combination
+- briefing_jobs are unique per report
+- store access codes are hashed and unique
+- session expiry is enforced with NOW() checks
+
+## Existing migrations
+
+The migration sequence currently includes:
+- 001_initial_schema.sql
+- 002_manager_sessions.sql
+- 003_remove_image_submission.sql
+- 004_multi_tenant_access.sql
+- 005_crew_sessions.sql
+- 006_manager_credentials.sql
+- 007_allow_username_managers.sql
+- 008_store_heads_up.sql
+- 009_manager_last_sign_in.sql
+
+## Data governance note
+
+The current design stores the original employee notes and saves the AI-generated briefing separately. This helps preserve the source report while allowing the generated summary to evolve separately.
+
+## Future migration guidance
+
+Additive schema changes only. Preserve historical records, avoid rewriting applied migrations, and validate backfills before cutover.

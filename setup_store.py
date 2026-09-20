@@ -2,13 +2,9 @@
 """Create or reset a local Shiftly store and its first manager account."""
 
 import argparse
-import hashlib
 
 import server
-
-
-def password_hash(password, salt):
-    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 240000).hex()
+from security import hash_store_code, password_hash
 
 
 def main():
@@ -22,7 +18,7 @@ def main():
     args = parser.parse_args()
 
     server.initialize_database()
-    code_hash = hashlib.sha256(args.store_code.encode()).hexdigest()
+    code_hash = hash_store_code(args.store_code)
     crew_hash = password_hash(args.crew_password, f"shiftly-crew:{code_hash}")
     manager_salt = args.manager.casefold()
     manager_hash = password_hash(args.manager_password, manager_salt)

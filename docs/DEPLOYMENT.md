@@ -1,0 +1,38 @@
+# Deployment baseline
+
+## Current deployment configuration
+
+The project ships with a Render config in [render.yaml](../render.yaml). It currently defines:
+- one web service
+- a managed Postgres database
+- a Python runtime
+- a DATABASE_URL environment binding
+- startup command: python server.py
+- health check path: /api/health
+
+## Local startup checklist
+
+1. Copy .env.example to .env and set actual secrets
+2. Start Postgres locally via docker compose up -d postgres
+3. Ensure DATABASE_URL matches the local database port (55432)
+4. Install dependencies with python3 -m pip install -r requirements.txt
+5. Start the app with python3 server.py
+6. Verify /api/health responds successfully
+
+## Staging and production guidance
+
+The wider roadmap expects a separate staging configuration before any deployment-affecting production change. The current repo is not yet split into separate staging and production deployment manifests.
+
+## Recovery and backup expectations
+
+- Keep Postgres backups outside of source control
+- Rehearse restore flow before production deployment
+- Validate application startup after restoring a database snapshot
+- Capture last-known-good migration version and deployment commit
+
+## Required deployment decisions before rollout
+
+- confirm environment variables are supplied securely by the hosting platform
+- verify AI key configuration and startup behavior in staging
+- test the health endpoint and key user flows before production promotion
+- keep the existing browser app working while introducing modular changes
