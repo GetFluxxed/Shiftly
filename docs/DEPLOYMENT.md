@@ -43,6 +43,22 @@ unique constraint after different stores have submitted identical reports:
 those are valid records under the new schema. Recover through a tested backup
 or a forward migration if a schema change is needed.
 
+## Request limits and weekly cache
+
+Migration 011 adds the weekly overview cache during normal startup. Generation
+uses a nonblocking PostgreSQL session lock per store and at most two dedicated
+connections per Python process. Connections use autocommit so no transaction
+stays open during an AI request; closing the connection releases its lock.
+Busy requests return HTTP 202, and the manager page retries up to ten times at
+three-second intervals before asking the user to refresh.
+
+Login reservations count in-flight checks together with recent failures, up to
+ten per client address and normalized store code in fifteen minutes. Successful
+logins release their reservation without adding a failure. This counter and the
+weekly concurrency cap are process-local, matching the current single-process
+startup. Multiple server processes or replicas would need a shared login budget
+and a deployment-wide generation cap.
+
 ## Required deployment decisions before rollout
 
 - confirm environment variables are supplied securely by the hosting platform

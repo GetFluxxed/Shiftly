@@ -50,6 +50,10 @@ docker stop shiftly-test-db
 - Transaction rollback when creating a report's background job fails
 - Fresh schema setup and upgrades that preserve reports, jobs and briefings
 - Test database isolation and refusal to use the application database implicitly
+- Concurrent login reservations, failure-window expiry and successful-login recovery
+- Weekly generation capacity, nonblocking store locks and cleanup after provider failures
+- Weekly cache validation, complete-report coverage counts and source invalidation
+- Weekly endpoint authorization, pending responses and migration 011 upgrades
 
 GitHub Actions runs the suite with Python 3.12 and a disposable PostgreSQL 16
 service, supplying `TEST_DATABASE_URL` explicitly.

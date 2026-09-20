@@ -6,13 +6,18 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
+from types import SimpleNamespace
 
 import psycopg
 import pytest
 
+import reporting
+import routes
+import security
 import server
 from database import db_connection
 
@@ -162,6 +167,102 @@ def test_duplicate_http_submission_keeps_normal_client_error(client, manager_ses
     assert client("POST", "/api/reports", cookie=cookie, payload=payload)[0] == 202
     status, _, body = client("POST", "/api/reports", cookie=cookie, payload=payload)
     assert (status, json.loads(body)) == (400, {"error": "This report matches a previous submission and was not sent again."})
+
+
+def test_weekly_overview_deduplicates_cached_generation(manager_session, monkeypatch):
+    _, _, store_id = manager_session
+    reporting.queue_report("Manager", "closing", "Restocked the freezer.", store_id)
+    calls = []
+    started = Event()
+    release = Event()
+
+    def fake_call(report, system_prompt):
+        calls.append(report)
+        started.set()
+        assert release.wait(timeout=5)
+        return {"summary": "Restock complete.", "wins": [], "risks": [], "follow_up": "None."}
+
+    monkeypatch.setattr(reporting, "call_openai", fake_call)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(reporting.weekly_overview, store_id)
+        try:
+            assert started.wait(timeout=5)
+            second = executor.submit(reporting.weekly_overview, store_id)
+            with pytest.raises(reporting.WeeklyOverviewBusy):
+                second.result(timeout=2)
+        finally:
+            release.set()
+        result = first.result(timeout=5)
+
+    assert len(calls) == 1
+    assert reporting.weekly_overview(store_id) == result
+    assert len(calls) == 1
+
+
+def test_weekly_pending_response_and_coverage_reach_the_manager(client, manager_session, monkeypatch):
+    cookie, _, store_id = manager_session
+    reporting.queue_report("Manager", "closing", "Restocked the freezer.", store_id)
+    monkeypatch.setattr(reporting, "call_openai", lambda *args: {"summary": "Restocked.", "wins": [], "risks": [], "follow_up": ""})
+    with db_connection() as holder:
+        holder.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (f"shiftly:weekly:{store_id}",))
+        status, _, body = client("GET", "/api/weekly-overview", cookie=cookie)
+        assert status == 202
+        assert json.loads(body) == {"status": "pending", "retryAfter": 3}
+    status, _, body = client("GET", "/api/weekly-overview", cookie=cookie)
+    assert status == 200
+    result = json.loads(body)
+    assert result["includedReportCount"] == result["reportCount"] == 1
+    assert result["truncated"] is False
+
+
+def test_weekly_overview_rejects_anonymous_and_crew_access(client, manager_session):
+    _, _, store_id = manager_session
+    with db_connection() as connection:
+        connection.execute("INSERT INTO crew_sessions (token_hash, store_id, expires_at) VALUES (%s, %s, NOW() + INTERVAL '1 hour')", (hashlib.sha256(b"test-crew").hexdigest(), store_id))
+    assert client("GET", "/api/weekly-overview")[0] == 401
+    assert client("GET", "/api/weekly-overview", cookie="shiftly_crew_session=test-crew")[0] == 401
+
+
+@pytest.mark.parametrize("role", ["crew", "manager"])
+def test_concurrent_logins_cannot_exceed_remaining_failure_budget(manager_session, monkeypatch, role):
+    handler = SimpleNamespace(client_address=("127.0.0.1", 4173))
+    for _ in range(9):
+        security.record_login_failure(handler, "TEST-STORE", "auto")
+    entered = Event()
+    release = Event()
+    def slow_hash(*args):
+        entered.set()
+        assert release.wait(timeout=5)
+        return "incorrect-hash"
+    monkeypatch.setattr(routes, "password_hash", slow_hash)
+    def login():
+        response = {}
+        request = SimpleNamespace(client_address=handler.client_address, send_json=lambda status, body: response.update(status=status))
+        routes.login(request, "test-store", role, "incorrect-password")
+        return response["status"]
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        last_allowed = executor.submit(login)
+        try:
+            assert entered.wait(timeout=5)
+            rejected = [executor.submit(login) for _ in range(11)]
+            assert [future.result(timeout=2) for future in rejected] == [429] * 11
+        finally:
+            release.set()
+        assert last_allowed.result(timeout=5) == 401
+    assert login() == 429
+    assert not security.LOGIN_IN_FLIGHT
+    assert len(security.LOGIN_FAILURES[security._login_key(handler, "test-store")]) == 10
+
+
+def test_successful_login_releases_reservation_without_using_failure_budget(client, manager_session):
+    handler = SimpleNamespace(client_address=("127.0.0.1", 4173))
+    for _ in range(9):
+        security.record_login_failure(handler, "test-store")
+    for _ in range(2):
+        status, _, _ = client("POST", "/api/auth/login", payload={"storeCode": "test-store", "role": "crew", "password": "test-crew-password"})
+        assert status == 200
+    assert not security.LOGIN_IN_FLIGHT
+    assert len(security.LOGIN_FAILURES[security._login_key(handler, "test-store")]) == 9
 
 
 def test_tests_refuse_application_database_when_test_url_is_absent():

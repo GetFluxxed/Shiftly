@@ -116,7 +116,7 @@ $("#heads-up-cancel").addEventListener("click", () => {
   else modal.removeAttribute("open");
 });
 
-function loadWeeklyOverview() {
+function loadWeeklyOverview(attempt = 0) {
   fetch("/api/weekly-overview")
     .then(async (response) => {
       const payload = await response.json();
@@ -124,8 +124,20 @@ function loadWeeklyOverview() {
       return payload;
     })
     .then((payload) => {
+      if (payload.status === "pending") {
+        $("#weekly-overview").textContent = attempt < 10
+          ? "Preparing the weekly overview…"
+          : "The weekly overview is still being prepared. Refresh the page in a moment.";
+        if (attempt < 10) window.setTimeout(() => loadWeeklyOverview(attempt + 1), 3000);
+        return;
+      }
       const points = [...(payload.wins || []), ...(payload.risks || [])];
-      $("#weekly-overview").innerHTML = `<p>${escapeHtml(payload.summary || "No summary is available yet.")}</p>${points.length ? `<div class="weekly-points">${points.map((point) => `<div class="insight"><span class="insight-mark">↳</span><span>${escapeHtml(point)}</span></div>`).join("")}</div>` : ""}<p class="weekly-follow-up">${escapeHtml(payload.follow_up || "")}</p><small>${Number(payload.reportCount) || 0} report${payload.reportCount === 1 ? "" : "s"} from the last 7 days</small>`;
+      const total = Number(payload.reportCount) || 0;
+      const included = Number(payload.includedReportCount) || 0;
+      const coverage = payload.truncated
+        ? `Partial overview: includes ${included} of ${total} reports from the last 7 days. Older reports are not included; review the inbox for the full week.`
+        : `${total} report${total === 1 ? "" : "s"} from the last 7 days`;
+      $("#weekly-overview").innerHTML = `<p>${escapeHtml(payload.summary || "No summary is available yet.")}</p>${points.length ? `<div class="weekly-points">${points.map((point) => `<div class="insight"><span class="insight-mark">↳</span><span>${escapeHtml(point)}</span></div>`).join("")}</div>` : ""}<p class="weekly-follow-up">${escapeHtml(payload.follow_up || "")}</p><small>${escapeHtml(coverage)}</small>`;
     })
     .catch((error) => {
       console.error("Weekly overview failed:", error);

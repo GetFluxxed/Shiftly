@@ -81,7 +81,7 @@ def test_upgrade_preserves_existing_reports_briefings_jobs_and_legacy_rows(empty
     with db_connection() as connection:
         connection.execute("CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
         for migration in sorted((server.ROOT / "migrations").glob("*.sql")):
-            if migration.name.startswith("010_"):
+            if migration.name >= "010_":
                 continue
             connection.execute(migration.read_text())
             connection.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (migration.name,))

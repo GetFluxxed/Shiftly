@@ -8,7 +8,7 @@ import psycopg
 
 from auth import is_manager, session_store_id
 from database import db_connection
-from security import clean, hash_store_code, login_rate_limited, parse_json, password_hash, rate_limited, record_login_failure
+from security import clean, finish_login_attempt, hash_store_code, parse_json, password_hash, rate_limited, reserve_login_attempt
 from store_service import heads_up, manager_username, store_for_code
 
 
@@ -18,7 +18,6 @@ def _server_module():
 
 
 def login(handler, store_code=None, role=None, password=None):
-    server = _server_module()
     if store_code is None or role is None or password is None:
         try:
             payload = parse_json(handler, max_body=10_000)
@@ -34,12 +33,20 @@ def login(handler, store_code=None, role=None, password=None):
     if role not in {"auto", "crew", "manager"}:
         handler.send_json(400, {"error": "Invalid sign-in role."})
         return
-    if login_rate_limited(handler, store_code, role):
+    if not reserve_login_attempt(handler, store_code):
         handler.send_json(429, {"error": "Too many failed sign-in attempts. Try again later."})
         return
+    authenticated = False
+    try:
+        authenticated = _login_reserved(handler, store_code, role, password)
+    finally:
+        finish_login_attempt(handler, store_code, failed=not authenticated)
+
+
+def _login_reserved(handler, store_code, role, password):
+    server = _server_module()
     store = store_for_code(store_code)
     if not store or not password:
-        record_login_failure(handler, store_code, role)
         handler.send_json(401, {"error": "Incorrect store code or password."})
         return
     store_id, store_name = store
@@ -70,7 +77,6 @@ def login(handler, store_code=None, role=None, password=None):
                 cursor.execute("SELECT 1 FROM stores WHERE id = %s AND crew_password_hash = %s AND active", (store_id, candidate_hash))
                 authenticated = cursor.fetchone() is not None
         if not authenticated:
-            record_login_failure(handler, store_code, role)
             handler.send_json(401, {"error": "Incorrect store code or password."})
             return
         token = secrets.token_urlsafe(32)
@@ -102,7 +108,6 @@ def login(handler, store_code=None, role=None, password=None):
             None,
         )
         if not manager:
-            record_login_failure(handler, store_code, role)
             handler.send_json(401, {"error": "Incorrect store code or password."})
             return
         token = secrets.token_urlsafe(32)
@@ -125,6 +130,7 @@ def login(handler, store_code=None, role=None, password=None):
     handler.send_header("Set-Cookie", f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={server.SESSION_TTL}")
     handler.end_headers()
     handler.wfile.write(json.dumps(response, ensure_ascii=False).encode("utf-8"))
+    return True
 
 
 def signup(handler):

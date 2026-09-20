@@ -16,6 +16,7 @@ from config import load_settings
 from database import db_connection
 from reporting import (
     JOB_WAKE,
+    WeeklyOverviewBusy,
     QUALITY_PROMPT,
     SYSTEM_PROMPT,
     call_openai,
@@ -175,6 +176,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 return
             try:
                 self.send_json(200, weekly_overview(store_id))
+            except WeeklyOverviewBusy:
+                self.send_json(202, {"status": "pending", "retryAfter": 3})
             except (RuntimeError, ValueError, json.JSONDecodeError) as error:
                 self.send_json(503, {"error": str(error)})
             return

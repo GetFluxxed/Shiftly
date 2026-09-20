@@ -3,7 +3,7 @@
 import os
 import urllib.request
 import uuid
-from threading import Event
+from threading import BoundedSemaphore, Event
 
 import psycopg
 from psycopg import sql
@@ -17,11 +17,12 @@ import server
 
 @pytest.fixture(autouse=True)
 def isolated_process_state(monkeypatch):
-    for name in ("REQUESTS", "LOGIN_FAILURES", "SIGNUP_ATTEMPTS"):
+    for name in ("REQUESTS", "LOGIN_FAILURES", "LOGIN_IN_FLIGHT", "SIGNUP_ATTEMPTS"):
         monkeypatch.setattr(security, name, {})
     wake = Event()
     monkeypatch.setattr(reporting, "JOB_WAKE", wake)
     monkeypatch.setattr(server, "JOB_WAKE", wake)
+    monkeypatch.setattr(reporting, "WEEKLY_GENERATION_SLOTS", BoundedSemaphore(2))
 
     def no_external_ai(*args, **kwargs):
         raise AssertionError("Tests must supply a deterministic AI response.")

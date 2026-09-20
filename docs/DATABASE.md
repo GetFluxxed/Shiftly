@@ -14,6 +14,7 @@ The app uses PostgreSQL and runs SQL migrations in order. Startup ensures all mi
 - manager_sessions
 - crew_sessions
 - store_heads_up
+- weekly_overview_cache
 - schema_migrations
 
 ### Key relationships
@@ -43,6 +44,7 @@ The migration sequence currently includes:
 - 008_store_heads_up.sql
 - 009_manager_last_sign_in.sql
 - 010_store_scoped_report_hash.sql
+- 011_weekly_overview_cache.sql
 
 Migration 010 replaces the original global report-hash uniqueness constraint
 with uniqueness on `(store_id, report_hash)`. Identical reports at different
@@ -50,6 +52,18 @@ stores are allowed; duplicates within the same store are rejected atomically,
 including simultaneous submissions. Legacy reports with no store retain their
 own unique-hash index. Existing report hashes, IDs, jobs and briefings are
 preserved.
+
+Migration 011 adds one cached weekly overview per store without changing
+historical reports. Cache fingerprints include the complete reports supplied to
+the model, the total seven-day report count, model, prompt and input limits.
+Invalid provider responses are never cached, and invalid existing cache entries
+are regenerated.
+
+Weekly overviews include the newest complete reports that fit both limits:
+50 reports and 20,000 input characters. The response distinguishes the total
+`reportCount` from `includedReportCount` and sets `truncated` when reports are
+omitted. The manager page explicitly labels partial coverage. No report is
+cut off mid-entry.
 
 ## Data governance note
 

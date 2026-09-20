@@ -1,10 +1,16 @@
 import hashlib
 import json
 import re
+import time
+from threading import Lock
 
 REQUESTS = {}
 LOGIN_FAILURES = {}
+LOGIN_IN_FLIGHT = {}
 SIGNUP_ATTEMPTS = {}
+LOGIN_FAILURE_LOCK = Lock()
+LOGIN_FAILURE_LIMIT = 10
+LOGIN_WINDOW_SECONDS = 900
 
 
 def clean(value, limit):
@@ -55,7 +61,6 @@ def client_key(handler):
 
 
 def rate_limited(handler):
-    import time
     now = time.time()
     key = client_key(handler)
     recent = [stamp for stamp in REQUESTS.get(key, []) if now - stamp < 3600]
@@ -68,7 +73,6 @@ def rate_limited(handler):
 
 
 def signup_rate_limited(handler):
-    import time
     now = time.time()
     key = client_key(handler)
     recent = [stamp for stamp in SIGNUP_ATTEMPTS.get(key, []) if now - stamp < 3600]
@@ -77,20 +81,49 @@ def signup_rate_limited(handler):
 
 
 def record_signup_attempt(handler):
-    import time
     SIGNUP_ATTEMPTS.setdefault(client_key(handler), []).append(time.time())
 
 
-def login_rate_limited(handler, store_code, role):
-    import time
+def _login_key(handler, store_code):
+    return f"{client_key(handler)}:{hash_store_code(store_code)}"
+
+
+def login_rate_limited(handler, store_code, role=None):
     now = time.time()
-    key = f"{client_key(handler)}:{role}:{hashlib.sha256(store_code.encode()).hexdigest()}"
-    recent = [stamp for stamp in LOGIN_FAILURES.get(key, []) if now - stamp < 900]
-    LOGIN_FAILURES[key] = recent
-    return len(recent) >= 10
+    key = _login_key(handler, store_code)
+    with LOGIN_FAILURE_LOCK:
+        recent = [stamp for stamp in LOGIN_FAILURES.get(key, []) if now - stamp < LOGIN_WINDOW_SECONDS]
+        LOGIN_FAILURES[key] = recent
+        return len(recent) + LOGIN_IN_FLIGHT.get(key, 0) >= LOGIN_FAILURE_LIMIT
 
 
-def record_login_failure(handler, store_code, role):
-    import time
-    key = f"{client_key(handler)}:{role}:{hashlib.sha256(store_code.encode()).hexdigest()}"
-    LOGIN_FAILURES.setdefault(key, []).append(time.time())
+def reserve_login_attempt(handler, store_code):
+    """Count in-flight checks against the budget before verifying a password."""
+    key = _login_key(handler, store_code)
+    with LOGIN_FAILURE_LOCK:
+        now = time.time()
+        recent = [stamp for stamp in LOGIN_FAILURES.get(key, []) if now - stamp < LOGIN_WINDOW_SECONDS]
+        LOGIN_FAILURES[key] = recent
+        active = LOGIN_IN_FLIGHT.get(key, 0)
+        if len(recent) + active >= LOGIN_FAILURE_LIMIT:
+            return False
+        LOGIN_IN_FLIGHT[key] = active + 1
+        return True
+
+
+def finish_login_attempt(handler, store_code, *, failed):
+    key = _login_key(handler, store_code)
+    with LOGIN_FAILURE_LOCK:
+        if failed:
+            LOGIN_FAILURES.setdefault(key, []).append(time.time())
+        remaining = LOGIN_IN_FLIGHT[key] - 1
+        if remaining:
+            LOGIN_IN_FLIGHT[key] = remaining
+        else:
+            del LOGIN_IN_FLIGHT[key]
+
+
+def record_login_failure(handler, store_code, role=None):
+    key = _login_key(handler, store_code)
+    with LOGIN_FAILURE_LOCK:
+        LOGIN_FAILURES.setdefault(key, []).append(time.time())
