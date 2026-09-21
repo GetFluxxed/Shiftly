@@ -177,6 +177,15 @@ consistency, runs the suite, and retains browser failure artifacts.
    monitoring/limits, and rehearse staging migration, backup restoration, and
    rollback before switching the configured application entry point.
 
+[Round 3](docs/parallel/ROUND_03.md) assigns these steps to
+[Codex](docs/prompts/CODEX_INTEGRATION_RUNTIME.md) and
+[GitHub Copilot](docs/prompts/COPILOT_FASTAPI_INTEGRATION.md), with exclusive file
+ownership and published service checkpoints. Its Gate D defines when reviewed,
+tested integration is ready for new-feature development; Gate P adds the hosted
+staging and operational evidence required before production release. The initial
+runtime target is one API process and one separate worker; shared cross-replica
+limits are required before adding API replicas.
+
 ## Planned modules after the foundation
 
 The first app release will be an **installable mobile web app**, with native
