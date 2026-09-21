@@ -35,7 +35,7 @@ from reporting import (
     claim_job,
     complete_job,
 )
-from routes import add_manager as routes_add_manager, login as routes_login, save_heads_up as routes_save_heads_up, signup as routes_signup, submit_report as report_submission_route
+from routes import add_manager as add_manager_route, login as login_route, save_heads_up as routes_save_heads_up, signup as signup_route, submit_report as report_submission_route, make_identity_service
 from security import (
     clean,
     client_key,
@@ -77,6 +77,28 @@ except ImportError:
     certifi = None
 
 
+_embedded_worker_status = worker_status
+
+
+def worker_status():
+    if SETTINGS.worker_mode == "external":
+        from backend.shiftly.jobs.status import DatabaseWorkerStatus
+        return DatabaseWorkerStatus(db_connection, stale_seconds=SETTINGS.worker_stale_seconds)()
+    return _embedded_worker_status()
+
+
+def routes_login(handler, *args):
+    return login_route(handler, *args, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
+def routes_signup(handler):
+    return signup_route(handler, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
+def routes_add_manager(handler):
+    return add_manager_route(handler, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
 def routes_submit_report(handler):
     # Preserve server's public replacement points while making dependencies
     # explicit at the HTTP boundary. Construction has no I/O or shared state.
@@ -88,17 +110,8 @@ def routes_submit_report(handler):
 
 
 def initialize_database():
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
-            for migration in sorted((ROOT / "migrations").glob("*.sql")):
-                cursor.execute("SELECT 1 FROM schema_migrations WHERE version = %s", (migration.name,))
-                if cursor.fetchone():
-                    continue
-                cursor.execute(migration.read_text(encoding="utf-8"))
-                cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (migration.name,))
-        connection.commit()
-
+    from backend.shiftly.runtime.migrate import migrate
+    return migrate(db_connection, directory=ROOT / "migrations", lock_timeout_ms=SETTINGS.db_lock_timeout_ms)
 
 
 
@@ -254,13 +267,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/logout":
             manager_token = cookie_token(self, "shiftly_manager_session")
             crew_token = cookie_token(self, "shiftly_crew_session")
-            with db_connection() as connection:
-                with connection.cursor() as cursor:
-                    if manager_token:
-                        cursor.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (hashlib.sha256(manager_token.encode()).hexdigest(),))
-                    if crew_token:
-                        cursor.execute("DELETE FROM crew_sessions WHERE token_hash = %s", (hashlib.sha256(crew_token.encode()).hexdigest(),))
-                connection.commit()
+            make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL).logout(manager_token, crew_token)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             secure = "; Secure" if SECURE_COOKIES else ""
@@ -298,8 +305,14 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not DB_URL:
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
+    from backend.shiftly.runtime.settings import validate_runtime_settings
+    validate_runtime_settings(SETTINGS)
     try:
-        initialize_database()
+        if SETTINGS.worker_mode == "embedded":
+            initialize_database()
+        else:
+            from backend.shiftly.runtime.migrate import require_schema
+            require_schema(db_connection)
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
     except psycopg.OperationalError as error:
@@ -311,8 +324,10 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     worker_stop = Event()
-    worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
-    worker.start()
+    worker = None
+    if SETTINGS.worker_mode == "embedded":
+        worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
+        worker.start()
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)
     print("Leave this terminal open while using the app. Press Ctrl+C to stop.", flush=True)
     try:
@@ -320,5 +335,6 @@ if __name__ == "__main__":
     finally:
         worker_stop.set()
         JOB_WAKE.set()
-        worker.join(timeout=5)
+        if worker is not None:
+            worker.join(timeout=SETTINGS.shutdown_timeout)
         server.server_close()
