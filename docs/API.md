@@ -72,6 +72,19 @@ The FastAPI transition must deliberately preserve existing validation errors and
 cookie behavior. Add contract tests before replacing adapters; a framework's
 default response format is not an approved breaking change.
 
+## FastAPI integration status
+
+The development-only FastAPI app currently exposes the two health routes above
+and the existing public static assets (`/`, `/index.html`, `/about.html`,
+`/app.js`, `/auth.js`, `/manager.js`, and `/styles.css`). `/crew.html` and
+`/manager.html` use an explicit injected page-access provider; without that
+identity dependency they redirect to `/`, matching the anonymous legacy flow.
+Unknown, private, traversal, and repository paths are not served.
+
+Authentication, account, report, Head's Up, manager-list, and weekly adapters
+remain blocked on the published Codex identity/store/runtime service contract.
+They are not emulated or exposed as success-shaped placeholder routes.
+
 ## Proposed inventory API
 
 New module base: `/api/v1/stores/{store_id}`. Resolve the authenticated actor's
