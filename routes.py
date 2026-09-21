@@ -6,10 +6,12 @@ from urllib.parse import urlparse
 
 import psycopg
 
+import reporting
+from backend.shiftly.reports import ReportRejected, ReportSubmission
 from auth import is_manager, session_store_id
 from database import db_connection
 from security import clean, finish_login_attempt, hash_store_code, parse_json, password_hash, rate_limited, reserve_login_attempt
-from store_service import heads_up, manager_username, store_for_code
+from store_service import heads_up, is_crew, manager_username, store_for_code
 
 
 def _server_module():
@@ -297,12 +299,14 @@ def save_heads_up(handler):
     handler.send_json(200, heads_up(store_id))
 
 
-def submit_report(handler):
+def submit_report(handler, *, submission=None, resolve_store=None):
     if urlparse(handler.path).path != "/api/reports":
         handler.send_json(404, {"error": "Not found."})
         return
-    server = _server_module()
-    store_id = server.is_crew(handler)
+    # Server composition supplies these explicitly. Defaults retain direct route
+    # callers without making report handling import the server module.
+    resolve_store = is_crew if resolve_store is None else resolve_store
+    store_id = resolve_store(handler)
     if not store_id:
         handler.send_json(401, {"error": "Crew sign-in required."})
         return
@@ -311,21 +315,15 @@ def submit_report(handler):
         return
     try:
         fields = parse_json(handler)
-        employee = clean(fields.get("employee"), 80)
-        shift = clean(fields.get("shift"), 20)
-        notes = clean(fields.get("notes"), 2000)
-        if not employee or not notes:
-            raise ValueError("Enter your name and meaningful shift notes.")
-        if shift not in {"opening", "midday", "closing", "other"}:
-            raise ValueError("Choose a valid shift.")
-        report = {"employee": employee, "shift": shift, "notes": notes}
-        server.ensure_submission_allowed(store_id, employee, notes)
-        quality = server.validate_report(report)
-        if quality.get("status") != "accepted":
-            handler.send_json(422, {"error": quality.get("reason") or "Please add meaningful shift details and try again."})
-            return
-        _, created_at = server.queue_report(employee, shift, notes, store_id)
+        if submission is None:
+            submission = ReportSubmission(
+                ensure_allowed=reporting.ensure_submission_allowed,
+                quality_gate=reporting.validate_report, enqueue=reporting.queue_report,
+            )
+        _, created_at = submission.submit(store_id, fields)
         handler.send_json(202, {"date": created_at.isoformat(), "status": "pending"})
+    except ReportRejected as error:
+        handler.send_json(422, {"error": error.reason})
     except ValueError as error:
         handler.send_json(400, {"error": str(error)})
     except RuntimeError as error:
