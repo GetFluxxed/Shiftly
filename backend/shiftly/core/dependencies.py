@@ -9,6 +9,7 @@ from config import Settings
 
 ConnectionFactory = Callable[[], Any]
 WorkerStatusProvider = Callable[[], Mapping[str, Any]]
+PageAccessProvider = Callable[[Any, str], bool]
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class AppContext:
     settings: Settings
     connection_factory: ConnectionFactory
     worker_status_provider: WorkerStatusProvider
+    page_access_provider: PageAccessProvider | None = None
 
 
 def default_connection_factory(settings: Settings) -> ConnectionFactory:

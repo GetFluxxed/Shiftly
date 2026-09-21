@@ -88,3 +88,18 @@ unchanged by the plan revision.
   notes/images. Rehearse provider outage, worker restart and failed import paths.
 - Keep current reports available during inventory rollout and use compatible
   migrations so a UI/API rollback preserves posted stock history and evidence.
+## FastAPI integration rehearsal status
+
+The FastAPI app remains development-only. Production continues to start
+`server.py`; no deployment entry point or Render configuration is changed by
+this integration branch. Run the local FastAPI adapter with:
+
+```sh
+python3 scripts/run_api_dev.py
+```
+
+The current adapter serves only health routes and explicitly allowlisted public
+assets. Protected pages redirect without an injected identity/store access
+provider. Full endpoint parity, authentication composition, independent worker
+startup, migration coordination, and release rehearsal remain pending the
+published Codex runtime checkpoint.

@@ -58,6 +58,13 @@ docker stop shiftly-test-db
 GitHub Actions runs the suite with Python 3.12 and a disposable PostgreSQL 16
 service, supplying `TEST_DATABASE_URL` explicitly.
 
+The merged FastAPI foundation adds `tests/transport_parity/`. These checks run
+the legacy HTTP server and the development FastAPI app against equivalent
+disposable database state for health responses, public assets, protected-page
+redirects, traversal denial, and security headers. They do not claim full
+browser parity until the Codex identity/store/runtime service checkpoint is
+published.
+
 ## Planned coverage for the next modules
 
 These checks are future acceptance requirements from
