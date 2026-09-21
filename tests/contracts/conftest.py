@@ -1,0 +1,128 @@
+import hashlib
+import http.client
+import json
+from dataclasses import dataclass
+from threading import Thread
+
+import pytest
+from http.server import ThreadingHTTPServer
+
+import reporting
+import server
+from database import db_connection
+
+
+@dataclass
+class ApiResponse:
+    status: int
+    headers: list[tuple[str, str]]
+    body: bytes
+
+    def json(self):
+        return json.loads(self.body)
+
+    def cookies(self):
+        return [
+            value.split(";", 1)[0]
+            for name, value in self.headers
+            if name.lower() == "set-cookie"
+        ]
+
+
+class ApiClient:
+    def __init__(self, base_url):
+        self.host, self.port = base_url.removeprefix("http://").split(":")
+
+    def request(self, method, path, *, payload=None, raw=None, cookie=None):
+        body = raw if raw is not None else (
+            json.dumps(payload).encode("utf-8") if payload is not None else None
+        )
+        headers = {"Content-Type": "application/json"}
+        if cookie:
+            headers["Cookie"] = cookie
+        connection = http.client.HTTPConnection(self.host, int(self.port), timeout=5)
+        try:
+            connection.request(method, path, body=body, headers=headers)
+            response = connection.getresponse()
+            return ApiResponse(response.status, response.getheaders(), response.read())
+        finally:
+            connection.close()
+
+
+@pytest.fixture
+def app_server(isolated_database, monkeypatch):
+    monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "contract-admin-key")
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.ShiftlyHandler)
+    thread = Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        yield base_url
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.fixture(autouse=True)
+def deterministic_ai(monkeypatch):
+    def fake_openai(report, system_prompt=None):
+        if report["shift"] == "weekly overview":
+            return {
+                "summary": "The team completed the reported shift work.",
+                "wins": ["The store remained operational."],
+                "risks": [],
+                "follow_up": "Review the next handoff.",
+            }
+        return {
+            "status": "accepted",
+            "reason": "",
+            "summary": "Report accepted.",
+            "wins": ["Shift notes were received."],
+            "risks": [],
+            "follow_up": "Review the next handoff.",
+        }
+
+    monkeypatch.setattr(reporting, "call_openai", fake_openai)
+    monkeypatch.setattr(server, "call_openai", fake_openai)
+    monkeypatch.setattr(server, "validate_report", lambda report: {"status": "accepted"})
+
+
+def create_workspace(api, *, store_code, manager_name):
+    response = api.request(
+        "POST",
+        "/api/auth/signup",
+        payload={
+            "adminKey": "contract-admin-key",
+            "storeName": f"{manager_name} Store",
+            "storeCode": store_code,
+            "crewPassword": "crew-password-123",
+            "managerUsername": manager_name,
+            "managerPassword": "manager-password-123",
+            "confirmPassword": "manager-password-123",
+        },
+    )
+    assert response.status == 201, response.body
+    manager_cookie = response.cookies()[0]
+    with db_connection() as connection:
+        store_id = connection.execute(
+            "SELECT id FROM stores WHERE access_code_hash = %s",
+            (hashlib.sha256(store_code.casefold().encode()).hexdigest(),),
+        ).fetchone()[0]
+    return {
+        "store_code": store_code,
+        "crew_password": "crew-password-123",
+        "manager_password": "manager-password-123",
+        "manager_cookie": manager_cookie,
+        "store_id": store_id,
+    }
+
+
+@pytest.fixture
+def api(app_server):
+    return ApiClient(app_server)
+
+
+@pytest.fixture
+def workspace(api):
+    return create_workspace(api, store_code="contract-store", manager_name="contract-manager")
