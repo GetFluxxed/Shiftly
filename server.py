@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import psycopg
 
+from backend.shiftly.reports import ReportSubmission
 from auth import is_manager, session_store_id
 from config import load_settings
 from database import db_connection
@@ -34,7 +35,7 @@ from reporting import (
     claim_job,
     complete_job,
 )
-from routes import add_manager as routes_add_manager, login as routes_login, save_heads_up as routes_save_heads_up, signup as routes_signup, submit_report as routes_submit_report
+from routes import add_manager as routes_add_manager, login as routes_login, save_heads_up as routes_save_heads_up, signup as routes_signup, submit_report as report_submission_route
 from security import (
     clean,
     client_key,
@@ -74,6 +75,16 @@ try:
     import certifi
 except ImportError:
     certifi = None
+
+
+def routes_submit_report(handler):
+    # Preserve server's public replacement points while making dependencies
+    # explicit at the HTTP boundary. Construction has no I/O or shared state.
+    submission = ReportSubmission(
+        ensure_allowed=ensure_submission_allowed,
+        quality_gate=validate_report, enqueue=queue_report,
+    )
+    return report_submission_route(handler, submission=submission, resolve_store=is_crew)
 
 
 def initialize_database():
