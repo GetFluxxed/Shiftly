@@ -43,7 +43,7 @@ jobs:
           python -m pip install -r requirements-dev.lock
           python -m playwright install --with-deps chromium
       - name: Check Python sources
-        run: python -m compileall -q server.py auth.py config.py database.py reporting.py routes.py security.py store_service.py tests
+        run: python -m compileall -q backend scripts server.py auth.py config.py database.py reporting.py routes.py security.py store_service.py tests
       - name: Check installed dependencies
         run: python -m pip check
       - name: Run test suite
