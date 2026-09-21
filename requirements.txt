@@ -3,3 +3,4 @@ certifi>=2024.8.30
 pytest>=8.0,<9
 fastapi>=0.141,<0.142
 uvicorn[standard]>=0.53,<0.54
+psycopg-pool>=3.3.2,<3.4

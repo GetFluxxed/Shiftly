@@ -77,6 +77,16 @@ except ImportError:
     certifi = None
 
 
+_embedded_worker_status = worker_status
+
+
+def worker_status():
+    if SETTINGS.worker_mode == "external":
+        from backend.shiftly.jobs.status import DatabaseWorkerStatus
+        return DatabaseWorkerStatus(db_connection, stale_seconds=SETTINGS.worker_stale_seconds)()
+    return _embedded_worker_status()
+
+
 def routes_login(handler, *args):
     return login_route(handler, *args, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
 
@@ -100,17 +110,8 @@ def routes_submit_report(handler):
 
 
 def initialize_database():
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
-            for migration in sorted((ROOT / "migrations").glob("*.sql")):
-                cursor.execute("SELECT 1 FROM schema_migrations WHERE version = %s", (migration.name,))
-                if cursor.fetchone():
-                    continue
-                cursor.execute(migration.read_text(encoding="utf-8"))
-                cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (migration.name,))
-        connection.commit()
-
+    from backend.shiftly.runtime.migrate import migrate
+    return migrate(db_connection, directory=ROOT / "migrations", lock_timeout_ms=SETTINGS.db_lock_timeout_ms)
 
 
 
@@ -304,8 +305,14 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not DB_URL:
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
+    from backend.shiftly.runtime.settings import validate_runtime_settings
+    validate_runtime_settings(SETTINGS)
     try:
-        initialize_database()
+        if SETTINGS.worker_mode == "embedded":
+            initialize_database()
+        else:
+            from backend.shiftly.runtime.migrate import require_schema
+            require_schema(db_connection)
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
     except psycopg.OperationalError as error:
@@ -317,8 +324,10 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     worker_stop = Event()
-    worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
-    worker.start()
+    worker = None
+    if SETTINGS.worker_mode == "embedded":
+        worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
+        worker.start()
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)
     print("Leave this terminal open while using the app. Press Ctrl+C to stop.", flush=True)
     try:
@@ -326,5 +335,6 @@ if __name__ == "__main__":
     finally:
         worker_stop.set()
         JOB_WAKE.set()
-        worker.join(timeout=5)
+        if worker is not None:
+            worker.join(timeout=SETTINGS.shutdown_timeout)
         server.server_close()

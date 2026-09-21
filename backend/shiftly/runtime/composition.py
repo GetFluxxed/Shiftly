@@ -28,6 +28,8 @@ def build_services(*, settings, connection_factory, provider, weekly_connection_
     Connection factories yield closing transactions; weekly must close sessions.
     wake() is optional because independently running workers poll the durable queue.
     """
+    if getattr(settings, "web_concurrency", 1) != 1:
+        raise ValueError("Only one API process is supported; shared admission is required before scale-out.")
     clock = clock if clock is not None else time.time
     admission = admission if admission is not None else AdmissionControl(clock=clock)
     stores = StoresService(StoresRepository(connection_factory))
