@@ -35,7 +35,7 @@ from reporting import (
     claim_job,
     complete_job,
 )
-from routes import add_manager as routes_add_manager, login as routes_login, save_heads_up as routes_save_heads_up, signup as routes_signup, submit_report as report_submission_route
+from routes import add_manager as add_manager_route, login as login_route, save_heads_up as routes_save_heads_up, signup as signup_route, submit_report as report_submission_route, make_identity_service
 from security import (
     clean,
     client_key,
@@ -75,6 +75,18 @@ try:
     import certifi
 except ImportError:
     certifi = None
+
+
+def routes_login(handler, *args):
+    return login_route(handler, *args, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
+def routes_signup(handler):
+    return signup_route(handler, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
+def routes_add_manager(handler):
+    return add_manager_route(handler, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
 
 
 def routes_submit_report(handler):
@@ -254,13 +266,7 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/logout":
             manager_token = cookie_token(self, "shiftly_manager_session")
             crew_token = cookie_token(self, "shiftly_crew_session")
-            with db_connection() as connection:
-                with connection.cursor() as cursor:
-                    if manager_token:
-                        cursor.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (hashlib.sha256(manager_token.encode()).hexdigest(),))
-                    if crew_token:
-                        cursor.execute("DELETE FROM crew_sessions WHERE token_hash = %s", (hashlib.sha256(crew_token.encode()).hexdigest(),))
-                connection.commit()
+            make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL).logout(manager_token, crew_token)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             secure = "; Secure" if SECURE_COOKIES else ""
