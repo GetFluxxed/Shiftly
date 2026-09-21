@@ -3,10 +3,11 @@
 
 import hashlib
 import json
+import logging
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from urllib.parse import urlparse
 
 import psycopg
@@ -29,6 +30,7 @@ from reporting import (
     validate_report,
     weekly_overview,
     worker_loop,
+    worker_status,
     claim_job,
     complete_job,
 )
@@ -131,7 +133,12 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 "openaiConfigured": openai_configured,
                 "databaseConfigured": database_ok,
                 "secureCookies": SECURE_COOKIES,
+                "worker": worker_status(),
             })
+            return
+        if path == "/api/health/worker":
+            status = worker_status()
+            self.send_json(200 if status["status"] == "ok" else 503, status)
             return
         if path == "/api/auth/status":
             manager_id = is_manager(self)
@@ -290,8 +297,17 @@ if __name__ == "__main__":
             "password, and that the configured port matches docker-compose.yml.\n"
             f"Connection detail: {error}"
         ) from error
-    Thread(target=worker_loop, daemon=True).start()
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    worker_stop = Event()
+    worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
+    worker.start()
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)
     print("Leave this terminal open while using the app. Press Ctrl+C to stop.", flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        worker_stop.set()
+        JOB_WAKE.set()
+        worker.join(timeout=5)
+        server.server_close()
