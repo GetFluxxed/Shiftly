@@ -124,8 +124,16 @@ this integration branch. Run the local FastAPI adapter with:
 python3 scripts/run_api_dev.py
 ```
 
-The current adapter serves only health routes and explicitly allowlisted public
-assets. Protected pages redirect without an injected identity/store access
-provider. Full endpoint parity, authentication composition, independent worker
-startup, migration coordination, and release rehearsal remain pending the
-published Codex runtime checkpoint.
+The adapter now composes the shared identity/report/store services, including
+Accounts & Access. Named identity, protected pages, account lifecycle and reporting
+are verified through both transports. Independent workers, migration coordination
+and disposable release/account recovery rehearsals are included in validation.
+These local/CI results do not establish hosted staging or production readiness.
+
+Account rollout requires additive migration 014 and an explicitly reviewed
+store/business/owner mapping. The bootstrap command defaults to dry-run; this
+integration does not assign real owners or activate production stores. Follow the
+[backend rollout and rollback procedure](workstreams/codex-accounts-permissions.md#migration-operator-mapping-and-recovery).
+Enable individual access only after staging verification and deliberate enrollment;
+shared-crew cutover is a separate owner action. A rollback must retain revocations
+and account policy, rather than returning to an older permissive adapter.

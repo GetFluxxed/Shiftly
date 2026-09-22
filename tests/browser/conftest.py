@@ -215,3 +215,46 @@ def complete_jobs():
             reporting.complete_job(job_id, report, reporting.call_openai(report))
 
     return complete_all
+
+
+@pytest.fixture
+def named_workspace(browser_app):
+    """Synthetic business and people; both HTTP transports use identical policy."""
+    from backend.shiftly.identity.accounts import AccountsService
+    from backend.shiftly.identity.primitives import hash_store_code, password_hash
+
+    password = 'named-password-123'
+    salt = 'browser-named-salt'
+    digest = password_hash(password, salt)
+    stores, users = [], {}
+    with db_connection() as connection:
+        business = connection.execute("INSERT INTO businesses(name) VALUES ('Browser Accounts Business') RETURNING id").fetchone()[0]
+        for name, code in [('Market Street', 'market-store'), ('Harbor', 'harbor-store')]:
+            store = connection.execute(
+                """INSERT INTO stores(name,access_code_hash,crew_password_hash,business_id,accounts_enabled)
+                   VALUES (%s,%s,%s,%s,TRUE) RETURNING id""",
+                (name, hash_store_code(code), password_hash('shared-password-123', f'shiftly-crew:{hash_store_code(code)}'), business),
+            ).fetchone()[0]
+            stores.append({'id': store, 'name': name, 'code': code, 'business': business})
+        for key, role, grants in [
+            ('owner', 'manager', []), ('manager', 'manager', ['memberships.manage']),
+            ('crew', 'crew', []), ('viewer', 'crew', ['inventory.view']),
+            ('admin', 'admin', ['inventory.view']),
+        ]:
+            user = connection.execute(
+                """INSERT INTO account_users(username,display_name,password_salt,password_hash)
+                   VALUES (%s,%s,%s,%s) RETURNING id""",
+                (f'account-{key}', f'Account {key.title()}', salt, digest),
+            ).fetchone()[0]
+            users[key] = user
+            connection.execute(
+                """INSERT INTO account_store_memberships(user_id,store_id,business_id,role,capabilities)
+                   VALUES (%s,%s,%s,%s,%s)""", (user, stores[0]['id'], business, role, grants),
+            )
+            if key in {'owner', 'admin'}:
+                connection.execute(
+                    "INSERT INTO business_memberships(user_id,business_id,role,capabilities) VALUES (%s,%s,%s,%s)",
+                    (user, business, key, grants),
+                )
+    return {'base_url': browser_app, 'stores': stores, 'users': users,
+            'password': password, 'accounts': AccountsService(db_connection)}

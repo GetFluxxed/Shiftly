@@ -22,20 +22,23 @@
       </section>
       <section class="workspace-grid">
         <div class="capture-column">
-          <div class="section-heading"><div><p class="step">01 / ACCESS</p><h2>Store Credentials</h2></div><span class="optional">Store Code + Password</span></div>
+          <div class="section-heading"><div><p class="step">01 / ACCESS</p><h2>Store Credentials</h2></div><span class="optional">Your store, your account</span></div>
           <form class="auth-card" id="sign-in-form">
             <label class="field-label" for="store-code">Store Code</label>
             <input class="text-input" id="store-code" type="text" inputmode="numeric" autocomplete="organization" required />
+            <label class="field-label" for="username">Username <span class="optional">For individual accounts</span></label>
+            <input class="text-input" id="username" type="text" autocomplete="username" maxlength="80" /><p class="account-help">Enter your individual username. Leave it blank only if your store still uses sign-in without a username.</p>
             <label class="field-label" for="password">Password</label>
             <input class="text-input" id="password" type="password" autocomplete="current-password" required />
             <button class="primary-button" type="submit"><span>Continue to Shiftly</span><span class="button-arrow">→</span></button>
             <p class="auth-error hidden" id="auth-error"></p>
           </form>
-          <p class="auth-switch">Have a store but no account? <button class="text-button" id="show-manager-signup" type="button">Create New</button></p>
+          <p class="auth-switch"><a href="/activate.html">Activate an invitation or recover your account</a></p>
+          <p class="auth-switch">Administrator setup: <button class="text-button" id="show-manager-signup" type="button">Create New</button></p>
           <p class="auth-switch">New store? <button class="text-button" id="show-signup" type="button">Create a workspace</button></p>
           <form class="auth-card hidden" id="manager-sign-up-form">
             <div class="section-heading"><div><p class="step">02 / ACCESS</p><h2>Add A Manager</h2></div></div>
-            <p class="auth-help">Add a manager account to an existing store workspace.</p>
+            <p class="auth-help">Administrator setup for stores that have not switched to individual access. Enrolled teams use invitations from Account.</p>
             <label class="field-label" for="manager-signup-admin-key">Admin Key</label>
             <input class="text-input" id="manager-signup-admin-key" type="password" autocomplete="off" required />
             <label class="field-label" for="manager-signup-store-code">Store Code</label>

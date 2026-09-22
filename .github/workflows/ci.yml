@@ -69,3 +69,20 @@ jobs:
             test-results/
             release-rehearsal.log
           if-no-files-found: ignore
+      - name: Rehearse named accounts upgrade and restore
+        env:
+          DATABASE_URL: ""
+          OPENAI_API_KEY: ""
+          ACCOUNTS_REHEARSAL_DATABASE_URL: postgresql://shiftly:change-me@localhost:55432/shiftly_accounts_rehearsal
+          ACCOUNTS_REHEARSAL_RESTORE_DATABASE_URL: postgresql://shiftly:change-me@localhost:55432/shiftly_accounts_restore
+          ACCOUNTS_REHEARSAL_SOURCE_CONTAINER: ${{ job.services.postgres.id }}
+          ACCOUNTS_REHEARSAL_RESTORE_CONTAINER: ${{ job.services.postgres.id }}
+        run: python -m backend.shiftly.runtime.accounts_rehearsal --create-databases | tee accounts-rehearsal.log
+      - name: Upload accounts recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shiftly-accounts-recovery
+          path: |
+            accounts-rehearsal.log
+          if-no-files-found: ignore

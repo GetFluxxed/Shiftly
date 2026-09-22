@@ -46,6 +46,13 @@ def _session_response(handler, result, status, secure_cookies):
     if result.role == "account":
         for old_cookie in ("shiftly_manager_session", "shiftly_crew_session"):
             handler.send_header("Set-Cookie", f"{old_cookie}=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
+    else:
+        # Explicit sign-in replaces stale cookies while preserving the original
+        # single-cookie response when no conflicting credential was supplied.
+        for old_cookie in ('shiftly_account_session', 'shiftly_manager_session', 'shiftly_crew_session'):
+            present = named_account_token(handler) is not None if old_cookie == 'shiftly_account_session' else bool(cookie_token(handler, old_cookie))
+            if old_cookie != cookie_name and present:
+                handler.send_header('Set-Cookie', f'{old_cookie}=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0')
     handler.send_header("Cache-Control", "no-store")
     handler.end_headers()
     handler.wfile.write(json.dumps(result.response, ensure_ascii=False).encode("utf-8"))
@@ -108,6 +115,7 @@ def save_heads_up(handler):
         fields = parse_json(handler)
         if account_token:
             _same_origin_account_mutation(handler)
+            _check_account_context(fields, store_id)
             result = stores.save_heads_up(store_id, fields.get("message"), actor_token=account_token,
                                           accounts=make_identity_service().accounts)
         else:
@@ -154,6 +162,7 @@ def submit_report(handler, *, submission=None, resolve_store=None):
             principal = request_principal(handler, strict=True)
             if not principal or not principal.named:
                 raise IdentityError("unauthenticated", "Named sign-in required.")
+            _check_account_context(fields, principal.store_id)
             _, created_at = submission.submit(store_id, fields, actor_token=account_token,
                                                accounts=make_identity_service().accounts)
         else:
@@ -201,6 +210,17 @@ def _same_origin_account_mutation(handler):
             raise IdentityError('forbidden', 'Cross-origin account changes are not permitted.')
     if handler.headers.get('Sec-Fetch-Site') == 'cross-site':
         raise IdentityError('forbidden', 'Cross-origin account changes are not permitted.')
+
+
+def _check_account_context(fields, store_id):
+    """Bind a rendered form to its selected store; this never grants authority."""
+    if 'expectedStoreId' not in fields:
+        return
+    expected = fields['expectedStoreId']
+    if isinstance(expected, bool) or not isinstance(expected, int) or expected <= 0:
+        raise IdentityError('invalid', 'Expected store ID must be a positive integer.')
+    if expected != store_id:
+        raise IdentityError('conflict', 'The selected store changed. Refresh and try again.')
 
 
 def account_route(handler, *, method, identity=None, secure_cookies=False):
@@ -254,6 +274,7 @@ def account_route(handler, *, method, identity=None, secure_cookies=False):
         principal = request_principal(handler, strict=True)
         if not principal or not principal.named:
             raise IdentityError('unauthenticated', 'Named sign-in required.')
+        _check_account_context(fields, principal.store_id)
         clear = False
         reason = fields.get('reason', '')
         if path == '/api/accounts/logout-all':

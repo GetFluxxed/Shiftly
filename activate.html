@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Shiftly — Activate or recover account</title><link rel="stylesheet" href="styles.css" /></head>
+<body class="sign-in-page"><main class="shell">
+<header class="topbar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">✳</span><span>Shiftly</span></a><a class="mode-pill" href="/">Sign in</a></header>
+<section class="hero"><p class="eyebrow">Your account / A fresh start</p><h1 id="activation-title">Make it<br /><em>your account.</em></h1><p class="intro" id="activation-intro">Use the private activation code from your manager to choose your own password.</p></section>
+<section class="workspace-grid"><div class="capture-column"><form class="auth-card account-form" id="activation-form">
+<label class="field-label" for="activation-mode">What would you like to do?</label><select id="activation-mode"><option value="activate">Activate a new account</option><option value="recovery">Recover an existing account</option></select>
+<label class="field-label" id="activation-token-label" for="activation-token">Activation code</label><input class="text-input" id="activation-token" type="password" autocomplete="off" maxlength="512" spellcheck="false" required />
+<label class="field-label" for="activation-password">New password</label><input class="text-input" id="activation-password" type="password" minlength="8" maxlength="1024" autocomplete="new-password" required />
+<label class="field-label" for="activation-confirm">Confirm password</label><input class="text-input" id="activation-confirm" type="password" minlength="8" maxlength="1024" autocomplete="new-password" required />
+<button class="primary-button" id="activate-button" type="submit"><span id="activation-submit-label">Activate account</span><span class="button-arrow">→</span></button>
+<p class="auth-error hidden" id="activation-status" role="status" aria-live="polite"></p><p class="account-help" id="activation-help">Codes expire and can be used once. Ask your manager for a replacement invitation if yours has expired.</p>
+</form></div></section><footer><span>SHIFTLY / INDIVIDUAL ACCESS</span><a href="/">Return to sign in</a></footer></main><script src="activate.js"></script></body></html>

@@ -29,6 +29,12 @@ TEST_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:55433/shiftly
   python3 -m pytest -q --browser chromium
 ```
 
+Attach the database variable to the **pytest process** each time. In
+`TEST_DATABASE_URL=... python3 -m compileall ... && python3 -m pytest ...`, only
+compilation receives that variable; pytest will correctly refuse to run database
+tests. Run compilation separately, then use the explicit pytest command above.
+Keep the fixture's refusal to fall back to an application database intact.
+
 Each database test creates and removes its own randomly named schema. Its
 connections use only that schema, with no fallback to `public`. The test role
 must be able to create schemas. Tests do not truncate existing application
@@ -55,6 +61,12 @@ docker stop shiftly-test-db
 - Weekly generation capacity, nonblocking store locks and cleanup after provider failures
 - Weekly cache validation, complete-report coverage counts and source invalidation
 - Weekly endpoint authorization, pending responses and migration 011 upgrades
+- Named crew/manager/owner/admin authentication, lifecycle and scoped permissions
+- Both-transport account request/response, mixed-cookie and stale-store contracts
+- Browser invitations, activation, supervised recovery, password changes,
+  team administration, store selection, logout-all and shared-crew cutover
+- Private state and unfinished drafts cleared after another tab changes identity
+  or store; permission-aware desktop/mobile Accounts and empty Inventory pages
 
 GitHub Actions runs the suite with Python 3.12 and a disposable PostgreSQL 16
 service, supplying `TEST_DATABASE_URL` explicitly.
@@ -76,6 +88,14 @@ observations are excluded from row comparisons. Lease and heartbeat timestamps
 are advanced after an actual worker kill to avoid waiting several minutes.
 All child processes refuse external AI transport. CI uploads JUnit/browser
 artifacts and the release-rehearsal log.
+
+CI also runs `python -m backend.shiftly.runtime.accounts_rehearsal
+--create-databases` using separate disposable `shiftly_accounts_rehearsal` and
+`shiftly_accounts_restore` databases. It verifies migration 013→014, explicit
+synthetic ownership mapping, account/session/credential revocations, named report
+actors and exact restoration of rows, sequences, foreign keys, checks, triggers
+and functions. Its created databases are removed even on failure. The account
+recovery log is uploaded as a separate CI artifact.
 
 See [focused verification evidence](workstreams/focused-verification.md).
 

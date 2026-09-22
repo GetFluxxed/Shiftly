@@ -34,29 +34,46 @@ document.querySelector("#show-signin-from-manager").addEventListener("click", ()
   managerSignupError.classList.add("hidden");
 });
 
-fetch("/api/auth/status")
-  .then((response) => response.json())
-  .then((payload) => {
-    if (payload.role === "manager") window.location.replace("/manager.html");
-    if (payload.role === "crew") window.location.replace("/crew.html");
-  })
-  .catch(() => {});
+function workspaceFor(payload) {
+  if (payload.actor) {
+    const capabilities = payload.actor.capabilities || [];
+    return capabilities.includes("reports.view") ? "/manager.html" : capabilities.includes("reports.submit") ? "/crew.html" : "/accounts.html";
+  }
+  return payload.role === "manager" ? "/manager.html" : "/crew.html";
+}
+
+(async () => {
+  try {
+    const response = await fetch("/api/accounts/status", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) return; // Invalid named cookies must never trigger legacy fallback.
+    if (payload.authenticated) return window.location.replace(workspaceFor(payload));
+    if (payload.reauthenticationRequired) {
+      const legacy = await fetch("/api/auth/status", { cache: "no-store" });
+      const session = await legacy.json();
+      if (legacy.ok && session.authenticated) window.location.replace(workspaceFor(session));
+    }
+  } catch { /* Keep sign-in available if the connection is temporarily unavailable. */ }
+})();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   error.classList.add("hidden");
   try {
-    const response = await fetch("/api/auth/login", {
+    const username = document.querySelector("#username").value.trim();
+    const response = await fetch(username ? "/api/accounts/login" : "/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         storeCode: document.querySelector("#store-code").value.trim(),
+        ...(username ? { username } : {}),
         password: document.querySelector("#password").value,
       }),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Unable to sign in.");
-    window.location.replace(payload.role === "manager" ? "/manager.html" : "/crew.html");
+    document.querySelector("#password").value = "";
+    window.location.replace(workspaceFor(payload));
   } catch (loginError) {
     error.textContent = loginError.message;
     error.classList.remove("hidden");
@@ -113,3 +130,5 @@ managerSignupForm.addEventListener("submit", async (event) => {
     managerSignupError.classList.remove("hidden");
   }
 });
+
+window.addEventListener("pagehide", () => document.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; }));

@@ -33,8 +33,14 @@ def session_token(handler):
     return ""
 
 
+def _cookie_header(handler):
+    if hasattr(handler.headers, 'get_all'):
+        return ';'.join(handler.headers.get_all('Cookie', []))
+    return handler.headers.get('Cookie', '')
+
+
 def cookie_token(handler, cookie_name):
-    cookie = handler.headers.get("Cookie", "")
+    cookie = _cookie_header(handler)
     for item in cookie.split(";"):
         name, separator, value = item.strip().partition("=")
         if separator and name == cookie_name:
@@ -45,7 +51,7 @@ def cookie_token(handler, cookie_name):
 def named_account_token(handler):
     """Preserve absence versus a supplied empty/malformed/duplicate named cookie."""
     values = []
-    for item in handler.headers.get("Cookie", "").split(";"):
+    for item in _cookie_header(handler).split(";"):
         name, separator, value = item.strip().partition("=")
         if name == "shiftly_account_session":
             values.append(value if separator else "")
