@@ -43,13 +43,16 @@ class ReportSubmission:
         self.quality_gate = quality_gate
         self.enqueue = enqueue
 
-    def submit(self, store_id, fields):
+    def submit(self, store_id, fields, *, actor_token=None, accounts=None, legacy_credentials=None):
         report = prepare_report(fields)
         employee, shift, notes = report["employee"], report["shift"], report["notes"]
         self.ensure_allowed(store_id, employee, notes)
         quality = self.quality_gate(report)
         if quality.get("status") != "accepted":
             raise ReportRejected(quality.get("reason") or "Please add meaningful shift details and try again.")
+        if actor_token is not None or legacy_credentials is not None:
+            return self.enqueue(employee, shift, notes, store_id, actor_token=actor_token, accounts=accounts,
+                                legacy_credentials=legacy_credentials)
         return self.enqueue(employee, shift, notes, store_id)
 
 
@@ -81,15 +84,27 @@ class ReportsService:
         if similarity >= self.similarity_threshold:
             raise ValueError("This report is too similar to your previous report. Add the new details from this shift and try again.")
 
-    def queue_report(self, employee, shift, notes, store_id):
+    def queue_report(self, employee, shift, notes, store_id, *, actor_token=None, accounts=None, legacy_credentials=None):
         # Keep the historical hash bytes and store-scoped uniqueness contract.
         report_hash = hashlib.sha256(f"{employee.lower()}|{shift}|{notes.lower()}".encode()).hexdigest()
-        saved = self.repository.enqueue(employee, shift, notes, store_id, report_hash)
+        if actor_token is not None or legacy_credentials is not None:
+            saved = self.repository.enqueue(employee, shift, notes, store_id, report_hash,
+                                            actor_token=actor_token, accounts=accounts,
+                                            legacy_credentials=legacy_credentials)
+        else:
+            saved = self.repository.enqueue(employee, shift, notes, store_id, report_hash)
         self.wake()
         return saved
 
     def list_for_manager(self, manager_id):
         rows = self.repository.for_manager(manager_id)
+        return self._results(rows)
+
+    def list_for_actor(self, token, accounts):
+        return self._results(self.repository.for_actor(token, accounts))
+
+    @staticmethod
+    def _results(rows):
         return [
             {
                 "id": str(row[0]),

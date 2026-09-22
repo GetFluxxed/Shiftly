@@ -2,7 +2,7 @@
 
 from backend.shiftly.identity import IdentityRepository
 from backend.shiftly.stores import StoresRepository, StoresService
-from auth import is_manager, session_store_id
+from auth import is_manager, session_store_id, request_principal
 from database import db_connection
 from security import cookie_token
 
@@ -12,6 +12,8 @@ def _stores():
 
 
 def manager_username(manager_id):
+    if hasattr(manager_id, "user_id"):
+        return manager_id.username
     return _stores().manager_username(manager_id)
 
 
@@ -28,8 +30,7 @@ def manager_accounts(store_id):
 
 
 def is_crew(handler):
-    store_id = IdentityRepository(db_connection).crew_store(cookie_token(handler, "shiftly_crew_session"))
-    if store_id:
-        return store_id
-    manager_id = is_manager(handler)
-    return session_store_id(handler, manager_id) if manager_id else None
+    principal = request_principal(handler)
+    if principal and (not principal.named or 'reports.submit' in principal.actor.capabilities):
+        return principal.store_id
+    return None

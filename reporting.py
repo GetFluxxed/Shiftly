@@ -160,8 +160,9 @@ def _reports_service():
     )
 
 
-def queue_report(employee, shift, notes, store_id):
-    return _reports_service().queue_report(employee, shift, notes, store_id)
+def queue_report(employee, shift, notes, store_id, *, actor_token=None, accounts=None, legacy_credentials=None):
+    return _reports_service().queue_report(employee, shift, notes, store_id,
+                                         actor_token=actor_token, accounts=accounts, legacy_credentials=legacy_credentials)
 
 
 def claim_job(*, connect=None):
@@ -430,6 +431,10 @@ def ensure_submission_allowed(store_id, employee, notes):
 
 def database_reports(manager_id):
     return _reports_service().list_for_manager(manager_id)
+
+
+def account_reports(token, accounts):
+    return _reports_service().list_for_actor(token, accounts)
 
 
 def _weekly_source(rows, report_count):

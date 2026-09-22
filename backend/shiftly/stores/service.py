@@ -19,5 +19,8 @@ class StoresService:
     def heads_up(self, store_id):
         return self.repository.heads_up(store_id)
 
-    def save_heads_up(self, store_id, message):
+    def save_heads_up(self, store_id, message, *, actor_token=None, accounts=None, legacy_credentials=None):
+        if actor_token is not None or legacy_credentials is not None:
+            return self.repository.save_heads_up(store_id, clean(message, 1000), actor_token=actor_token, accounts=accounts,
+                                                  legacy_credentials=legacy_credentials)
         return self.repository.save_heads_up(store_id, clean(message, 1000))

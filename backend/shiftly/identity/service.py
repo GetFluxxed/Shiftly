@@ -29,8 +29,9 @@ class SessionResult:
 class IdentityService:
     def __init__(self, repository, stores, *, admin_key="", session_ttl=28800,
                  admission=None, token_factory=secrets.token_urlsafe,
-                 password_hasher=password_hash, store_lookup=None, username_lookup=None):
+                 password_hasher=password_hash, store_lookup=None, username_lookup=None, accounts=None):
         self.repository = repository
+        self._accounts = accounts
         self.stores = stores
         self.admin_key = admin_key
         self.session_ttl = session_ttl
@@ -39,6 +40,22 @@ class IdentityService:
         self.password_hasher = password_hasher
         self.store_lookup = store_lookup if store_lookup is not None else stores.store_for_code
         self.username_lookup = username_lookup if username_lookup is not None else stores.manager_username
+
+    @property
+    def accounts(self):
+        if self._accounts is None:
+            from .accounts import AccountsService
+            self._accounts = AccountsService(
+                self.repository.connect, self.stores, admission=self.admission,
+                token_factory=self.token_factory, password_hasher=self.password_hasher,
+                session_ttl=self.session_ttl,
+            )
+        return self._accounts
+
+    def resolve_principal(self, *, account_token=None, manager_token="", crew_token=""):
+        from .principal import resolve_principal
+        return resolve_principal(self, account_token=account_token,
+                                 manager_token=manager_token, crew_token=crew_token)
 
     def manager_id(self, token):
         return self.repository.manager_id(token)
@@ -93,6 +110,7 @@ class IdentityService:
                 for _, salt, candidate_hash in credentials
             ) else "crew"
         manager_id = None
+        verified_salt = None
         if role == "crew":
             candidate_hash = self.password_hasher(password, f"shiftly-crew:{hash_store_code(store_code)}")
             if not self.repository.crew_password_matches(store_id, candidate_hash):
@@ -105,8 +123,10 @@ class IdentityService:
             if not manager:
                 raise IdentityError("unauthenticated", "Incorrect store code or password.")
             manager_id = manager[0]
+            verified_salt, candidate_hash = manager[1], manager[2]
         token = self.token_factory(32)
-        self.repository.issue_session(role, store_id, manager_id, token, self.session_ttl)
+        self.repository.issue_session(role, store_id, manager_id, token, self.session_ttl,
+                                      expected_salt=verified_salt, expected_hash=candidate_hash)
         response = {"authenticated": True, "role": role}
         if manager_id is not None:
             response["managerName"] = self.username_lookup(manager_id)
