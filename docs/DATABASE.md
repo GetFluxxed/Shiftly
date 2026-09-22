@@ -1,11 +1,14 @@
 # Database baseline
 
-Baseline: `53fdd36`. The inventory additions at the end are planned; only the
+Baseline: `e01e84e`. The inventory additions at the end are planned; only the
 existing schema and migrations listed below are currently implemented.
 
 ## Current schema overview
 
-The app uses PostgreSQL and runs SQL migrations in order. Startup ensures all migration files are applied before the server begins handling routes.
+The app uses PostgreSQL and runs SQL migrations in order. The new runtime uses
+`python -m backend.shiftly.runtime.migrate` as a coordinated release command;
+FastAPI and the standalone worker require the schema to be ready at startup.
+The legacy entry point retains its compatibility migration wrapper.
 
 ### Core tables
 - reports
@@ -19,6 +22,8 @@ The app uses PostgreSQL and runs SQL migrations in order. Startup ensures all mi
 - store_heads_up
 - weekly_overview_cache
 - schema_migrations
+- briefing_job_recovery
+- runtime_worker_status
 
 ### Key relationships
 - reports belong to a store
@@ -48,6 +53,8 @@ The migration sequence currently includes:
 - 009_manager_last_sign_in.sql
 - 010_store_scoped_report_hash.sql
 - 011_weekly_overview_cache.sql
+- 012_briefing_job_recovery.sql
+- 013_runtime_operations.sql
 
 Migration 010 replaces the original global report-hash uniqueness constraint
 with uniqueness on `(store_id, report_hash)`. Identical reports at different

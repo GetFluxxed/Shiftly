@@ -1,5 +1,11 @@
 # Implementation baseline and transition handoff
 
+**Historical baseline:** this file records the pre-integration starting point.
+Services, FastAPI and the independent worker have since merged through `e01e84e`.
+Use [HANDOFF.md](HANDOFF.md) and
+[focused verification evidence](workstreams/focused-verification.md) for current
+readiness. The sections below are retained as migration history.
+
 Updated: 2026-09-20. This file records the starting implementation.
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) defines the new delivery plan.
 

@@ -11,11 +11,14 @@ import subprocess
 import sys
 import time
 import tempfile
+import uuid
+import urllib.request
 from http.client import HTTPConnection
 from pathlib import Path
 from urllib.parse import urlparse
 
 import psycopg
+from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +47,10 @@ def provider(report, prompt=None):
 
 
 def run_child(mode):
-    os.environ.setdefault("OPENAI_API_KEY", "")
+    os.environ["OPENAI_API_KEY"] = ""
+    def forbidden(*args, **kwargs):
+        raise AssertionError("External provider calls are forbidden in release rehearsals.")
+    urllib.request.urlopen = forbidden
     from config import load_settings
 
     settings = load_settings(load_env=False)
@@ -118,7 +124,7 @@ def request(base_url, method, path, payload=None, cookie=None):
 
 
 def run_command(command, env):
-    subprocess.run(command, cwd=ROOT, env=env, check=True)
+    subprocess.run(command, cwd=ROOT, env=env, check=True, timeout=60)
 
 
 def migrate(env):
@@ -213,6 +219,90 @@ def backup_restore(source_dsn, restore_dsn, *, source_container=None, restore_co
     return archive_size
 
 
+def wait_until(predicate, description, timeout=20):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.1)
+    raise RuntimeError(f"Timed out: {description}.")
+
+
+def snapshot(dsn):
+    """All durable rows and sequence positions; worker heartbeat is transient."""
+    with psycopg.connect(dsn) as connection:
+        tables = connection.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'runtime_worker_status' ORDER BY tablename").fetchall()
+        rows = {}
+        for (table,) in tables:
+            rows[table] = connection.execute(sql.SQL("SELECT row_to_json(t)::text FROM {} t ORDER BY row_to_json(t)::text").format(sql.Identifier(table))).fetchall()
+        sequences = connection.execute("SELECT sequencename FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename").fetchall()
+        sequence_state = {name: connection.execute(sql.SQL("SELECT last_value,is_called FROM {}").format(sql.Identifier(name))).fetchone() for (name,) in sequences}
+        constraints = connection.execute("SELECT conname,pg_get_constraintdef(oid) FROM pg_constraint WHERE contype='f' AND connamespace='public'::regnamespace ORDER BY conname").fetchall()
+    return {"rows": rows, "sequences": sequence_state, "foreign_keys": constraints}
+
+
+def seed_upgrade_baseline(dsn):
+    """Rehearse the pre-runtime (001–012) schema with retained business data."""
+    from backend.shiftly.runtime.migrate import MIGRATIONS, migrate as apply_migrations
+    with tempfile.TemporaryDirectory() as directory:
+        baseline = Path(directory)
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if path.name < "013_":
+                shutil.copyfile(path, baseline / path.name)
+        applied = apply_migrations(lambda: psycopg.connect(dsn), directory=baseline)
+        if len(applied) != 12:
+            raise RuntimeError("Upgrade rehearsal requires a fresh disposable source database.")
+    report_id = uuid.uuid4()
+    with psycopg.connect(dsn) as connection:
+        store = connection.execute("INSERT INTO stores (name,access_code_hash) VALUES ('Upgrade baseline','upgrade-baseline') RETURNING id").fetchone()[0]
+        connection.execute("INSERT INTO reports (id,store_id,employee,shift,notes,report_hash) VALUES (%s,%s,'Baseline Crew','closing','Original baseline notes.','baseline-report')", (report_id, store))
+        connection.execute("INSERT INTO briefing_jobs (report_id,status,attempts) VALUES (%s,'completed',1)", (report_id,))
+        connection.execute("INSERT INTO briefings (report_id,source_notes,summary,follow_up,model) VALUES (%s,'Original baseline notes.','Baseline summary.','None.','test')", (report_id,))
+    return snapshot(dsn)
+
+
+def verify_upgrade(before, dsn):
+    after = snapshot(dsn)
+    for table, rows in before["rows"].items():
+        if table != "schema_migrations" and after["rows"].get(table) != rows:
+            raise RuntimeError(f"Upgrade changed existing {table} rows.")
+    if after["sequences"] != before["sequences"] or after["foreign_keys"] != before["foreign_keys"]:
+        raise RuntimeError("Upgrade changed sequence state or foreign keys.")
+
+
+def verify_reports(base_url, cookie):
+    status, payload, _ = request(base_url, "GET", "/api/reports", cookie=cookie)
+    expected = {"Rehearsal Crew": "Rehearsal report.", "Recovery Crew": "Recovery report."}
+    if status != 200:
+        raise RuntimeError("Report read failed during rollback/restore verification.")
+    for item in payload.get("reports", []):
+        if item["employee"] in expected:
+            if item["status"] != "completed" or item["notes"] != expected.pop(item["employee"]):
+                raise RuntimeError("Original report or completed briefing was not preserved.")
+    if expected:
+        raise RuntimeError("Rollback/restore lost a rehearsal report.")
+
+
+def verify_database_outage(dsn, base_url, worker):
+    """Refuse connections to this disposable database and terminate its sessions."""
+    database = conninfo_to_dict(dsn)["dbname"]
+    admin_dsn = make_conninfo(dsn, dbname="postgres")
+    with psycopg.connect(admin_dsn, autocommit=True) as admin:
+        try:
+            admin.execute(sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS false").format(sql.Identifier(database)))
+            admin.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=%s", (database,))
+            status, health, _ = request(base_url, "GET", "/api/health")
+            if status != 503 or health["databaseConfigured"] or health["worker"]["state"] != "unavailable":
+                raise RuntimeError("Health did not report the database outage.")
+            if worker.wait(timeout=15) == 0:
+                raise RuntimeError("Worker did not signal lost database ownership to its supervisor.")
+        finally:
+            admin.execute(sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS true").format(sql.Identifier(database)))
+    wait_until(lambda: request(base_url, "GET", "/api/health")[0] == 200,
+               "API reconnects after database outage")
+
+
 def rehearse():
     source_dsn = os.environ["REHEARSAL_DATABASE_URL"]
     restore_dsn = os.environ["REHEARSAL_RESTORE_DATABASE_URL"]
@@ -223,28 +313,44 @@ def rehearse():
         "ADMIN_SIGNUP_KEY": "rehearsal-admin-key",
         "SECURE_COOKIES": "false",
         "SHIFTLY_WORKER_MODE": "external",
+        "WEB_CONCURRENCY": "1",
+        "DB_POOL_TIMEOUT": "0.5",
+        "DB_CONNECT_TIMEOUT": "2",
+        "SHUTDOWN_TIMEOUT": "0.5",
     })
+    env.pop("REHEARSAL_PROVIDER_DELAY", None)
     restore_env = dict(env)
     restore_env["DATABASE_URL"] = restore_dsn
 
+    before_upgrade = seed_upgrade_baseline(source_dsn)
     migrate(env)
+    verify_upgrade(before_upgrade, source_dsn)
     migrate(env)
     migrate(restore_env)
     concurrent = [
         subprocess.Popen([sys.executable, "-m", "backend.shiftly.runtime.migrate"], cwd=ROOT, env=env)
         for _ in range(2)
     ]
-    if any(process.wait(timeout=30) != 0 for process in concurrent):
-        raise RuntimeError("Concurrent migration rehearsal failed.")
+    try:
+        statuses = [process.wait(timeout=30) for process in concurrent]
+        if any(status != 0 for status in statuses):
+            raise RuntimeError("Concurrent migration rehearsal failed.")
+    finally:
+        for process in concurrent:
+            stop_process(process)
 
     api_port = free_port()
     api_env = dict(env)
     api_env["PORT"] = str(api_port)
     api = start_process("api", api_env, api_port)
-    worker = start_process("worker", env)
+    worker = None
     base_url = f"http://127.0.0.1:{api_port}"
     try:
         wait_for_http(base_url)
+        status, health, _ = request(base_url, "GET", "/api/health/worker")
+        if status != 503 or health["state"] != "not_started":
+            raise RuntimeError("API must report the absent separate worker.")
+        worker = start_process("worker", env)
         status, signup, cookies = request(
             base_url,
             "POST",
@@ -300,6 +406,7 @@ def rehearse():
         if not reports or reports[0]["status"] != "completed":
             raise RuntimeError("Worker did not complete the rehearsal report.")
 
+        stop_process(worker)
         request(base_url, "POST", "/api/auth/logout", cookie=manager_cookie)
         _, _, cookies = request(
             base_url,
@@ -322,19 +429,29 @@ def rehearse():
             recovery_id = connection.execute(
                 "SELECT id FROM reports WHERE employee = 'Recovery Crew' ORDER BY created_at DESC LIMIT 1"
             ).fetchone()[0]
-        stop_process(worker)
+        worker = start_process("worker", {**env, "REHEARSAL_PROVIDER_DELAY": "30"})
+        def claimed():
+            with psycopg.connect(source_dsn) as connection:
+                return connection.execute("SELECT status,attempts FROM briefing_jobs WHERE report_id=%s", (recovery_id,)).fetchone() == ("processing", 1)
+        wait_until(claimed, "delayed worker claims the recovery report")
+        worker.kill()
+        worker.wait(timeout=5)
         with psycopg.connect(source_dsn) as connection:
-            connection.execute(
-                "DELETE FROM briefings WHERE report_id = %s", (recovery_id,)
-            )
+            if connection.execute("SELECT count(*) FROM briefings WHERE report_id=%s", (recovery_id,)).fetchone()[0] != 0:
+                raise RuntimeError("Recovery report completed before the worker was killed.")
+            # Advance only lease/heartbeat time; the actual claim and crash are real.
             connection.execute(
                 """
                 UPDATE briefing_jobs
-                SET status = 'processing', locked_at = NOW() - INTERVAL '10 minutes', attempts = 1
+                SET locked_at = NOW() - INTERVAL '10 minutes'
                 WHERE report_id = %s
                 """,
                 (recovery_id,),
             )
+            connection.execute("UPDATE runtime_worker_status SET observed_at=NOW()-INTERVAL '61 seconds'")
+        status, health, _ = request(base_url, "GET", "/api/health/worker")
+        if status != 503 or health["state"] != "stalled" or health["queueDepth"] != 1:
+            raise RuntimeError("API failed to expose the crashed worker and pending queue.")
         worker = start_process("worker", env)
         _, _, cookies = request(
             base_url,
@@ -360,27 +477,62 @@ def rehearse():
             ).fetchone()[0]
         if briefing_count != 1:
             raise RuntimeError("Recovery created an unexpected number of briefings.")
+        with psycopg.connect(source_dsn) as connection:
+            if connection.execute("SELECT attempts FROM briefing_jobs WHERE report_id=%s", (recovery_id,)).fetchone() != (2,):
+                raise RuntimeError("Recovery did not use a second fenced attempt.")
+        verify_database_outage(source_dsn, base_url, worker)
+        worker = start_process("worker", env)
+        wait_until(lambda: request(base_url, "GET", "/api/health/worker")[0] == 200,
+                   "worker recovers after database outage")
+        verify_reports(base_url, manager_cookie)
 
         legacy_env = dict(env)
         legacy_port = free_port()
         legacy_env["PORT"] = str(legacy_port)
         legacy = start_process("legacy", legacy_env, legacy_port)
         try:
-            wait_for_http(f"http://127.0.0.1:{legacy_port}")
+            legacy_url = f"http://127.0.0.1:{legacy_port}"
+            wait_for_http(legacy_url)
+            verify_reports(legacy_url, manager_cookie)
         finally:
             stop_process(legacy)
 
-        backup_restore(
+        # Stop activity before comparing a consistent archive, including sessions.
+        stop_process(worker)
+        stop_process(api)
+        before_restore = snapshot(source_dsn)
+        archive_bytes = backup_restore(
             source_dsn, restore_dsn,
             source_container=os.environ.get("REHEARSAL_SOURCE_CONTAINER"),
             restore_container=os.environ.get("REHEARSAL_RESTORE_CONTAINER"),
         )
-        with psycopg.connect(restore_dsn) as restored:
-            if restored.execute("SELECT COUNT(*) FROM reports").fetchone()[0] < 1:
-                raise RuntimeError("Restored database did not contain the rehearsal report.")
-        print("Release rehearsal passed: migration, API, worker, report completion, backup and restore.")
+        if snapshot(restore_dsn) != before_restore:
+            raise RuntimeError("Restored rows, sequences or foreign keys do not match the backup source.")
+        restored_port = free_port()
+        restored_api = start_process("api", restore_env, restored_port)
+        try:
+            restored_url = f"http://127.0.0.1:{restored_port}"
+            wait_for_http(restored_url)
+            verify_reports(restored_url, manager_cookie)
+            status, _, cookies = request(restored_url, "POST", "/api/auth/login", {
+                "storeCode": "rehearsal-store", "password": "manager-password-123",
+            })
+            if status != 200:
+                raise RuntimeError("Manager could not sign in to the restored database.")
+            verify_reports(restored_url, cookies[0])
+        finally:
+            stop_process(restored_api)
+        print(json.dumps({"result": "passed", "checks": [
+            "fresh migration", "001-012 upgrade preserving data", "repeat/concurrent migration",
+            "API and independent worker", "SIGKILL and fenced lease recovery", "worker health",
+            "database outage and reconnect", "legacy rollback with original sessions/reports",
+            "archive restore: all rows, sequences and foreign keys", "restored API login and reports",
+        ], "archiveBytes": archive_bytes, "tablesCompared": len(before_restore["rows"]),
+            "sequencesCompared": len(before_restore["sequences"]),
+            "foreignKeysCompared": len(before_restore["foreign_keys"])}))
     finally:
-        stop_process(worker)
+        if worker is not None:
+            stop_process(worker)
         stop_process(api)
 
 

@@ -100,8 +100,8 @@ async def login(request: Request, context: AppContext = Depends(get_app_context)
             fields,
             client_key=client_key(request),
         )
-    except RequestBodyError as error:
-        return _error(str(error), 400)
+    except RequestBodyError:
+        return _error("Invalid login request.", 400)
     except IdentityError as error:
         return _identity_error(error)
     return _set_session_cookie(

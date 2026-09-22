@@ -1,5 +1,29 @@
 # API baseline
 
+## Transport verification — 2026-09-21
+
+The existing routes and pages are implemented on both the legacy HTTP server
+and FastAPI. The focused verification follow-up runs the complete contract
+suite against both, including session expiry/revocation, manager membership
+scope, selected-store writes and request-supplied store-ID spoofing.
+
+Malformed login requests return `400` with `Invalid login request.` Other JSON
+write routes return `400` with `Request is empty or too large.` for empty or
+oversized bodies, and `Invalid report format.` for invalid JSON/non-object/
+undecodable bodies. Invalid Head's Up requests now return JSON instead of
+disconnecting the legacy client. Authentication precedes report/Head's Up body
+validation.
+
+Compatibility routes do not redirect trailing slashes. Unknown GET paths return
+HTML `404`; unknown POST paths return `404 {"error":"Not found."}`. Unsupported
+methods retain legacy `501`, including an empty HEAD body. FastAPI's automatic
+`/docs`, `/redoc` and `/openapi.json` HTTP endpoints are disabled for this existing
+surface. A future versioned module can deliberately define its own methods and
+documentation. FastAPI retains the existing security headers and applies
+`Cache-Control: no-store` to API responses, including session responses.
+
+See [verification evidence](workstreams/focused-verification.md) for release gates.
+
 Updated: 2026-09-20. The first sections describe implemented behavior. The
 versioned inventory routes below are proposed contracts for the
 [implementation plan](IMPLEMENTATION_PLAN.md), not available endpoints.

@@ -1,5 +1,31 @@
 # Deployment baseline
 
+## Verified runtime, pending hosted cutover — 2026-09-21
+
+FastAPI and a separate worker are implemented and verified on disposable local
+PostgreSQL. Run the migration command once before starting either process:
+
+```sh
+python -m backend.shiftly.runtime.migrate
+python -m uvicorn backend.shiftly.app:create_app --factory --host 127.0.0.1 --port 4174 --workers 1
+python -m backend.shiftly.jobs.worker
+```
+
+Run API and worker under separate supervisors, with `SHIFTLY_WORKER_MODE=external`
+and `WEB_CONCURRENCY=1`. The migration command serializes concurrent attempts;
+neither new process applies migrations during startup. Legacy rollback preserves
+the forward-compatible schema and can also use external worker mode.
+
+The focused rehearsal demonstrates an upgrade from migrations 001–012, a real
+worker kill and lease recovery, database connection loss/reconnect, legacy reads
+with existing sessions, and archive restoration with API login. It uses two fresh
+disposable databases and temporarily disables connections to its source database.
+Follow [TESTING.md](TESTING.md); never use application databases for this runner.
+
+This is local recovery evidence. Actual hosted staging, supervision, backup policy,
+required merge-check configuration and an approved production cutover are still
+Gate P. The existing `render.yaml` remains unchanged.
+
 ## Current deployment configuration
 
 The project ships with a Render config in [render.yaml](../render.yaml). It currently defines:
@@ -66,10 +92,10 @@ and a deployment-wide generation cap.
 - test the health endpoint and key user flows before production promotion
 - keep the existing browser app working while introducing modular changes
 
-## Planned FastAPI and inventory deployment
+## Remaining hosted runtime and inventory deployment
 
-This section describes future work. The current startup and `render.yaml` are
-unchanged by the plan revision.
+The new runtime is verified locally; hosted cutover and inventory deployment
+remain future work. Production startup and `render.yaml` are unchanged.
 
 - Run FastAPI behind an ASGI server with bounded database resources, and start
   durable workers separately. Coordinate migrations once before either begins

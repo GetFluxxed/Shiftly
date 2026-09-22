@@ -47,11 +47,25 @@ jobs:
       - name: Check installed dependencies
         run: python -m pip check
       - name: Run test suite
-        run: pytest -q --browser chromium --tracing=retain-on-failure --screenshot=only-on-failure
-      - name: Upload browser failure artifacts
-        if: failure()
+        run: pytest -q --browser chromium --tracing=retain-on-failure --screenshot=only-on-failure --junitxml=test-results/junit.xml
+      - name: Rehearse upgrade, worker recovery, rollback and restore
+        env:
+          DATABASE_URL: ""
+          OPENAI_API_KEY: ""
+          REHEARSAL_DATABASE_URL: postgresql://shiftly:change-me@localhost:55432/shiftly_rehearsal
+          REHEARSAL_RESTORE_DATABASE_URL: postgresql://shiftly:change-me@localhost:55432/shiftly_restore
+          REHEARSAL_SOURCE_CONTAINER: ${{ job.services.postgres.id }}
+          REHEARSAL_RESTORE_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$REHEARSAL_SOURCE_CONTAINER" createdb -U shiftly shiftly_rehearsal
+          docker exec "$REHEARSAL_RESTORE_CONTAINER" createdb -U shiftly shiftly_restore
+          python scripts/rehearse_release.py | tee release-rehearsal.log
+      - name: Upload verification evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shiftly-browser-test-results
-          path: test-results/
+          name: shiftly-verification-results
+          path: |
+            test-results/
+            release-rehearsal.log
           if-no-files-found: ignore

@@ -2,6 +2,13 @@
 
 Prepared: 2026-09-21. These are implementation assignments, not completion claims.
 
+**Closeout update:** the two implementation lanes are merged through PR #7
+(`e01e84e`). The follow-up [focused verification](../workstreams/focused-verification.md)
+records reproduced compatibility fixes, both-transport contracts and the complete
+disposable recovery rehearsal. These fixes require their own reviewed merge with
+green CI before Gate D is closed. The assignment text below is historical; Gate P
+remains a separate production-release requirement.
+
 ## Starting point and objective
 
 The integrated code baseline is `818a03cb1bcff67c6c36a3ddbbd73a1028894dff`.

@@ -1,19 +1,23 @@
 # Shiftly architecture: current baseline and target
 
-Updated: 2026-09-20. Delivery authority: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+Updated: 2026-09-21. Delivery authority: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 ## Current runtime
 
-At baseline `53fdd36`, Shiftly is a Python application with extracted modules:
-`config.py`, `database.py`, `auth.py`, `security.py`, `store_service.py`,
-`reporting.py`, and `routes.py`. `server.py` still owns HTTP dispatch, static
-assets, migration startup, and an in-process worker thread. Routes still depend
-on server globals, so module boundaries are incomplete.
+Merged baseline `e01e84e` includes framework-independent identity, store and
+report services under `backend/shiftly/`, a FastAPI application factory and
+compatibility routes, bounded database resources, coordinated migrations and a
+separate durable worker. Legacy adapters delegate to these boundaries; route
+discovery of `server.py` globals has been removed. The supported new topology is
+one API process plus one separately supervised worker.
 
 PostgreSQL stores accounts, sessions, memberships, reports, briefing jobs,
 briefings, Head's Up, and the weekly cache. The existing client is HTML/CSS/JS.
-Tests and CI exist; FastAPI, inventory, media storage, sales ingestion, and a
-separate worker deployment do not yet exist.
+Contract and Chromium browser tests run on both transports. The focused
+verification follow-up closes request-error and recovery coverage gaps; see
+[verification evidence](workstreams/focused-verification.md). Production still
+uses the legacy entry point in `render.yaml`. Inventory, media storage, sales
+ingestion and the installable client remain planned.
 
 ## Target application
 
@@ -55,7 +59,9 @@ web/
   shared/                 authenticated API client and reusable controls
 ```
 
-These directories are a target, not a claim that they are present. Choose client
+Identity, stores, reports, jobs, runtime and the API/core boundaries are implemented.
+Inventory, media, vision, sales, forecasting, receiving and the new client tree
+remain targets. Choose client
 build tooling in the app-shell work package; preserve existing pages while
 introducing feature modules and a consistent API client.
 

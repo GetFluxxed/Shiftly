@@ -1,6 +1,30 @@
 # Shiftly handoff
 
-Updated: 2026-09-20.
+Updated: 2026-09-21.
+
+## Current implementation and readiness
+
+Main at `e01e84e` includes merged PRs #1–#7: worker recovery, contract/browser
+coverage, report/identity/store services, FastAPI routes, bounded resources,
+coordinated migrations and a standalone worker. Its hosted CI passed.
+
+The focused verification follow-up adds the complete contract matrix and recovery
+rehearsal, and fixes the request/routing regressions those checks found. Read
+[focused verification evidence](workstreams/focused-verification.md) for tested
+commits, counts, commands and gate status.
+
+- Gate D technical checks: verified in the focused-verification branch.
+- Gate D closeout: review and merge that branch with green CI.
+- Gate P: open. Hosted staging, process supervision, backup policy, required
+  merge-check administration and approved production cutover remain separate.
+- `render.yaml` still uses the legacy server. No production deployment occurred.
+
+After the follow-up merges, start A1/A2 from current main: Operations/Inventory
+navigation and explicit inventory actors/permissions. Then implement I1 catalog,
+units, packs and weight profiles. Manual inventory precedes camera counting.
+Preserve the old uncommitted reports worktree; do not use it as the new baseline.
+
+The remaining sections record the historical planning baseline, not current status.
 
 ## Baseline
 

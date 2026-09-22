@@ -1,15 +1,20 @@
 import hashlib
 import http.client
 import json
+import socket
+import time
 from dataclasses import dataclass
 from threading import Thread
 
 import pytest
+import uvicorn
 from http.server import ThreadingHTTPServer
 
 import reporting
 import server
 from database import db_connection
+from backend.shiftly.app import create_app
+from config import Settings
 
 
 @dataclass
@@ -49,9 +54,36 @@ class ApiClient:
             connection.close()
 
 
-@pytest.fixture
-def app_server(isolated_database, monkeypatch):
+@pytest.fixture(params=["legacy", "fastapi"])
+def app_server(isolated_database, monkeypatch, request):
     monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "contract-admin-key")
+    monkeypatch.setattr(server, "SECURE_COOKIES", False)
+    if request.param == "fastapi":
+        app = create_app(
+            settings=Settings(database_url=isolated_database,
+                              admin_signup_key="contract-admin-key", secure_cookies=False),
+            connection_factory=db_connection,
+            # Late binding lets the same provider-failure tests exercise both servers.
+            provider=lambda report, prompt=None: reporting.call_openai(report, prompt),
+        )
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen()
+            port = listener.getsockname()[1]
+            runner = uvicorn.Server(uvicorn.Config(app, log_level="error"))
+            thread = Thread(target=runner.run, kwargs={"sockets": [listener]}, daemon=True)
+            thread.start()
+            try:
+                deadline = time.monotonic() + 5
+                while not runner.started and thread.is_alive() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                assert runner.started, "FastAPI contract server did not start"
+                yield f"http://127.0.0.1:{port}"
+            finally:
+                runner.should_exit = True
+                thread.join(timeout=5)
+                assert not thread.is_alive(), "FastAPI contract server did not stop"
+        return
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.ShiftlyHandler)
     thread = Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()

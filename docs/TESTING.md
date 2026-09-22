@@ -7,7 +7,8 @@ The integration suite requires a disposable PostgreSQL database. It reads only
 the database in `.env`. Database tests fail with setup instructions when this
 variable is missing.
 
-Install the dependencies with `python3 -m pip install -r requirements.txt`, then
+Install the dependencies with `python3 -m pip install -r requirements-dev.lock`
+and `python3 -m playwright install chromium`, then
 start a separate test database (port 55433 keeps it separate from the usual local
 app database on 55432):
 
@@ -25,7 +26,7 @@ Once Postgres is ready, run:
 
 ```sh
 TEST_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:55433/shiftly_test \
-  python3 -m pytest -q
+  python3 -m pytest -q --browser chromium
 ```
 
 Each database test creates and removes its own randomly named schema. Its
@@ -58,17 +59,32 @@ docker stop shiftly-test-db
 GitHub Actions runs the suite with Python 3.12 and a disposable PostgreSQL 16
 service, supplying `TEST_DATABASE_URL` explicitly.
 
-The merged FastAPI foundation adds `tests/transport_parity/`. These checks run
-the legacy HTTP server and the development FastAPI app against equivalent
-disposable database state for health responses, public assets, protected-page
-redirects, traversal denial, and security headers. They do not claim full
-browser parity until the Codex identity/store/runtime service checkpoint is
-published.
+`tests/contracts/` runs unchanged assertions through real HTTP listeners for
+both legacy and FastAPI. Added edge cases cover malformed and oversized bodies,
+unsupported routes/methods, cookie/security attributes, store selection,
+membership scope, revocation and account creation. `tests/browser/` exercises
+Chromium flows on both servers; `tests/transport_parity/` compares health/static
+responses. Existing service, transaction, worker crash/fencing and bounded-resource
+tests remain in the complete suite.
 
-## Planned coverage for the next modules
+CI now also runs `scripts/rehearse_release.py` against separate empty source and
+restore databases. It proves fresh/upgrade/repeat/concurrent migrations,
+SIGKILL recovery, stale-worker health, database outage/reconnect, legacy rollback,
+and a real archive restore. Restore checks compare every durable table, sequence
+state and foreign key, then sign in to the restored API. Only transient worker
+observations are excluded from row comparisons. Lease and heartbeat timestamps
+are advanced after an actual worker kill to avoid waiting several minutes.
+All child processes refuse external AI transport. CI uploads JUnit/browser
+artifacts and the release-rehearsal log.
 
-These checks are future acceptance requirements from
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), not existing test claims.
+See [focused verification evidence](workstreams/focused-verification.md).
+
+## Coverage requirements for the next modules
+
+These requirements come from [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+FastAPI compatibility and worker recovery are exercised by the current suites
+and rehearsal described above. Inventory-specific rows remain future acceptance
+requirements, not implemented-feature claims.
 
 | Area | Required evidence |
 | --- | --- |
@@ -130,5 +146,6 @@ fail-closed AI fixture.
 `tests/release_rehearsal/test_backup_restore.py` covers missing prerequisites,
 source/target reuse, failed/timed-out backup and restore, sanitized failures and
 the container archive pipeline. The real archive/restore and restored API smoke
-results are recorded in the integration handoff. This local check does not
-complete the broader Round 3 parity, CI or production gates by itself.
+results are recorded in the focused verification handoff. Technical checks must
+be reviewed and merged with green CI to close Gate D. The disposable rehearsal
+does not establish hosted staging or production readiness.

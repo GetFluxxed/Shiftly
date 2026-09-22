@@ -2,6 +2,15 @@
 
 Updated: 2026-09-20. Baseline inspected: `53fdd36` on `main`.
 
+**Verification update — 2026-09-21:** PRs #1–#7 are merged through `e01e84e`.
+Services, FastAPI compatibility, durable worker and migration commands are now
+implemented. The focused verification branch addresses the remaining request
+compatibility and release-rehearsal gaps. See
+[current evidence and gate status](workstreams/focused-verification.md).
+Gate D requires review and merge of these follow-up fixes with green CI; hosted
+staging and production cutover remain Gate P. The original baseline below is
+historical; the feature ordering and acceptance requirements remain applicable.
+
 This is the authoritative implementation sequence for the next Shiftly release.
 It replaces the earlier baseline-only backlog. It describes planned work, not
 features that already exist. Product rules and worked inventory examples are in
@@ -31,7 +40,7 @@ The inventory workspace will let a manager:
   delivered quantities to invoice lines, and post confirmed receipts to the
   same inventory tracker.
 
-## 2. Current baseline and constraints
+## 2. Historical starting baseline and constraints
 
 - The backend is split across configuration, database, authentication, security,
   routes, reporting, and store services. HTTP still uses `ThreadingHTTPServer`;
