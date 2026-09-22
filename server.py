@@ -13,7 +13,8 @@ from urllib.parse import urlparse
 import psycopg
 
 from backend.shiftly.reports import ReportSubmission
-from auth import is_manager, session_store_id
+from backend.shiftly.identity import IdentityError
+from auth import is_manager, session_store_id, request_principal
 from config import load_settings
 from database import db_connection
 from reporting import (
@@ -23,6 +24,7 @@ from reporting import (
     SYSTEM_PROMPT,
     call_openai,
     database_reports,
+    account_reports,
     ensure_submission_allowed,
     fail_job,
     json_bytes,
@@ -35,11 +37,12 @@ from reporting import (
     claim_job,
     complete_job,
 )
-from routes import add_manager as add_manager_route, login as login_route, save_heads_up as routes_save_heads_up, signup as signup_route, submit_report as report_submission_route, make_identity_service
+from routes import add_manager as add_manager_route, login as login_route, save_heads_up as routes_save_heads_up, signup as signup_route, submit_report as report_submission_route, make_identity_service, account_route
 from security import (
     clean,
     client_key,
     cookie_token,
+    named_account_token,
     login_rate_limited,
     parse_json,
     password_hash,
@@ -141,6 +144,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if account_route(self, method="GET", identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY), secure_cookies=SECURE_COOKIES):
+            return
         if path == "/api/health":
             database_ok = False
             try:
@@ -165,6 +170,16 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(200 if status["status"] == "ok" else 503, status)
             return
         if path == "/api/auth/status":
+            if named_account_token(self) is not None:
+                principal = request_principal(self)
+                actor = principal.actor if principal and principal.named else None
+                self.send_json(200, {
+                    "authenticated": bool(actor),
+                    "role": ("crew" if actor.role == "crew" else "manager") if actor else None,
+                    "managerName": actor.display_name if actor and actor.role != "crew" else None,
+                    "actor": actor.as_dict() if actor else None,
+                })
+                return
             manager_id = is_manager(self)
             crew_store_id = is_crew(self)
             self.send_json(200, {
@@ -179,7 +194,13 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 self.send_json(401, {"error": "Manager authentication required."})
                 return
             try:
-                self.send_json(200, {"reports": database_reports(manager_id)})
+                if hasattr(manager_id, "user_id"):
+                    reports = account_reports(cookie_token(self, "shiftly_account_session"), make_identity_service().accounts)
+                else:
+                    reports = database_reports(manager_id)
+                self.send_json(200, {"reports": reports})
+            except IdentityError as error:
+                self.send_json(401 if error.code == "unauthenticated" else 403, {"error": str(error)})
             except RuntimeError as error:
                 self.send_json(503, {"error": str(error)})
             return
@@ -221,6 +242,17 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             file_path = ROOT / "crew.html"
+        elif path in {"/accounts.html", "/inventory.html"}:
+            principal = request_principal(self)
+            allowed = bool(principal and principal.named)
+            if path == "/inventory.html":
+                allowed = allowed and "inventory.view" in principal.actor.capabilities
+            if not allowed:
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            file_path = ROOT / path.lstrip("/")
         elif path == "/manager.html":
             if not is_manager(self):
                 self.send_response(302)
@@ -237,6 +269,10 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 "/manager.js": ROOT / "manager.js",
                 "/manager.html": ROOT / "manager.html",
                 "/styles.css": ROOT / "styles.css",
+                "/accounts.js": ROOT / "accounts.js",
+                "/inventory.js": ROOT / "inventory.js",
+                "/activate.html": ROOT / "activate.html",
+                "/activate.js": ROOT / "activate.js",
             }
             file_path = public_files.get(path)
             if file_path is None:
@@ -255,6 +291,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if account_route(self, method="POST", identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY), secure_cookies=SECURE_COOKIES):
+            return
         if path == "/api/auth/login":
             routes_login(self)
             return
@@ -267,12 +305,18 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/logout":
             manager_token = cookie_token(self, "shiftly_manager_session")
             crew_token = cookie_token(self, "shiftly_crew_session")
-            make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL).logout(manager_token, crew_token)
+            account_token = named_account_token(self)
+            identity = make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL)
+            identity.logout(manager_token, crew_token)
+            if account_token is not None:
+                identity.accounts.logout(account_token)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             secure = "; Secure" if SECURE_COOKIES else ""
             self.send_header("Set-Cookie", f"shiftly_manager_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
             self.send_header("Set-Cookie", f"shiftly_crew_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
+            if account_token is not None:
+                self.send_header("Set-Cookie", f"shiftly_account_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
             body = json_bytes({"authenticated": False})
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()

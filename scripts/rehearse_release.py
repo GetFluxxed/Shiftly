@@ -263,12 +263,35 @@ def seed_upgrade_baseline(dsn):
 
 
 def verify_upgrade(before, dsn):
+    """Preserve every historical value while allowing explicitly additive schema.
+
+    New columns/tables/sequences/FKs are checked by their feature migration tests;
+    they cannot mask deleted rows, changed old fields or modified old constraints.
+    Restore verification below still compares the entire post-upgrade snapshot.
+    """
     after = snapshot(dsn)
     for table, rows in before["rows"].items():
-        if table != "schema_migrations" and after["rows"].get(table) != rows:
+        if table == "schema_migrations":
+            continue
+        current = after["rows"].get(table)
+        if current is None or len(current) != len(rows):
             raise RuntimeError(f"Upgrade changed existing {table} rows.")
-    if after["sequences"] != before["sequences"] or after["foreign_keys"] != before["foreign_keys"]:
-        raise RuntimeError("Upgrade changed sequence state or foreign keys.")
+        if rows:
+            originals = [json.loads(row[0]) for row in rows]
+            fields = set(originals[0])
+            projected = []
+            for row in current:
+                value = json.loads(row[0])
+                if not fields <= value.keys():
+                    raise RuntimeError(f"Upgrade removed existing {table} fields.")
+                projected.append({field: value[field] for field in fields})
+            canonical = lambda values: sorted(json.dumps(value, sort_keys=True) for value in values)
+            if canonical(originals) != canonical(projected):
+                raise RuntimeError(f"Upgrade changed existing {table} rows.")
+    if any(after["sequences"].get(name) != state for name, state in before["sequences"].items()):
+        raise RuntimeError("Upgrade changed existing sequence state.")
+    if not set(before["foreign_keys"]) <= set(after["foreign_keys"]):
+        raise RuntimeError("Upgrade changed existing foreign keys.")
 
 
 def verify_reports(base_url, cookie):

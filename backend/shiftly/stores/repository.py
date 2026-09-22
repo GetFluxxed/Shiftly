@@ -50,8 +50,16 @@ class StoresRepository:
             for row in rows
         ]
 
-    def save_heads_up(self, store_id, message):
+    def save_heads_up(self, store_id, message, *, actor_token=None, accounts=None, legacy_credentials=None):
         with self.connect() as connection:
+            if actor_token is not None:
+                if accounts is None:
+                    raise ValueError("Named changes require account authorization.")
+                actor = accounts.require(actor_token, "reports.manage", connection=connection, store_id=store_id)
+                accounts._audit(connection, actor, "heads_up.changed", store_id=store_id, business_id=actor.business_id)
+            elif legacy_credentials is not None:
+                from backend.shiftly.identity.repository import IdentityRepository
+                IdentityRepository.authorize_legacy(connection, store_id, manager_required=True, **legacy_credentials)
             connection.execute("DELETE FROM store_heads_up WHERE store_id = %s", (store_id,))
             connection.execute("INSERT INTO store_heads_up (store_id, message, updated_at) VALUES (%s, %s, NOW())", (store_id, message))
             connection.commit()
