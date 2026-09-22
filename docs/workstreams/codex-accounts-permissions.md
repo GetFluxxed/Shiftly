@@ -273,11 +273,39 @@ the transport rehearsal is the current branch's legacy transport, not old code.
 ## Verification and commit record
 
 Baseline at the exact base: **357 passed in 70.33s** with disposable PostgreSQL 16,
-mocked AI and both existing transports/browser cases. Final verification and
-commit SHAs are recorded below after the checkpoint is committed.
+mocked AI and both existing transports/browser cases.
+
+- Backend checkpoint: `7daf62c445792568b8d5b96e3647fe7fdeaa8802`.
+- Shared verification integration:
+  `857188456c91152f92cded805a342ced484e6df7`.
+- Final implementation, including legacy logout serialization:
+  `33b7908beb00eb8050c898c0344a66f2051dd4a3`.
+- A following documentation-only commit records these SHAs and results. The
+  draft PR identifies the final branch head, including that handoff record.
+- Final full suite: **481 passed in 114.10s**. Command:
+  `python -m pytest -q --browser chromium --tracing=retain-on-failure
+  --screenshot=only-on-failure --junitxml=/private/tmp/shiftly-accounts-delivery.xml`.
+  Explicit `TEST_DATABASE_URL` selected the isolated PostgreSQL 16 test database;
+  `DATABASE_URL` and `OPENAI_API_KEY` were empty, `SECURE_COOKIES=false`.
+- Final cookie/identity focused pass: **61 passed in 13.02s**. New disabled-scope
+  inbox tests: **6 passed in 1.10s**, plus **2 existing compatibility tests passed**.
+- Compilation, dependency consistency (`pip check`) and diff checks passed.
+
+The first integrated run found and fixed one expired legacy-cookie compatibility
+case and two historical-row tuple comparisons after adding the nullable actor
+field. A subsequent full run had one existing FastAPI weekly-overview browser
+polling timeout (456 passed, 1 failed); its isolated retry passed, and the next
+three full runs passed (468, 480, then final 481 tests). No timeout, assertion or
+browser test was weakened. Final review also closed empty/malformed/duplicate
+named-cookie fallback and disabled-store legacy inbox exposure, with regression
+tests. A final transaction-lock regression verifies legacy logout waits for an
+in-progress authorized write, matching named logout/revocation ordering. These
+counts are backend plus existing transport/browser coverage, not
+the remaining peer-owned named FastAPI/browser acceptance suite.
 
 Independent account recovery rehearsal (`python -m
-backend.shiftly.runtime.accounts_rehearsal --create-databases`) passed in 1.73s.
+backend.shiftly.runtime.accounts_rehearsal --create-databases`) passed in 1.66s
+at the final implementation SHA, with a 65,675-byte archive.
 It used explicit `ACCOUNTS_REHEARSAL_DATABASE_URL` and
 `ACCOUNTS_REHEARSAL_RESTORE_DATABASE_URL`, plus optional
 `ACCOUNTS_REHEARSAL_SOURCE_CONTAINER` / `ACCOUNTS_REHEARSAL_RESTORE_CONTAINER`.
@@ -291,9 +319,15 @@ verifies 013 historical values, mapping dry-run/apply, named report actors,
 credentials/revocations, scope isolation, suspension, shared-crew cutover and
 restored reads/writes, activation and replay denial. The independently run
 existing release rehearsal additionally covers API/worker restart, worker crash,
-database outage and transport rollback; it passed in 5.96s with a real 63,816-byte
+database outage and transport rollback; it passed in 5.73s with a real 63,972-byte
 archive and exact 20-table, 7-sequence, 33-FK restore comparison. Both sets of
 temporary rehearsal databases were removed.
+
+The disposable `shiftly-accounts-dev-db` container was removed after verification.
+No test servers/workers remain from these runs. The delivery worktree is
+`/Users/getfluxxed/projects/Shiftly-codex-accounts-services`. The original
+`codex/reports-module` worktree and its pre-existing uncommitted files were
+preserved; no existing worktree was reset or cleaned.
 
 Two minimal shared-file adaptations are isolated in an integration commit:
 `tests/test_report_duplicates.py` and `tests/test_weekly_overview.py` still compare
