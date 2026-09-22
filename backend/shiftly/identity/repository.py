@@ -241,7 +241,9 @@ class IdentityRepository:
             raise IdentityError("unauthenticated", "Session access changed. Sign in again.")
 
     def logout(self, manager_token, crew_token):
+        from .accounts_core import policy_lock
         with self.connect() as connection:
+            policy_lock(connection)
             if manager_token:
                 connection.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (hash_token(manager_token),))
             if crew_token:

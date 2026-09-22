@@ -1,5 +1,6 @@
 """Independent security boundary checks for named and compatibility credentials."""
 from dataclasses import replace
+from contextlib import contextmanager
 import http.client
 from http.server import ThreadingHTTPServer
 import json
@@ -269,6 +270,25 @@ def test_account_database_failure_returns_sanitized_error(legacy_account_http, m
     })
     assert response.status == 503
     assert response.json() == {'error': 'Account service is temporarily unavailable.'}
+
+
+def test_legacy_logout_waits_for_in_progress_authorized_writes(legacy_account_http):
+    @contextmanager
+    def short_wait_connection():
+        with db_connection() as connection:
+            connection.execute("SET LOCAL lock_timeout = '100ms'")
+            yield connection
+
+    repository = IdentityRepository(short_wait_connection)
+    with db_connection() as writing:
+        policy_lock(writing)
+        with pytest.raises(psycopg.errors.LockNotAvailable):
+            repository.logout('legacy-owner', 'shared-crew')
+        assert writing.execute("SELECT count(*) FROM manager_sessions WHERE token_hash=%s", (hash_token('legacy-owner'),)).fetchone()[0] == 1
+        assert writing.execute("SELECT count(*) FROM crew_sessions WHERE token_hash=%s", (hash_token('shared-crew'),)).fetchone()[0] == 1
+    repository.logout('legacy-owner', 'shared-crew')
+    assert legacy_account_http.request('GET', '/api/auth/status', cookie=legacy_account_http.cookies['legacy']).json()['authenticated'] is False
+    assert legacy_account_http.request('GET', '/api/auth/status', cookie=legacy_account_http.cookies['shared']).json()['authenticated'] is False
 
 
 def test_expired_legacy_crew_cookie_does_not_block_valid_manager_compatibility(legacy_account_http):
