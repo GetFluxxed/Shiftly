@@ -3,9 +3,13 @@
 Updated: 2026-09-20. Source of truth:
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-The baseline at `53fdd36` has 78 previously verified tests and passing CI. All
-work packages below are planned, not completed. Use small reviewed changes;
-each package includes tests, documentation and rollout considerations.
+Current main is `e01e84e`. F0 recovery/contract work, F1 services/FastAPI and the
+local F2 runtime are implemented. F3 includes pinned dependencies and browser
+CI. The focused verification follow-up adds both-transport API contracts and
+an automated upgrade/outage/restore rehearsal. See
+[verification evidence](workstreams/focused-verification.md) for checks and
+remaining review/merge requirements. Hosted staging, production cutover and
+required-check administration remain release work. A1 onward are not implemented.
 
 ## Ordered work packages
 
@@ -55,11 +59,9 @@ M1 shell design can start earlier; its full release gate includes camera flows.
 
 ## Next bounded task
 
-Start the two bounded assignments in [Round 1](parallel/ROUND_01.md): Codex owns
-worker recovery; GitHub Copilot owns contract/browser tests and CI. They use
-separate branches/worktrees and explicit, disjoint file ownership. Integrate
-their results sequentially before allocating FastAPI implementation work.
-
-Then prepare **F1** as the first FastAPI implementation change.
+Review and merge the focused verification fixes with green CI. Then begin
+**A1/A2**: manager Operations/Inventory navigation and explicit inventory actors
+and permissions, followed by **I1** catalog/units/weight profiles. Use a new
+feature branch from the verified merged main, not the historical reports worktree.
 Do not merge the older worktree wholesale or combine framework migration with
 the complete inventory feature set in one release.
