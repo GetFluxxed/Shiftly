@@ -1,5 +1,103 @@
 # Copilot FastAPI integration handoff
 
+## Publication for integration review — 2026-09-21
+
+The user requested publication and a PR after the diagnostic corrections.
+The complete current worktree, including Copilot's adapters and the fixes below,
+was byte-for-byte identical to the snapshot that passed 250 tests before this
+publication-only documentation update. No additional application changes were
+introduced for publication.
+
+`origin/main` is now `5c67403a9c08707acd033de97b9eaf98667bf34c`, containing the
+previous static foundation PR #5 and Codex runtime PR #6. Its tree matches the
+pre-publication local HEAD `bab9d83`; incorporating this main tip changes history
+only. The feature branch is `codex/integration-fastapi-parity`, with a draft PR
+into `main` for review. Gate D and Gate P remain open as described below.
+
+
+## Diagnostic correction — 2026-09-21
+
+The previous checkpoint report below is historical. The runtime dependency is
+now available and already merged: `bab9d83` consumes Codex final commit
+`ffb61093a6dd943946d91de0f8c6b119c030a671`. Full adapters, browser parameterization
+and the release runner existed as uncommitted work when this diagnosis began.
+This correction preserves that work and does not claim it as a completed PR.
+
+The user requested diagnosis and repair of Copilot's integration blockers. No
+specific failure report accompanied the message, so these findings were
+reproduced directly against an isolated copy of the current worktree:
+
+1. **Health parity depended on the invoking shell.** FastAPI used an injected
+   `openai_api_key="test-key"`; legacy read `OPENAI_API_KEY` from the environment.
+   With the safe empty-key test invocation, the suite produced **242 passed,
+   1 failed** (`test_health_has_compatible_status_and_stable_fields`). The fixture
+   now sets the same fake key for both transports; all existing assertions stay.
+2. **Backup/restore failed when local PostgreSQL clients were absent.** The
+   fallback called `psycopg.Connection.executemany`, which does not exist. Even a
+   cursor substitution would only copy selected rows, omit sequence state and
+   fail to prove a real restore. The native plain-SQL path also lacked fail-fast
+   SQL handling and restored into already migrated tables. Replaced both paths
+   with a custom-format `pg_dump` archive and atomic, fail-fast `pg_restore`.
+   Tools can run natively or inside explicitly selected disposable containers.
+   Seven regression cases cover prerequisites, target identity, failures,
+   timeouts, sanitized diagnostics and the container pipeline.
+
+### Validation
+
+- Disposable PostgreSQL 16 container `shiftly-copilot-diagnosis-db`, random
+  localhost port 52616; synthetic databases only; deterministic AI in both web
+  and worker children. No application `.env`, production data or paid AI.
+- Isolated snapshot: `/private/tmp/shiftly-copilot-diagnosis`.
+- Python 3.14.7; project pool dependency 3.3.2.
+- Targeted parity/rehearsal regression tests: **16 passed in 1.23s**.
+- Full combined suite including Chromium on both transports: **250 passed in
+  44.37s**. No skipped or weakened assertions. Compilation and `pip check` passed.
+- Full rehearsal passed: fresh/repeated/concurrent migrations, FastAPI startup,
+  real separate worker, report completion, stale-job recovery, legacy startup,
+  and real PostgreSQL backup/restore using the disposable container's clients.
+- Additional restore validation: all **12** application/migration tables matched
+  source rows exactly (live worker heartbeat excluded); **4** sequences and
+  **11** foreign keys matched. The restored FastAPI process accepted manager
+  login and returned both completed reports, original notes and linked briefings.
+- Cleanup: the disposable database container was removed after validation. The
+  temporary test environment was removed; original file backups were retained
+  under `/private/tmp/shiftly-copilot-before-fix`. The older reports worktree
+  retained its original tracked-diff fingerprint.
+
+Full suite command (temporary database address is evidence, not a permanent
+configuration):
+
+```sh
+DATABASE_URL='' OPENAI_API_KEY='' \
+TEST_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:52616/shiftly_test \
+/private/tmp/shiftly-copilot-diagnosis-venv/bin/python -m pytest -q \
+  --browser chromium --tracing=retain-on-failure --screenshot=only-on-failure
+```
+
+The rehearsal used source `shiftly_rehearsal_fixed`, restore `shiftly_restore`,
+and `REHEARSAL_SOURCE_CONTAINER=REHEARSAL_RESTORE_CONTAINER=shiftly-copilot-diagnosis-db`.
+The databases have different names within this one disposable container.
+See `docs/TESTING.md` for a reproducible two-container invocation.
+
+### Scope and remaining work
+
+Only the runner, parity fixture, new backup regression tests, testing instructions
+and this handoff were corrected. Application adapters, Codex runtime/service
+files, shared fixtures and older worktrees were preserved. At the end of the
+diagnostic correction, changes remained local with no commit, push, merge or
+deployment. The subsequent user-authorized publication is recorded above.
+
+**Gate D remains open.** This repairs two reproduced blockers, not every remaining
+Round 3 requirement. Contract tests still need the full two-transport matrix;
+malformed-input and unsupported-route parity need completion. The API middleware
+already preserves JSON `no-store` responses. The release harness still lacks the full requested
+outage/health and upgrade matrix; its stale-job setup is not itself a forced
+worker-death proof. Runtime recovery tests provide separate coverage. CI wiring,
+current API/deployment documentation, review and merged CI evidence remain due.
+**Gate P remains open** pending hosted staging and deployment review.
+
+## Historical independent checkpoint
+
 ## Assignment identity
 
 - Branch: `codex/integration-fastapi-parity`

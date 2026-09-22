@@ -95,3 +95,40 @@ charges or access production images.
 - Never copy production secrets or data into tests.
 - Do not mock the database layer for the integration baseline.
 - Keep AI behavior deterministic via monkeypatching at the service boundary.
+
+
+## Release-rehearsal backup prerequisites
+
+The local release runner uses a real PostgreSQL custom-format archive and
+`pg_restore --exit-on-error --single-transaction`. It replaces the schema/data in
+its **disposable restore target**. Never point either rehearsal URL at a live
+application database. Use a fresh source database for each full run because the
+runner creates a fixed synthetic workspace.
+
+Install matching PostgreSQL `pg_dump` and `pg_restore` clients on PATH, or use the
+clients already inside the two disposable PostgreSQL containers:
+
+```sh
+docker compose -p shiftly-rehearsal -f deploy/compose.integration.yml up -d --wait
+export REHEARSAL_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:55436/shiftly_test
+export REHEARSAL_RESTORE_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:55437/shiftly_restore
+export REHEARSAL_SOURCE_CONTAINER="$(docker compose -p shiftly-rehearsal -f deploy/compose.integration.yml ps -q postgres)"
+export REHEARSAL_RESTORE_CONTAINER="$(docker compose -p shiftly-rehearsal -f deploy/compose.integration.yml ps -q postgres-restore)"
+DATABASE_URL='' OPENAI_API_KEY='' python3 scripts/rehearse_release.py
+docker compose -p shiftly-rehearsal -f deploy/compose.integration.yml down -v
+```
+
+The container variables select `docker exec` clients connected to PostgreSQL
+inside those containers on port 5432. The URL still supplies the database name,
+user and password. Without these variables, native clients are required.
+Missing tools, command failures and timeouts fail the rehearsal; there is no
+application-row-copy substitute for a backup. Errors omit tool output and
+connection strings. The two-transport health fixture supplies the same explicit
+fake API-key setting to both servers and remains subject to the shared
+fail-closed AI fixture.
+
+`tests/release_rehearsal/test_backup_restore.py` covers missing prerequisites,
+source/target reuse, failed/timed-out backup and restore, sanitized failures and
+the container archive pipeline. The real archive/restore and restored API smoke
+results are recorded in the integration handoff. This local check does not
+complete the broader Round 3 parity, CI or production gates by itself.

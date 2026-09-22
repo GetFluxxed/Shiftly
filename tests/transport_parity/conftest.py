@@ -14,6 +14,8 @@ from config import Settings
 @pytest.fixture
 def transport_clients(isolated_database, monkeypatch):
     dsn = os.environ["DATABASE_URL"]
+    # Both transports must observe the same explicit, non-secret AI setting.
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     worker = {
         "status": "degraded",
         "state": "not_started",
@@ -23,11 +25,21 @@ def transport_clients(isolated_database, monkeypatch):
         "completedJobs": 0,
         "consecutiveErrors": 0,
     }
-    settings = Settings(database_url=dsn, openai_api_key="test-key", secure_cookies=False)
+    settings = Settings(
+        database_url=dsn,
+        admin_signup_key="test-admin-key",
+        openai_api_key="test-key",
+        secure_cookies=False,
+    )
+    def provider(report, prompt):
+        if report["shift"] == "weekly overview":
+            return {"summary": "Weekly ready.", "wins": [], "risks": [], "follow_up": "Review handoff."}
+        return {"status": "accepted", "reason": "", "summary": "Accepted.", "wins": [], "risks": [], "follow_up": "Review handoff."}
     fastapi_app = create_app(
         settings=settings,
         connection_factory=lambda: psycopg.connect(dsn),
         worker_status_provider=lambda: worker,
+        provider=provider,
     )
     fastapi_client = TestClient(fastapi_app)
 

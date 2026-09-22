@@ -1,13 +1,20 @@
 import hashlib
 import http.client
 import json
+import os
+import socket
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import Thread
 
+import psycopg
 import pytest
 from http.server import ThreadingHTTPServer
+import uvicorn
+
+from backend.shiftly.app import create_app
+from config import Settings
 
 import reporting
 import server
@@ -49,8 +56,8 @@ class BrowserApi:
             connection.close()
 
 
-@pytest.fixture
-def browser_app(isolated_database, monkeypatch):
+@pytest.fixture(params=["legacy", "fastapi"], ids=["legacy", "fastapi"])
+def browser_app(isolated_database, monkeypatch, request):
     monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "browser-admin-key")
 
     def fake_openai(report, system_prompt=None):
@@ -74,16 +81,65 @@ def browser_app(isolated_database, monkeypatch):
     monkeypatch.setattr(server, "call_openai", fake_openai)
     monkeypatch.setattr(server, "validate_report", lambda report: {"status": "accepted"})
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.ShiftlyHandler)
-    thread = Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+    if request.param == "legacy":
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.ShiftlyHandler)
+        thread = Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        base_url = f"http://127.0.0.1:{httpd.server_address[1]}"
+        try:
+            yield base_url
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+        return
+
+    def provider(report, system_prompt=None):
+        if report["shift"] == "weekly overview":
+            return {
+                "summary": "The weekly team summary is ready.",
+                "wins": ["The team completed the reported work."],
+                "risks": [],
+                "follow_up": "Review the next handoff.",
+            }
+        return {
+            "status": "accepted",
+            "reason": "",
+            "summary": "Report accepted.",
+            "wins": ["The report was received."],
+            "risks": [],
+            "follow_up": "Review the next handoff.",
+        }
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    app = create_app(
+        settings=Settings(
+            database_url=os.environ["DATABASE_URL"],
+            admin_signup_key="browser-admin-key",
+            openai_api_key="test-key",
+            secure_cookies=False,
+        ),
+        connection_factory=lambda: psycopg.connect(os.environ["DATABASE_URL"]),
+        worker_status_provider=lambda: {"status": "degraded", "state": "not_started"},
+        provider=provider,
+    )
+    uvicorn_server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
+    )
+    thread = Thread(target=uvicorn_server.run, daemon=True)
     thread.start()
-    base_url = f"http://127.0.0.1:{httpd.server_address[1]}"
+    for _ in range(50):
+        if uvicorn_server.started:
+            break
+        import time
+        time.sleep(0.1)
     try:
-        yield base_url
+        yield f"http://127.0.0.1:{port}"
     finally:
-        httpd.shutdown()
-        httpd.server_close()
-        thread.join(timeout=5)
+        uvicorn_server.should_exit = True
+        thread.join(timeout=10)
 
 
 @pytest.fixture
