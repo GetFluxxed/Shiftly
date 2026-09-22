@@ -229,3 +229,57 @@ footer { display: flex; justify-content: space-between; color: #a3a9a1; margin-t
   .details-row { gap: 10px; }
   .briefing-card { min-height: 420px; padding: 24px 20px; }
 }
+
+/* Accounts and access share the workspace's existing visual language. */
+.account-nav { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; padding-top: 10px; }
+.account-nav a { color: var(--deep-sage); font-size: 12px; text-decoration: none; }
+.account-nav a:hover { color: var(--coral); }
+.account-wide { grid-column: 1 / -1; }
+.account-form .field-label { margin-top: 18px; }
+.account-form .field-label:first-child { margin-top: 0; }
+.account-form .details-row { margin-top: 0; }
+.account-help { color: #697267; font-size: 12px; line-height: 1.65; }
+.account-person { display: grid; gap: 5px; margin-top: 0; }
+.account-person strong { font-size: 20px; }
+.account-person span { color: var(--muted); font-size: 13px; }
+.access-list { padding-left: 19px; color: var(--deep-sage); columns: 2; font-size: 12px; line-height: 1.9; }
+.inline-controls { display: flex; gap: 12px; align-items: stretch; }
+.inline-controls select { min-width: 0; flex: 1; }
+.secondary-button { border: 1px solid #bac6b3; border-radius: 3px; color: var(--deep-sage); background: #edf1e8; padding: 10px 14px; font-size: 12px; font-weight: 600; }
+.secondary-button:hover { background: #e1e8d9; }
+button:disabled { opacity: .55; cursor: wait; transform: none; }
+.danger-button { color: #a3483b; }
+.account-actions { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.account-notice { background: #edf1e8; border: 1px solid #cad5c1; color: #40543d; padding: 14px 16px; font-size: 13px; line-height: 1.6; }
+.account-notice.is-error { color: #933f33; background: #f8e9e5; border-color: #e8c6be; }
+.team-list { margin-top: 24px; }
+.team-member { border-top: 1px solid var(--line); padding: 20px 0; display: flex; justify-content: space-between; gap: 24px; align-items: center; }
+.team-member h3 { margin: 0 0 5px; font-size: 16px; }
+.team-member h3 small { font-size: 11px; color: var(--muted); font-weight: 400; }
+.team-member p { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.access-badge { display: inline-block; padding: 4px 7px; background: #edf1e8; color: var(--deep-sage); font-size: 10px; border-radius: 3px; }
+.account-details { border-top: 1px solid var(--line); padding: 18px 0 4px; margin-top: 18px; }
+.account-details > summary { color: var(--deep-sage); font-size: 14px; font-weight: 600; cursor: pointer; }
+.account-details > form { margin-top: 20px; max-width: 680px; }
+.permission-options { margin: 18px 0; }
+.permission-options fieldset { border: 1px solid var(--line); padding: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; min-width: 0; }
+.permission-options legend { padding: 0 6px; }
+.check-option { display: flex; align-items: flex-start; gap: 9px; color: #4f5e4d; font-size: 12px; line-height: 1.5; }
+.check-option input { width: 16px; height: 16px; accent-color: var(--deep-sage); flex: 0 0 auto; margin: 1px 0 0; }
+.access-editor, .invitation-result { border: 1px solid #bfceb4; background: #edf1e8; padding: 24px; margin: 20px 0; border-radius: 3px; }
+.access-editor h3, .invitation-result h3 { margin: 0 0 12px; }
+.access-editor .account-actions { margin-top: 20px; }
+.invitation-result p { font-size: 13px; line-height: 1.6; }
+#invitation-code { font-family: var(--mono); background: var(--card); margin-bottom: 10px; }
+#logout-all { margin-top: 18px; }
+.workspace-store { color: var(--deep-sage); font-size: 12px; line-height: 1.5; }
+@media (max-width: 760px) {
+  .accounts-page .topbar { gap: 24px; flex-wrap: wrap; }
+  .account-nav { justify-content: flex-start; }
+  .account-grid { display: block !important; }
+  .team-member { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .permission-options fieldset { grid-template-columns: 1fr; }
+  .access-list { columns: 1; }
+  .inline-controls { flex-wrap: wrap; }
+  .account-details .details-row { grid-template-columns: 1fr; }
+}

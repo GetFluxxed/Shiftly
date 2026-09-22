@@ -4,6 +4,7 @@ from starlette.exceptions import HTTPException
 from backend.shiftly.api.health import router as health_router
 from backend.shiftly.api.static import router as static_router
 from backend.shiftly.api.compat import router as compat_router
+from backend.shiftly.api.accounts import router as accounts_router
 from backend.shiftly.core.dependencies import (
     AppContext,
     ConnectionFactory,
@@ -11,6 +12,7 @@ from backend.shiftly.core.dependencies import (
     WorkerStatusProvider,
     default_connection_factory,
     default_worker_status_provider,
+    identity_credentials,
 )
 from backend.shiftly.core.lifespan import lifespan
 from backend.shiftly.core.security import SecurityHeadersMiddleware
@@ -66,17 +68,29 @@ def create_app(
         secure_cookies=resolved_settings.secure_cookies,
     )
     app.include_router(health_router)
+    app.include_router(accounts_router)
     app.include_router(compat_router)
     app.include_router(static_router)
     return app
 
 
 def _default_page_access_provider(request, page):
+    from backend.shiftly.identity import IdentityError
+    import psycopg
+
     context = request.app.state.context
-    manager_token = request.cookies.get("shiftly_manager_session", "")
-    crew_token = request.cookies.get("shiftly_crew_session", "")
+    try:
+        principal = context.services.identity.resolve_principal(**identity_credentials(request))
+    except (IdentityError, psycopg.Error, RuntimeError):
+        return False
+    if not principal:
+        return False
+    if page == "accounts.html":
+        return principal.named
+    if page == "inventory.html":
+        return principal.named and "inventory.view" in principal.actor.capabilities
     if page == "manager.html":
-        return bool(context.services.identity.manager_id(manager_token))
+        return principal.can_manage
     if page == "crew.html":
-        return bool(context.services.identity.crew_store(crew_token, manager_token))
+        return not principal.named or "reports.submit" in principal.actor.capabilities
     return False

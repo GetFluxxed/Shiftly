@@ -209,12 +209,15 @@ class AccountLifecycle:
         with self.connect() as connection:
             actor = self._lifecycle_actor(connection, token, store_id=store_id)
             rows = connection.execute(
-                """SELECT u.id,u.username,u.display_name,u.state,m.role,m.state,m.capabilities
+                """SELECT u.id,u.username,u.display_name,u.state,m.role,m.state,m.capabilities,
+                          b.role,b.state,COALESCE(b.capabilities,ARRAY[]::TEXT[])
                    FROM account_store_memberships m JOIN account_users u ON u.id=m.user_id
-                   WHERE m.store_id=%s ORDER BY u.username_key,u.id""", (actor.store_id,),
+                   LEFT JOIN business_memberships b ON b.user_id=u.id AND b.business_id=%s
+                   WHERE m.store_id=%s ORDER BY u.username_key,u.id""", (actor.business_id,actor.store_id),
             ).fetchall()
             return {'storeId': actor.store_id, 'members': [dict(zip(
-                ('userId','username','displayName','accountState','role','membershipState','capabilities'), row)) for row in rows]}
+                ('userId','username','displayName','accountState','role','membershipState','capabilities',
+                 'businessRole','businessState','businessCapabilities'), row)) for row in rows]}
 
     def set_membership(self, token, *, user_id, role, capabilities=(), active=True, store_id=None, reason=''):
         user_id, reason = self._id(user_id), self._reason(reason)

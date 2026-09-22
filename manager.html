@@ -18,6 +18,8 @@
           <summary class="mode-pill"><span class="status-dot"></span> Manager View <span class="menu-chevron">⌄</span></summary>
           <div class="manager-menu-panel">
             <a href="/about.html">About</a>
+            <a class="hidden" id="manager-account-link" href="/accounts.html">Account</a>
+            <a class="hidden" id="manager-inventory-link" href="/inventory.html">Inventory</a>
             <button type="button" id="add-manager">Add New</button>
             <button type="button" id="logout-button">Log Out</button>
           </div>
@@ -25,6 +27,7 @@
       </header>
       <section class="hero manager-hero">
         <p class="eyebrow">Manager Briefing / <span id="manager-date"></span></p>
+        <p class="workspace-store" id="manager-store-name"></p>
         <h1><span id="manager-name">Manager</span>,<br /><em>See The Shape Of The Day.</em></h1>
         <p class="intro">Shiftly organizes crew reports into a concise operational briefing. This view is separate from the employee submission screen.</p>
       </section>

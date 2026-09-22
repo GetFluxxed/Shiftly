@@ -98,16 +98,50 @@ default response format is not an approved breaking change.
 
 ## FastAPI integration status
 
-The development-only FastAPI app currently exposes the two health routes above
-and the existing public static assets (`/`, `/index.html`, `/about.html`,
-`/app.js`, `/auth.js`, `/manager.js`, and `/styles.css`). `/crew.html` and
-`/manager.html` use an explicit injected page-access provider; without that
-identity dependency they redirect to `/`, matching the anonymous legacy flow.
-Unknown, private, traversal, and repository paths are not served.
+The FastAPI app and legacy server expose the same authentication, report,
+Head's Up, manager-list, weekly and Accounts & Access services. Protected pages
+resolve the same server-side principal as the APIs. Public files are explicitly
+allowlisted; unknown, private, traversal and repository paths are not served.
 
-Authentication, account, report, Head's Up, manager-list, and weekly adapters
-remain blocked on the published Codex identity/store/runtime service contract.
-They are not emulated or exposed as success-shaped placeholder routes.
+## Accounts & Access
+
+Named login uses `POST /api/accounts/login` with `storeCode`, `username` and
+`password`. The HttpOnly `shiftly_account_session` cookie identifies the verified
+person and selected store. `GET /api/accounts/status` returns `authenticated`,
+`actor` (user/store/business IDs, username/display name, role, capabilities and
+named provenance) and authorized `stores`. Roles/permissions in the request never
+grant authority. The older JSON `role` field remains a reporting-UI projection.
+
+The complete route/field/result/error contract is in the
+[account backend handoff](workstreams/codex-accounts-permissions.md#legacy-http-contract-and-copilot-integration).
+Both transports accept the same camelCase bodies for team invitations/reissue,
+activation, password change/reset, memberships, owner operations, suspension,
+store switching, shared-crew cutover and logout/logout-all. Operator recovery
+issuance stays outside HTTP; the public `reset-password` endpoint only redeems
+an independently issued, expiring, single-use token.
+
+Named account mutations, report submissions and Head's Up updates accept optional
+`expectedStoreId`. The browser sends the store shown when the form was prepared.
+The adapter compares it with the authenticated selected store: a mismatch returns
+409 without performing the write; malformed IDs return 400. This is a precondition,
+not authorization or store selection. The service still revalidates the session
+in the write transaction, and store switching rotates the token. Legacy report
+payloads remain compatible. Cross-store draft data is cleared when browser tabs
+observe a changed account/store.
+
+Mixed named/legacy cookies resolve one principal. Empty, malformed, duplicated,
+expired or revoked named cookies cannot fall back to legacy access. A named and
+legacy-manager pair must identify the same mapped person and selected store;
+shared crew cannot prove equivalence. Explicit sign-in clears incompatible
+cookies. Legacy logout preserves its original two-cookie response when no named
+cookie is supplied; Accounts logout clears all three.
+
+`accounts.html` requires named authentication. `inventory.html` additionally
+requires `inventory.view` and presents an empty workspace only; stock operations
+remain future work. `activate.html` is public for supervised activation/recovery,
+but tokens are submitted in JSON, never URL parameters or browser storage.
+Every account API response is non-cacheable; mutation origins and Fetch Metadata
+are checked. Error bodies remain `{"error": "safe message"}`.
 
 ## Proposed inventory API
 
