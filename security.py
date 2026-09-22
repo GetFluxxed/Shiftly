@@ -48,7 +48,7 @@ def parse_json(handler, *, max_body=100_000):
         raise ValueError("Request is empty or too large.")
     try:
         payload = json.loads(handler.rfile.read(length))
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError("Invalid report format.") from error
     if not isinstance(payload, dict):
         raise ValueError("Invalid report format.")

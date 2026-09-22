@@ -96,7 +96,15 @@ def save_heads_up(handler):
         handler.send_json(401, {"error": "Manager sign-in required."})
         return
     stores = StoresService(StoresRepository(db_connection))
-    handler.send_json(200, stores.save_heads_up(store_id, parse_json(handler).get("message")))
+    try:
+        result = stores.save_heads_up(store_id, parse_json(handler).get("message"))
+    except ValueError as error:
+        handler.send_json(400, {"error": str(error)})
+        return
+    except RuntimeError as error:
+        handler.send_json(503, {"error": str(error)})
+        return
+    handler.send_json(200, result)
 
 
 def submit_report(handler, *, submission=None, resolve_store=None):

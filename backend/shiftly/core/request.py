@@ -11,10 +11,11 @@ async def bounded_json(request: Request, *, max_body: int, invalid_message: str)
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
-            if int(content_length) <= 0 or int(content_length) > max_body:
-                raise RequestBodyError("Request is empty or too large.")
+            length = int(content_length)
         except ValueError as error:
             raise RequestBodyError(invalid_message) from error
+        if length <= 0 or length > max_body:
+            raise RequestBodyError("Request is empty or too large.")
     chunks = []
     size = 0
     async for chunk in request.stream():

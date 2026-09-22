@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from starlette.exceptions import HTTPException
 
 from backend.shiftly.api.health import router as health_router
 from backend.shiftly.api.static import router as static_router
@@ -13,6 +14,7 @@ from backend.shiftly.core.dependencies import (
 )
 from backend.shiftly.core.lifespan import lifespan
 from backend.shiftly.core.security import SecurityHeadersMiddleware
+from backend.shiftly.core.errors import routing_error
 from backend.shiftly.core.settings import Settings, load_settings
 from backend.shiftly.runtime.application import build_runtime
 from backend.shiftly.runtime.composition import build_services
@@ -45,6 +47,11 @@ def create_app(
     app = FastAPI(
         title="Shiftly API foundation",
         lifespan=lifespan,
+        redirect_slashes=False,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        exception_handlers={HTTPException: routing_error},
     )
     app.state.context = AppContext(
         settings=resolved_settings,
