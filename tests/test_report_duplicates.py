@@ -105,7 +105,10 @@ def test_upgrade_preserves_existing_reports_briefings_jobs_and_legacy_rows(empty
     server.initialize_database()
     server.initialize_database()
     with db_connection() as connection:
-        assert connection.execute("SELECT * FROM reports ORDER BY id").fetchall() == before_reports
+        after_reports = connection.execute("SELECT * FROM reports ORDER BY id").fetchall()
+        # Migration 014 adds a nullable actor; every historical column stays exact.
+        assert [row[:-1] for row in after_reports] == before_reports
+        assert [row[-1] for row in after_reports] == [None] * len(before_reports)
         assert connection.execute("SELECT * FROM briefing_jobs ORDER BY id").fetchall() == before_jobs
         assert connection.execute("SELECT * FROM briefings ORDER BY id").fetchall() == before_briefings
         assert connection.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = '010_store_scoped_report_hash.sql'").fetchone() == (1,)

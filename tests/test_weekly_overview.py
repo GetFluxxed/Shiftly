@@ -196,5 +196,8 @@ def test_migration_011_upgrades_without_changing_existing_reports(empty_database
     server.initialize_database()
     server.initialize_database()
     with db_connection() as connection:
-        assert connection.execute("SELECT * FROM reports").fetchall() == before
+        after = connection.execute("SELECT * FROM reports").fetchall()
+        # Migration 014 preserves all historical columns and leaves identity unknown.
+        assert [row[:-1] for row in after] == before
+        assert [row[-1] for row in after] == [None] * len(before)
         assert connection.execute("SELECT COUNT(*) FROM schema_migrations WHERE version = '011_weekly_overview_cache.sql'").fetchone() == (1,)
