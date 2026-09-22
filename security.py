@@ -42,6 +42,18 @@ def cookie_token(handler, cookie_name):
     return ""
 
 
+def named_account_token(handler):
+    """Preserve absence versus a supplied empty/malformed/duplicate named cookie."""
+    values = []
+    for item in handler.headers.get("Cookie", "").split(";"):
+        name, separator, value = item.strip().partition("=")
+        if name == "shiftly_account_session":
+            values.append(value if separator else "")
+    if not values:
+        return None
+    return values[0] if len(values) == 1 else ""
+
+
 def parse_json(handler, *, max_body=100_000):
     length = int(handler.headers.get("Content-Length", "0"))
     if length <= 0 or length > max_body:

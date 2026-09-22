@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
@@ -18,7 +19,7 @@ from database import db_connection
 def test_fresh_and_concurrent_migrations_are_serialized(empty_database):
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(lambda _: migrate(db_connection), range(2)))
-    assert sorted(len(result) for result in results) == [0, 13]
+    assert sorted(len(result) for result in results) == [0, 14]
     assert schema_status(db_connection) == {"status": "ok", "schemaReady": True, "pendingMigrations": []}
     assert migrate(db_connection) == []
 
@@ -37,7 +38,7 @@ def test_migration_lock_wait_is_bounded(empty_database):
         holder.execute("SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext(current_schema() || ':shiftly-migrate'))")
         with pytest.raises(psycopg.errors.LockNotAvailable):
             migrate(db_connection, lock_timeout_ms=50)
-    assert len(migrate(db_connection)) == 13
+    assert len(migrate(db_connection)) == 14
 
 
 def test_runtime_migration_preserves_existing_reports(empty_database, tmp_path):
@@ -47,12 +48,22 @@ def test_runtime_migration_preserves_existing_reports(empty_database, tmp_path):
     migrate(db_connection, directory=tmp_path)
     with db_connection() as connection:
         store = connection.execute("INSERT INTO stores (name,access_code_hash) VALUES ('Upgrade','upgrade') RETURNING id").fetchone()[0]
-    report_id, _ = reporting.queue_report("Crew", "closing", "Original notes survive upgrade.", store)
+    report_id = uuid.uuid4()
+    # Create historical rows with their historical schema, before new columns
+    # exist. Current application code intentionally requires the latest schema.
+    with db_connection() as connection:
+        connection.execute(
+            "INSERT INTO reports(id,store_id,employee,shift,notes,report_hash) VALUES (%s,%s,'Crew','closing','Original notes survive upgrade.',%s)",
+            (report_id, store, "a" * 64),
+        )
+        connection.execute("INSERT INTO briefing_jobs(report_id) VALUES (%s)", (report_id,))
     with db_connection() as connection:
         before = connection.execute("SELECT * FROM reports WHERE id=%s", (report_id,)).fetchone()
-    assert migrate(db_connection) == ["013_runtime_operations.sql"]
+    assert migrate(db_connection) == ["013_runtime_operations.sql", "014_accounts_access.sql"]
     with db_connection() as connection:
-        assert connection.execute("SELECT * FROM reports WHERE id=%s", (report_id,)).fetchone() == before
+        after = connection.execute("SELECT * FROM reports WHERE id=%s", (report_id,)).fetchone()
+        assert after[:-1] == before
+        assert after[-1] is None  # Existing report text never becomes inferred identity.
         assert connection.execute("SELECT status,attempts FROM briefing_jobs WHERE report_id=%s", (report_id,)).fetchone() == ("pending", 0)
 
 
@@ -68,7 +79,7 @@ def test_application_runtime_refuses_schema_without_migrating(empty_database):
 def test_migration_cli_reads_explicit_environment(empty_database, child_environment):
     result = subprocess.run([sys.executable, "-m", "backend.shiftly.runtime.migrate"], env=child_environment(empty_database), capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
-    assert "applied 13 migration(s)" in result.stdout
+    assert "applied 14 migration(s)" in result.stdout
     assert schema_status(db_connection)["schemaReady"]
 
 
@@ -159,7 +170,7 @@ def test_concurrent_migration_commands_share_database_lock(empty_database, child
         results = [(process, process.communicate(timeout=10)) for process in (first, second)]
         assert all(process.returncode == 0 for process, _ in results), results
         assert sorted(output[0].strip() for _, output in results) == [
-            "Migrations ready; applied 0 migration(s).", "Migrations ready; applied 13 migration(s).",
+            "Migrations ready; applied 0 migration(s).", "Migrations ready; applied 14 migration(s).",
         ]
     finally:
         for process in (first, second):
@@ -175,4 +186,4 @@ def test_legacy_migration_wrapper_uses_configured_lock_budget(empty_database, mo
         holder.execute("SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext(current_schema() || ':shiftly-migrate'))")
         with pytest.raises(psycopg.errors.LockNotAvailable):
             server.initialize_database()
-    assert len(server.initialize_database()) == 13
+    assert len(server.initialize_database()) == 14

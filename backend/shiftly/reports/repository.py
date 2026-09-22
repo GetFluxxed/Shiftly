@@ -15,17 +15,29 @@ class ReportsRepository:
     def __init__(self, connect):
         self.connect = connect
 
-    def enqueue(self, employee, shift, notes, store_id, report_hash):
+    def enqueue(self, employee, shift, notes, store_id, report_hash, *, actor_token=None, accounts=None, legacy_credentials=None):
         with self.connect() as connection:
+            actor_user_id = None
+            if actor_token is not None:
+                if accounts is None:
+                    raise ValueError("Named reports require account authorization.")
+                from backend.shiftly.identity.accounts_core import policy_lock
+                policy_lock(connection)
+                actor = accounts.resolve_actor(actor_token, connection=connection,
+                                               capability="reports.submit", store_id=store_id)
+                actor_user_id = actor.user_id
+            elif legacy_credentials is not None:
+                from backend.shiftly.identity.repository import IdentityRepository
+                IdentityRepository.authorize_legacy(connection, store_id, **legacy_credentials)
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO reports (id, store_id, employee, shift, notes, report_hash)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO reports (id, store_id, employee, shift, notes, report_hash, actor_user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (store_id, report_hash) DO NOTHING
                     RETURNING id, created_at
                     """,
-                    (str(uuid.uuid4()), store_id, employee, shift, notes, report_hash),
+                    (str(uuid.uuid4()), store_id, employee, shift, notes, report_hash, actor_user_id),
                 )
                 saved = cursor.fetchone()
                 if saved is None:
@@ -60,10 +72,34 @@ class ReportsRepository:
                     JOIN briefing_jobs j ON j.report_id = r.id
                     LEFT JOIN briefings b ON b.report_id = r.id
                     JOIN store_memberships sm ON sm.store_id = r.store_id AND sm.manager_user_id = %s
+                    JOIN manager_users m ON m.id = sm.manager_user_id AND m.active
+                    JOIN stores s ON s.id = sm.store_id AND s.active
+                    LEFT JOIN businesses business ON business.id = s.business_id
+                    LEFT JOIN account_users account ON account.legacy_manager_id = m.id
+                    LEFT JOIN account_store_memberships membership
+                      ON membership.user_id = account.id AND membership.store_id = s.id
+                    WHERE (s.business_id IS NULL OR business.active)
+                      AND (account.id IS NULL OR account.state = 'active')
+                      AND (membership.user_id IS NULL OR membership.state = 'active')
                     ORDER BY r.created_at DESC
                     """, (manager_id,),
                 )
                 return cursor.fetchall()
+
+    def for_actor(self, token, accounts):
+        from backend.shiftly.identity.accounts_core import policy_lock
+        with self.connect() as connection:
+            policy_lock(connection)
+            accounts.resolve_actor(token, connection=connection, capability="reports.view")
+            stores = accounts.authorized_stores(token, connection=connection, capability="reports.view")
+            store_ids = [item["storeId"] for item in stores]
+            return connection.execute(
+                """SELECT r.id, r.employee, r.shift, r.notes, r.created_at,
+                          j.status, j.last_error, b.summary, b.wins, b.risks, b.follow_up
+                   FROM reports r JOIN briefing_jobs j ON j.report_id = r.id
+                   LEFT JOIN briefings b ON b.report_id = r.id
+                   WHERE r.store_id = ANY(%s) ORDER BY r.created_at DESC""", (store_ids,),
+            ).fetchall()
 
     @contextmanager
     def weekly_session(self, store_id):

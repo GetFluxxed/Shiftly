@@ -18,6 +18,7 @@ class Services:
     submission: ReportSubmission
     weekly: WeeklyOverviewService
     admission: AdmissionControl
+    accounts: object = None
 
 
 def build_services(*, settings, connection_factory, provider, weekly_connection_factory=None,
@@ -48,4 +49,4 @@ def build_services(*, settings, connection_factory, provider, weekly_connection_
                                     capacity=weekly_capacity if weekly_capacity is not None else BoundedSemaphore(2),
                                     model=settings.openai_model, prompt=WEEKLY_PROMPT,
                                     max_reports=50, max_input_chars=20_000)
-    return Services(identity, stores, reports, submission, weekly, admission)
+    return Services(identity, stores, reports, submission, weekly, admission, identity.accounts)
