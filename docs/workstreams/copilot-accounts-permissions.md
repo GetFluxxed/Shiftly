@@ -15,7 +15,9 @@ Access module for integration review; production cutover remains separate.
 - Copilot dependency merge: `8be4cd0d0842941159c8825c63131de9441ae537`.
 - Integration starts from that merge plus the exact saved tracked/untracked
   Copilot changes. No UI branch was merged into the backend lane.
-- Final implementation SHA and full-suite results are recorded below after commit.
+- Final implementation: `ab9c0ec378da67c2a30b4ffd6cf290aa3af09397`.
+  The following documentation-only commit records this SHA and cleanup; the
+  draft PR identifies the final branch head including that delivery record.
 
 ## Completed module
 
@@ -122,7 +124,12 @@ Local evidence includes `/private/tmp/shiftly-ui-baseline.xml`,
 `/private/tmp/shiftly-accounts-browser-flows.xml`,
 `/private/tmp/shiftly-integration-accounts-rehearsal.log`, and
 `/private/tmp/shiftly-integration-release-rehearsal.log`. Final JUnit and hosted
-CI artifacts provide combined evidence. Cleanup is recorded at delivery.
+CI artifacts provide combined evidence. The owned disposable
+`shiftly-accounts-integration-db` container was removed after all tests and
+rehearsals finished. Delivery worktree:
+`/Users/getfluxxed/projects/Shiftly-codex-accounts-integration`.
+The original Copilot UI worktree, backend worktree and reports worktree were
+preserved. No test servers or workers remain from these completed runs.
 
 ## Review and rollout
 
