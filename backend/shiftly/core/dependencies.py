@@ -46,4 +46,38 @@ def client_key(request: Request) -> str:
 
 
 def cookie_token(request: Request, name: str) -> str:
-    return request.cookies.get(name, "")
+    values = []
+    for item in ";".join(request.headers.getlist("cookie")).split(";"):
+        key, separator, value = item.strip().partition("=")
+        if separator and key == name:
+            values.append(value)
+    return values[0] if values else ""
+
+
+def named_account_token(request: Request) -> str | None:
+    values = []
+    for item in ";".join(request.headers.getlist("cookie")).split(";"):
+        key, separator, value = item.strip().partition("=")
+        if key == "shiftly_account_session":
+            values.append(value if separator else "")
+    if not values:
+        return None
+    if len(values) != 1:
+        return ""
+    return values[0]
+
+
+def identity_credentials(request: Request) -> dict:
+    """Preserve absence versus an invalid named cookie at every entry point."""
+    return {
+        "account_token": named_account_token(request),
+        "manager_token": cookie_token(request, "shiftly_manager_session"),
+        "crew_token": cookie_token(request, "shiftly_crew_session"),
+    }
+
+
+def legacy_credentials(request: Request) -> dict:
+    return {
+        "manager_token": cookie_token(request, "shiftly_manager_session"),
+        "crew_token": cookie_token(request, "shiftly_crew_session"),
+    }

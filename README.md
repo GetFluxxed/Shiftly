@@ -6,38 +6,38 @@ briefings, a Weekly Overview, and a shared Head's Up message.
 
 ## Project status
 
-Status checked against `origin/main` at
-[`818a03c`](https://github.com/GetFluxxed/Shiftly/commit/818a03cb1bcff67c6c36a3ddbbd73a1028894dff)
-on September 21, 2026. The worker recovery, contract/browser testing, report-service
-extraction, and FastAPI foundation branches are merged. The
-[combined CI run passed](https://github.com/GetFluxxed/Shiftly/actions/runs/35659723156).
-This describes repository integration, not a verified production deployment.
+Accounts & Access integration status, September 22, 2026. This branch builds on
+verified base `9a31a930ebf6fa305e8919d1ff398177666b3577` and published account
+backend `261637a2da7aaaa942acdcd2ac5764bece610b32`. The combined local suite passed
+588 tests, plus real release and account recovery rehearsals. See the
+[integration handoff](docs/workstreams/copilot-accounts-permissions.md) for exact
+revisions and evidence. This is integration-review readiness, not production cutover.
 
 | Area | Current state |
 | --- | --- |
 | Crew and manager workflows | Implemented in the existing HTML/CSS/JavaScript application and Python server |
 | Worker recovery | Durable jobs, bounded retries, expired-lease recovery, stale-result protection, and diagnostics implemented |
 | Report services | Submission rules, report persistence/listing, and weekly generation/cache extracted into injectable services and repositories |
-| FastAPI | App factory, configuration/dependency injection, security middleware, and two health endpoints implemented for development |
-| Application migration | In progress; authentication, report/weekly/Head's Up HTTP adapters, and static pages still use the existing server |
+| FastAPI | Shared services, authentication/reporting/account adapters, protected pages and security middleware |
+| Accounts & Access | Named crew/manager identities, scoped owner/admin/manager/crew policy, invitations, recovery, team and owner workflows |
 | Automated checks | Disposable PostgreSQL, mocked AI, service/regression/contract tests, Chromium browser flows, and pinned CI dependencies |
-| Inventory and installable app | Planned; no inventory workspace, camera counting, stock ledger, or installable app shell yet |
+| Inventory and installable app | Permission-aware empty Inventory page; stock, camera and installable-app features remain planned |
 
-These changes complete foundation slices, not all F0–F3 exit gates. Full FastAPI
-compatibility, worker separation, staging/restore/rollback evidence, and required
-merge-check enforcement remain to be completed or verified.
+Both transports and independent worker/recovery flows are verified locally.
+Hosted staging, actual ownership mapping and production promotion remain separate.
 
 ## What works today
 
 ### Crew
 
-- Sign in with the store's shared crew access.
+- Sign in with an individual username and password, or shared crew access during enrollment.
 - Enter a name, shift, and notes, then submit a report.
 - Read the current store Head's Up and its update time.
 - Receive validation or submission feedback without access to manager briefings
   or the manager report inbox.
 
-Crew names are self-reported metadata, not verified individual identities.
+Typed employee names remain historical display metadata. New named submissions
+also persist the server-verified individual actor.
 
 ### Managers
 
@@ -46,13 +46,25 @@ Crew names are self-reported metadata, not verified individual identities.
 - Request a cached, AI-assisted Weekly Overview for the session's selected store.
 - Publish or replace that store's current Head's Up.
 
-Manager accounts are individual, but the current sign-in flow identifies them
-using store code and password. Explicit username-based sign-in and the stronger
-identity/permission model needed for inventory approvals remain planned work.
+Named sign-in explicitly selects store, username and password. Existing
+password-only reporting access remains available during enrollment, but grants
+no account or inventory powers. Role and capability checks come from the server.
 
 An authorized administrator can create a workspace with a store, shared crew
 password, and first manager account. Admin-key-protected creation of additional
-manager accounts also exists. Empty databases do not require seeded store data.
+manager accounts is restricted to unassigned compatibility stores. Mapped stores
+use named account administration. Empty databases do not require seeded data;
+real business/owner mapping is an explicit, dry-run-first operator procedure.
+
+### Accounts & Access
+
+- Choose authorized stores, change passwords and sign out across devices.
+- Invite and activate individual accounts without requiring employee email.
+- Manage permitted store membership and delegated business authority.
+- Transfer ownership, suspend authorized accounts and deliberately end shared login.
+- Redeem independently issued recovery codes without exposing global password
+  reset powers to local managers.
+- Clear stale private information and drafts when another tab changes access.
 
 ## Current architecture and reliability
 
@@ -62,16 +74,16 @@ through `ThreadingHTTPServer`, applies migrations at startup, and starts a
 briefing worker thread in the same process.
 
 - **Application adapters:** `server.py`, `routes.py`, `auth.py`, `security.py`, and
-  `store_service.py` retain HTTP/session responsibilities. Some account routes
-  still depend on server globals.
+  `store_service.py` translate HTTP to shared account/store/report services.
 - **Report services:** [backend/shiftly/reports/](backend/shiftly/reports/) contains
   framework-independent workflows and PostgreSQL repositories. Existing callers
-  reach them through compatibility wrappers; adapters still own authorization.
+  reach them through compatibility wrappers. Named writes recheck policy in their
+  transaction and serialize against revocation.
 - **FastAPI foundation:** [backend/shiftly/app.py](backend/shiftly/app.py) provides
   an injectable app factory. Importing or creating the app does not run
   migrations, connect to the database, call AI, or start a worker.
-- **Storage:** PostgreSQL migrations 001–012 cover stores, memberships, accounts,
-  sessions, reports, briefings/jobs, Head's Up, weekly caching, and job recovery.
+- **Storage:** PostgreSQL migrations 001–014 cover reporting, worker/runtime
+  recovery, named accounts, business/store memberships, sessions and audit.
 
 Submission validation, duplicate checks, cooldowns, and an AI quality gate run
 before acceptance. Accepted original notes and their briefing job are committed
@@ -90,11 +102,11 @@ Both transports expose:
 - `GET /api/health/worker`: 200 only when the observed worker is healthy;
   otherwise 503.
 
-The development FastAPI app does not start a worker, so its default worker health
-is degraded. Worker diagnostics are process-local; a separate worker deployment,
-cross-process monitoring, coordinated migrations, database pools/timeouts, and
-shared limits are still future work. Database health alone does not prove that
-briefing jobs are progressing.
+The FastAPI app does not start a worker; the independent runtime supports bounded
+database resources, coordinated migrations and database-backed worker health.
+The supported runtime is one API process and a separate worker. Admission limits
+remain process-local, so API replication needs shared limits. Database health
+alone does not prove briefing jobs are progressing.
 
 ## Local development
 
@@ -125,14 +137,14 @@ Open [http://127.0.0.1:4173](http://127.0.0.1:4173). Use **Create a workspace** 
 the configured admin key to create the first store and manager. Normal report
 submission invokes AI; automated tests replace it with deterministic mocks.
 
-To run the separate FastAPI health foundation:
+To run the development FastAPI adapter:
 
 ```sh
 python -m uvicorn backend.shiftly.app:create_app --factory --host 127.0.0.1 --port 4174
 ```
 
-This is a development entry point. Crew/manager pages and business endpoints
-have not been ported to it.
+This serves the integrated pages and APIs. Follow the runtime/deployment runbook
+for coordinated migrations and a separate worker; production startup is unchanged.
 
 ## Testing
 
@@ -154,28 +166,22 @@ Database tests create isolated temporary schemas and remove them after use;
 fixtures refuse to fall back to the application's database. AI calls are mocked,
 and unexpected provider requests fail tests. Coverage includes worker recovery,
 report services, store boundaries, authentication contracts, weekly behavior,
-FastAPI health, and real Chromium flows against the existing server. Browser
-viewport emulation is not physical iPhone/Android validation or FastAPI browser
-parity.
+account lifecycle, principal conflicts and real Chromium flows through both
+servers. Browser viewport emulation is not physical iPhone/Android validation.
 
 [CI](.github/workflows/ci.yml) runs Python 3.12 with disposable PostgreSQL 16,
 installs locked dependencies, checks Python compilation and dependency
-consistency, runs the suite, and retains browser failure artifacts.
+consistency, runs the suite and both recovery rehearsals, and retains evidence.
 
 ## Next three integration steps
 
-1. **Finish the service boundaries.** Extract account/session/store workflows
-   still tied to HTTP handlers and server globals. Preserve authorization,
-   cookies, and store scope; reconcile the planning status and outstanding
-   foundation checks against the merged baseline.
-2. **Complete FastAPI compatibility.** Connect those services and the extracted
-   report services to the existing API contracts, then serve the current pages.
-   Run the same contract and browser flows against both transports, including
-   error codes, cookies, headers, and cross-store access checks.
-3. **Prepare and verify the runtime cutover.** Separate and supervise the durable
-   worker, coordinate migrations, add bounded database resources and shared
-   monitoring/limits, and rehearse staging migration, backup restoration, and
-   rollback before switching the configured application entry point.
+1. **Review the Accounts & Access changes.** Use the backend and integration
+   handoffs and green combined checks before merging the feature branches.
+2. **Begin catalog/inventory development.** Reuse the verified actor and capability
+   contract for SKU, location and manual inventory workflows, with additive migrations.
+3. **Prepare hosted enrollment and runtime cutover.** Verify real ownership mapping,
+   staging recovery, independent worker supervision and rollback before production
+   activation. Local or CI rehearsal does not replace hosted operational evidence.
 
 [Round 3](docs/parallel/ROUND_03.md) assigns these steps to
 [Codex](docs/prompts/CODEX_INTEGRATION_RUNTIME.md) and
@@ -208,7 +214,7 @@ reached from the manager window, using authorized store context.
 
 Manual inventory and weighing establish the trusted workflow before camera
 automation. Inventory work follows the service, compatibility, and operational
-gates; it is not part of the current FastAPI health foundation.
+gates; operational stock and camera features are not part of Accounts & Access.
 
 ## Project documents
 
@@ -220,6 +226,8 @@ gates; it is not part of the current FastAPI health foundation.
 - [Contract/browser/CI handoff](docs/workstreams/copilot-foundation.md).
 - [Report-service handoff](docs/workstreams/codex-f1-report-services.md).
 - [FastAPI foundation handoff](docs/workstreams/copilot-f1-api-foundation.md).
+- [Accounts backend contract](docs/workstreams/codex-accounts-permissions.md).
+- [Accounts integration and verification](docs/workstreams/copilot-accounts-permissions.md).
 
 The central plan, backlog, and architecture baseline sections still describe
 the pre-foundation snapshot. Use this README's dated status, the merged code,

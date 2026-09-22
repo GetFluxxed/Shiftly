@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shiftly — Accounts & Access</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="manager-page accounts-page">
+<main class="shell">
+  <header class="topbar">
+    <a class="brand account-home" href="/accounts.html" aria-label="Shiftly home"><span class="brand-mark" aria-hidden="true">✳</span><span>Shiftly</span></a>
+    <nav class="account-nav" aria-label="Workspace"><a id="operations-link" class="hidden" href="/crew.html">Operations</a><a id="inventory-link" class="hidden" href="/inventory.html">Inventory</a><button class="text-button" id="account-logout" type="button">Log out</button></nav>
+  </header>
+  <section class="hero manager-hero"><p class="eyebrow">Your workspace / Accounts & Access</p><h1 id="account-name">Your account,<br /><em>your team.</em></h1><p class="intro">Choose your store, keep your account secure, and manage the access your role allows.</p></section>
+  <p id="account-status" class="account-notice hidden" role="status" aria-live="polite"></p><button id="account-retry" class="secondary-button hidden" type="button">Retry account access</button>
+  <section class="manager-grid account-grid">
+    <section class="manager-quadrant">
+      <div class="section-heading"><div><p class="step">01 / WORKSPACE</p><h2>Your access</h2></div></div>
+      <div id="account-profile"><p class="pending-message">Loading your account…</p></div>
+      <form id="store-form" class="account-form hidden"><label class="field-label" for="store-select">Selected store</label><div class="inline-controls"><select id="store-select" required></select><button id="switch-store" class="secondary-button" type="submit">Switch store</button></div><p class="account-help">Changing stores also changes the access used in your other open tabs.</p></form>
+    </section>
+    <section class="manager-quadrant">
+      <div class="section-heading"><div><p class="step">02 / SECURITY</p><h2>Change password</h2></div></div>
+      <form id="password-form" class="account-form">
+        <label class="field-label" for="current-password">Current password</label><input class="text-input" id="current-password" type="password" autocomplete="current-password" maxlength="1024" required />
+        <label class="field-label" for="new-password">New password</label><input class="text-input" id="new-password" type="password" minlength="8" maxlength="1024" autocomplete="new-password" required />
+        <label class="field-label" for="confirm-password">Confirm new password</label><input class="text-input" id="confirm-password" type="password" minlength="8" maxlength="1024" autocomplete="new-password" required />
+        <button class="primary-button" type="submit">Change password <span class="button-arrow">→</span></button><p class="account-help">You will sign in again on every device after changing your password.</p><p class="auth-error hidden" id="password-status" role="status"></p>
+      </form>
+      <button class="text-button" id="logout-all" type="button">Log out on all devices</button>
+    </section>
+    <section class="manager-quadrant account-wide" id="team-section">
+      <div class="section-heading"><div><p class="step">03 / TEAM</p><h2>People & permissions</h2></div><button class="text-button hidden" id="refresh-team" type="button">Refresh team</button></div>
+      <div id="team-panel"><p class="pending-message">Checking your team access…</p></div>
+      <div id="team-content" class="hidden">
+        <p class="account-help">Changes here apply to the selected store. Removing store access does not disable someone's account at other stores.</p>
+        <p id="team-status" class="account-notice hidden" role="status" aria-live="polite"></p>
+        <div id="invitation-result" class="invitation-result hidden"><h3>Invitation ready</h3><p id="invitation-message"></p><label class="field-label" for="invitation-code">Single-use activation code</label><input class="text-input" id="invitation-code" readonly autocomplete="off" spellcheck="false" /><p class="account-help">Share this code privately with the intended person. They can open <a href="/activate.html" target="_blank" rel="noopener noreferrer">Activate account</a> and choose their password. The code is not kept on this page after you dismiss it.</p><button id="dismiss-invitation" class="secondary-button" type="button">Dismiss code</button></div>
+        <div id="team-list" class="team-list" aria-live="polite"></div>
+        <div id="membership-editor" class="access-editor hidden"><h3 id="membership-heading">Edit store access</h3><form id="membership-form" class="account-form"><input id="member-user" type="hidden" /><label class="field-label" for="member-role">Store role</label><select id="member-role"></select><div id="member-capabilities" class="permission-options"></div><label class="check-option"><input id="member-active" type="checkbox" checked /> Store access is active</label><div class="account-actions"><button class="secondary-button" type="submit">Save access</button><button class="text-button" id="cancel-membership" type="button">Cancel</button></div></form></div>
+        <details class="account-details" open><summary>Invite a new team member</summary><form id="invite-form" class="account-form"><div class="details-row"><div><label class="field-label" for="invite-username">Username</label><input class="text-input" id="invite-username" autocomplete="off" minlength="2" maxlength="80" required /></div><div><label class="field-label" for="invite-display-name">Display name</label><input class="text-input" id="invite-display-name" autocomplete="off" maxlength="120" /></div></div><label class="field-label" for="invite-role">Store role</label><select id="invite-role"></select><div id="invite-capabilities" class="permission-options"></div><button class="primary-button" type="submit">Create invitation <span class="button-arrow">→</span></button><p class="account-help">For a new individual account. Existing account holders keep their own password.</p></form></details>
+        <details class="account-details"><summary>Add an existing account to this store</summary><p class="account-help">Ask the person for the account number shown in their Account details. This grants store access and never changes their password.</p><form id="existing-member-form" class="account-form"><label class="field-label" for="existing-member-id">Account number</label><input id="existing-member-id" class="text-input" type="number" min="1" step="1" required /><label class="field-label" for="existing-member-role">Store role</label><select id="existing-member-role"></select><div id="existing-member-capabilities" class="permission-options"></div><button class="secondary-button" type="submit">Add store access</button></form></details>
+      </div>
+    </section>
+    <section id="owner-section" class="manager-quadrant account-wide hidden">
+      <div class="section-heading"><div><p class="step">04 / BUSINESS OWNER</p><h2>Business access</h2></div></div>
+      <p class="account-help">These actions affect the business for your selected store. Business delegation and individual store access are managed separately.</p><p id="owner-status" class="account-notice hidden" role="status" aria-live="polite"></p>
+      <details class="account-details"><summary>Delegate business authority</summary><form id="business-form" class="account-form"><label class="field-label" for="business-user">Team member</label><select id="business-user" required></select><label class="field-label" for="business-role">Business role</label><select id="business-role"><option value="admin">Delegated business admin</option><option value="owner">Business owner</option></select><div id="business-capabilities" class="permission-options"></div><label class="check-option"><input id="business-active" type="checkbox" checked /> Business delegation is active</label><p class="account-help">An admin needs matching permissions in their store access. Shared catalog management can also be delegated separately to a store manager. Changing delegation ends their current sessions in this business.</p><button class="secondary-button" type="submit">Save business authority</button></form></details>
+      <details class="account-details"><summary>Transfer your ownership</summary><form id="ownership-form" class="account-form"><label class="field-label" for="ownership-user">New owner</label><select id="ownership-user" required></select><p class="account-help">The selected person becomes an owner and your ownership is removed. You will be signed out.</p><button class="secondary-button danger-button" type="submit">Transfer ownership</button></form></details>
+      <details class="account-details"><summary>Suspend or restore an account</summary><form id="suspension-form" class="account-form"><label class="field-label" for="suspension-user">Team member</label><select id="suspension-user" required></select><label class="field-label" for="suspension-action">Account action</label><select id="suspension-action"><option value="suspend">Suspend account</option><option value="restore">Restore account</option></select><label class="field-label" for="suspension-reason">Reason</label><input class="text-input" id="suspension-reason" maxlength="500" required /><p class="account-help">Suspension ends access at every store. This is only available when you own every business associated with the account. Otherwise remove access to this store.</p><button class="secondary-button danger-button" type="submit">Apply account action</button></form></details>
+      <details class="account-details"><summary>Require individual crew sign-in</summary><p class="account-help">End shared crew sign-in for this store. Invite and activate each crew member first. Existing shared crew sessions will end immediately.</p><button id="cutover-button" class="secondary-button danger-button" type="button">Disable shared crew sign-in</button></details>
+    </section>
+  </section>
+  <footer><span>SHIFTLY / ACCOUNTS & ACCESS</span><a class="account-home" href="/accounts.html">Back to workspace</a></footer>
+</main>
+<script src="accounts.js"></script>
+</body>
+</html>

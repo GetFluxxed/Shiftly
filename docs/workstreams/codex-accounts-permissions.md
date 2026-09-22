@@ -3,6 +3,10 @@
 Date: 2026-09-22. Branch: `codex/accounts-permissions-services`.
 Base: `9a31a930ebf6fa305e8919d1ff398177666b3577`.
 
+Integration update: the completed FastAPI/browser lane and combined evidence are
+recorded in [the integration handoff](copilot-accounts-permissions.md). The text
+below records the published backend checkpoint and its original peer contract.
+
 This implements the Codex backend lane of A2a and A2b/A1: named accounts,
 scoped policy, lifecycle, migration, controlled bootstrap and legacy HTTP
 adapters. FastAPI account adapters, screens and combined named-account browser
@@ -126,6 +130,9 @@ the previous selected-store token. Default TTL is eight hours.
 Roster returns `{storeId, members: [...]}` with each member's `userId`, `username`,
 `displayName`, `accountState`, `role`, `membershipState`, `capabilities`. These are
 stored membership grants, not the policy-expanded effective capabilities. Roster
+also includes `businessRole`, `businessState`, `businessCapabilities` for the
+selected business (null/null/[] without delegation); revoked state is preserved
+and other business scopes are never exposed. Roster
 is store-membership based; it is not a global people directory or an enumeration
 of owners without a local membership.
 
