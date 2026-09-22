@@ -6,6 +6,26 @@ on:
   pull_request:
 
 jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned mobile package manager
+        run: npm install --global pnpm@11.19.0
+      - name: Install locked mobile dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check native application and session behavior
+        run: pnpm check
+      - name: Bundle iOS and Android
+        run: pnpm export:native
   test:
     runs-on: ubuntu-latest
     services:

@@ -143,6 +143,57 @@ but tokens are submitted in JSON, never URL parameters or browser storage.
 Every account API response is non-cacheable; mutation origins and Fetch Metadata
 are checked. Error bodies remain `{"error": "safe message"}`.
 
+## Native account/report adapter — 2026-09-22
+
+The React Native client uses **FastAPI-only** `/api/mobile` endpoints. The legacy
+`python server.py` entry point does not serve this namespace. Existing browser
+cookie endpoints and CORS policy are unchanged. The native app uses the same
+account services, PostgreSQL session records, permission checks and revocation.
+
+Send one `Authorization: Bearer <opaque session token>` header on protected
+requests. Duplicate/malformed authorization headers and any known browser auth
+cookie, including an empty cookie, are rejected. Responses do not set cookies.
+Login, activation and store switching return the existing account response plus
+`sessionToken` and `expiresIn` in seconds. Current sessions last eight hours;
+there is no refresh token. Keep the token in platform-protected storage, require
+HTTPS for release traffic, and exclude tokens from diagnostic logging.
+
+| Method and path | Behavior |
+| --- | --- |
+| POST `/api/mobile/accounts/login` | Named login with `storeCode`, `username`, `password`; returns actor, stores and session token |
+| POST `/api/mobile/accounts/activate` | Redeem `token` and set `password`; returns an authenticated session |
+| POST `/api/mobile/accounts/reset-password` | Redeem independently issued recovery `token` with new `password`; sign in afterward |
+| GET `/api/mobile/accounts/status` | Current actor and authorized stores; no bearer gives `authenticated: false`, invalid/revoked bearer gives 401 |
+| GET `/api/mobile/accounts/team` | Server-authorized current-store roster, using the existing scoped account contract |
+| POST `/api/mobile/accounts/switch-store` | `storeId` target and `expectedStoreId` current context; rotates the token |
+| POST `/api/mobile/accounts/password` | `currentPassword`, `newPassword` and `expectedStoreId`; `change-password` is an alias |
+| POST `/api/mobile/accounts/logout` | Idempotently revoke the supplied session; no current-store precondition |
+| POST `/api/mobile/accounts/logout-all` | Revoke this account's sessions; requires `expectedStoreId` |
+| GET `/api/mobile/reports` | Reports from all currently authorized `reports.view` stores, adding `storeId` and `storeName` to each browser-compatible report record |
+| POST `/api/mobile/reports` | Named `reports.submit` workflow with existing report fields and required `expectedStoreId`; 202 with `date` and `status: "pending"` |
+| GET `/api/mobile/heads-up` | Selected-store `{message, updatedAt}` for `reports.view` or `reports.submit`; `updatedAt` may be null |
+
+Native account administration also exposes POST `invitations`,
+`invitations/reissue`, `memberships`, `business-memberships`, `transfer-ownership`,
+`suspend` and `cutover` below `/api/mobile/accounts/`. Request fields and authority
+match the existing Accounts & Access operations. The first native UI has a
+read-only team view; these endpoints do not imply complete native owner screens.
+
+All protected POST bodies except logout must include a positive integer
+`expectedStoreId` matching the authenticated session's selected store; missing or
+invalid values return 400 and a different store returns 409. This is a form
+context guard, not an authorization grant. Shared services recheck actor access
+within mutation transactions. Public login, activation and reset are exempt.
+
+The adapter retains safe `{"error": "message"}` responses: identity validation
+400, authentication 401, permission 403, scoped not-found 404, conflicts 409,
+admission limits 429 and unavailable dependencies 503. Report quality rejection
+returns 422. Existing origin/Fetch Metadata checks still apply if those browser
+headers are present; native callers do not gain a wildcard browser origin policy.
+Sensitive API responses remain non-cacheable. Do not automatically replay
+uncertain writes; an offline outbox requires a separately implemented idempotency
+and conflict contract.
+
 ## Proposed inventory API
 
 New module base: `/api/v1/stores/{store_id}`. Resolve the authenticated actor's

@@ -1,19 +1,23 @@
 # Shiftly product direction
 
-Updated: 2026-09-20. Full delivery plan:
+Updated: 2026-09-22. Native client delivery:
+[NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md). Domain delivery plan:
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 ## Existing product
 
-Shiftly supports shared crew sign-in, shift reports, manager review, AI
+Shiftly supports named accounts with scoped crew/manager/admin/owner access,
+shared crew sign-in during enrollment, shift reports, manager review, AI
 briefings, weekly overviews, and a store Head's Up message. Original notes stay
 available alongside generated summaries. Current inventory functionality is
 not implemented.
 
 ## Expanded product
 
-Shiftly will become an installable mobile web application backed by FastAPI.
-Native iPhone/Android clients are a later phase.
+Shiftly's primary new experience is a native phone and tablet application built
+with React Native, Expo and TypeScript, backed by the existing FastAPI services.
+The existing browser application remains available while native workflows reach
+parity. A separate React browser rewrite is outside this phase.
 
 The manager window will offer two distinct spaces:
 
@@ -59,7 +63,8 @@ The next phases explicitly include FastAPI and inventory; the former
 baseline-only exclusions no longer apply. Preserve current data and browser
 contracts throughout the transport migration.
 
-Native distribution, unattended camera stock posting, automatic purchasing,
-connected-scale hardware, and automatic invoice OCR are outside the initial
-release. Each can be considered after the underlying approved workflows work
-reliably. Camera quality and forecast claims require real-store pilot evidence.
+The first native slice covers named accounts and daily reporting; full native
+account administration, stock workflows and camera assistance have separate gates.
+Signed native distribution requires real-device verification and a release review.
+Unattended camera stock posting, automatic purchasing, connected-scale hardware
+and automatic invoice OCR remain outside the initial release. Camera quality and forecast claims require real-store pilot evidence.

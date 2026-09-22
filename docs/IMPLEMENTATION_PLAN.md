@@ -11,7 +11,14 @@ Gate D requires review and merge of these follow-up fixes with green CI; hosted
 staging and production cutover remain Gate P. The original baseline below is
 historical; the feature ordering and acceptance requirements remain applicable.
 
-This is the authoritative implementation sequence for the next Shiftly release.
+**Client direction update — 2026-09-22:** The user selected a phone and tablet
+app built with React Native. [NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md) now
+authorizes native client delivery with Expo and TypeScript in `apps/mobile`,
+reusing the verified Accounts & Access services. It supersedes the earlier
+mobile-web-first choice and orders native work alongside the domain phases below.
+The existing browser app remains available during migration.
+
+This is the authoritative domain implementation sequence for the next Shiftly release.
 It replaces the earlier baseline-only backlog. It describes planned work, not
 features that already exist. Product rules and worked inventory examples are in
 [INVENTORY.md](INVENTORY.md); technical boundaries are in
@@ -66,7 +73,7 @@ The inventory workspace will let a manager:
 | Application architecture | One modular application with a FastAPI API and separately supervised durable workers |
 | Existing functionality | Preserve current URLs, cookie behavior, data, and browser workflows during migration |
 | Inventory navigation | Manager window → Inventory; dedicated workspace with a return path to manager operations |
-| First client | Confirmed: installable mobile web app first, with APIs suitable for a later native iPhone/Android client |
+| First client | React Native + Expo phone/tablet app first; keep the existing browser application during migration, without a separate React web rewrite |
 | First stock entry method | Manual counts, receipts, and partial weights establish the trusted workflow before vision automation |
 | Camera results | Proposals that require review; photos cannot directly post stock changes |
 | Partial items | Explicit scale measurements and item-specific conversions; photos alone do not establish remaining weight |

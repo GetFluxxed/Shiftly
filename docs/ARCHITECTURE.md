@@ -1,6 +1,7 @@
 # Shiftly architecture: current baseline and target
 
-Updated: 2026-09-21. Delivery authority: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+Updated: 2026-09-22. Domain delivery: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+Native client delivery: [NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md).
 
 ## Current runtime
 
@@ -21,13 +22,14 @@ ingestion and the installable client remain planned.
 
 ## Target application
 
-One Shiftly application will expose a FastAPI backend and an installable mobile
-web client. A separately supervised worker processes durable jobs. PostgreSQL
-remains the transaction authority; private object storage holds inventory images.
+One Shiftly application will expose the existing FastAPI backend and a React
+Native phone/tablet client built with Expo and TypeScript in `apps/mobile`. A
+separately supervised worker processes durable jobs. PostgreSQL remains the transaction authority; private object storage holds inventory images.
 
 The manager app has Operations and Inventory spaces. Both use the same account
-and selected-store context. A later native client uses the versioned API rather
-than reimplementing stock calculations or permissions.
+and explicit store context. A native `/api/mobile` adapter reuses opaque account
+sessions and shared services. The app does not reimplement stock calculations or
+authorization, and existing browser cookie contracts remain available.
 
 FastAPI routers will group module endpoints, with shared authorization and
 resource dependencies. This follows its supported [router/dependency structure](https://fastapi.tiangolo.com/tutorial/bigger-applications/).
@@ -52,18 +54,17 @@ backend/shiftly/
   forecasting/            shortage estimates and explanations
   receiving/              invoices, scans and receipt posting
   jobs/                   durable queue, handlers and worker entry point
-web/
-  app-shell/              routing, navigation, installation and sync status
-  operations/             existing manager workflows
-  inventory/              tracker, shelves, count review and receiving
-  shared/                 authenticated API client and reusable controls
+apps/mobile/
+  app/                    Expo Router native navigation and entry layouts
+  src/                    typed API client, native screens and shared controls
+  # Inventory, capture and offline modules follow their service acceptance gates.
+# Existing root HTML/CSS/JavaScript pages remain the browser fallback.
 ```
 
 Identity, stores, reports, jobs, runtime and the API/core boundaries are implemented.
-Inventory, media, vision, sales, forecasting, receiving and the new client tree
-remain targets. Choose client
-build tooling in the app-shell work package; preserve existing pages while
-introducing feature modules and a consistent API client.
+Inventory, media, vision, sales, forecasting and receiving remain targets.
+The native account/reporting foundation is underway. Preserve existing pages
+while adding native modules and a consistent authenticated API client.
 
 ## Boundary rules
 
@@ -93,7 +94,8 @@ introducing feature modules and a consistent API client.
    port its adapters rather than pretending it can be mounted unchanged.
 3. Keep current `/api/...` routes and static entry pages during migration.
    Explicitly map validation/status/cookie differences. New modules use
-   `/api/v1/...`; document compatibility and deprecation separately.
+   explicitly documented module namespaces. The native account/report adapter
+   uses `/api/mobile/...`; document compatibility and deprecation separately.
 4. Use FastAPI [lifespan](https://fastapi.tiangolo.com/advanced/events/) to open
    and close application resources. Run a coordinated migration command before
    web and worker startup, with compatible additive migrations.
@@ -123,16 +125,22 @@ Migration locking and queue ownership must work across processes.
 
 ## Client and media behavior
 
-The confirmed first app is an installable mobile web app. Add an app manifest,
-same-origin HTTPS delivery, an asset-only service-worker cache policy, explicit
-draft/sync states, and refresh/version handling. Keep final inventory posting
-online; saved drafts recheck authorization and versions on reconnect.
+The first new app is React Native with Expo and TypeScript. Use native controls,
+phone/tablet layouts, explicit loading/error states and accessible navigation.
+Store the opaque account token through Expo SecureStore and revalidate the server
+session on foregrounding. Keep passwords, codes and report data out of ordinary
+persistent storage. Clear private screens and drafts on account/store/access
+changes; recheck permissions in the service transaction for every mutation.
 
-Use phone capture with an upload fallback. Private image storage, validation,
-limited retention, evidence links, and provider isolation belong to the media
-and vision modules. Camera permission policy changes are scoped to capture
-surfaces. Native app packaging, device credentials, and push integrations are
-later work using the same backend.
+Offline drafts/outbox delivery comes after server idempotency and version/conflict
+handling. Reconnect must recheck authorization before replay; an uncertain write
+must not silently be submitted again. Initial inventory posting remains online.
+
+Native camera/barcode capture follows catalog/count services, with manual entry
+fallbacks. Private image storage, validation, retention, evidence links and
+provider isolation belong to the media and vision modules. Camera permission,
+SecureStore lifecycle and signed distribution require real-device verification.
+No photo inference or model-training capability is implied by adopting React Native.
 
 ## Data ownership
 
