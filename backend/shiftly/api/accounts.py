@@ -1,8 +1,4 @@
 """FastAPI adapter for the framework-free Accounts & Access contract."""
-from functools import partial
-from urllib.parse import urlparse
-
-import anyio
 import psycopg
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -13,31 +9,9 @@ from backend.shiftly.core.dependencies import (
 )
 from backend.shiftly.core.request import RequestBodyError, bounded_json
 from backend.shiftly.identity import IdentityError
+from backend.shiftly.core.http import ACCOUNT_COOKIES, call, error_response, same_origin, store_precondition
 
 router = APIRouter(prefix="/api/accounts")
-ACCOUNT_COOKIES = ("shiftly_account_session", "shiftly_manager_session", "shiftly_crew_session")
-ERROR_STATUS = {
-    "invalid": 400, "unauthenticated": 401, "forbidden": 403,
-    "not_found": 404, "conflict": 409, "limited": 429, "unavailable": 503,
-}
-
-
-async def call(function, *args, **kwargs):
-    return await anyio.to_thread.run_sync(partial(function, *args, **kwargs))
-
-
-def error_response(error):
-    return JSONResponse(status_code=ERROR_STATUS.get(error.code, 503), content={"error": str(error)})
-
-
-def same_origin(request):
-    origin = request.headers.get("origin")
-    if origin:
-        parsed = urlparse(origin)
-        if parsed.scheme not in {"http", "https"} or parsed.netloc != request.headers.get("host"):
-            raise IdentityError("forbidden", "Cross-origin account changes are not permitted.")
-    if request.headers.get("sec-fetch-site") == "cross-site":
-        raise IdentityError("forbidden", "Cross-origin account changes are not permitted.")
 
 
 def clear_cookies(response, context):
@@ -66,17 +40,6 @@ async def require_named(context, request):
     if not resolved or not resolved.named:
         raise IdentityError("unauthenticated", "Named sign-in required.")
     return resolved
-
-
-def store_precondition(fields, resolved):
-    """An optional stale-tab precondition, never a source of store authority."""
-    if "expectedStoreId" not in fields:
-        return
-    expected = fields["expectedStoreId"]
-    if isinstance(expected, bool) or not isinstance(expected, int) or expected <= 0:
-        raise IdentityError("invalid", "Expected store ID must be a positive integer.")
-    if expected != resolved.store_id:
-        raise IdentityError("conflict", "The selected store changed. Refresh and try again.")
 
 
 @router.api_route("/{operation:path}", methods=["GET", "POST"])

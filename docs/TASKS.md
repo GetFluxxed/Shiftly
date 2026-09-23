@@ -1,15 +1,21 @@
 # Shiftly implementation backlog
 
-Updated: 2026-09-20. Source of truth:
+Updated: 2026-09-22. Native delivery priority:
+[NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md). Domain source of truth:
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-Current main is `e01e84e`. F0 recovery/contract work, F1 services/FastAPI and the
+**Current delivery override:** Accounts & Access integration `7ecb61d` is published
+in PR #10 over backend PR #9. Native account/reporting delivery is now the first
+client priority. The package/status notes below retain the earlier domain
+baseline; use the native roadmap for current app sequencing.
+
+Historical main baseline: `e01e84e`. F0 recovery/contract work, F1 services/FastAPI and the
 local F2 runtime are implemented. F3 includes pinned dependencies and browser
 CI. The focused verification follow-up adds both-transport API contracts and
 an automated upgrade/outage/restore rehearsal. See
 [verification evidence](workstreams/focused-verification.md) for checks and
 remaining review/merge requirements. Hosted staging, production cutover and
-required-check administration remain release work. A1 onward are not implemented.
+required-check administration remain release work. A1 navigation and A2 named accounts/permissions are implemented; I1 onward remain planned.
 
 ## Ordered work packages
 
@@ -29,17 +35,18 @@ required-check administration remain release work. A1 onward are not implemented
 | C1 | Private image uploads and phone capture | A1, A2, I4 | Permission denial, validation, store isolation and interrupted uploads tested on pilot devices |
 | C2 | Durable image analysis and shelf-context proposals | C1, F2 | Bounded jobs, strict results, uncertainty and provider failure tests pass |
 | C3 | Count review, overlap resolution, partial-weight linkage and camera pilot | C2, I5 | Repeat images/open containers cannot inflate stock; agreed quality thresholds measured |
-| M1 | Installable mobile web shell, saved drafts and reconnect conflict handling | A1; release after C3 | Agreed iPhone/Android matrix completes capture-to-post and logout/sync tests |
+| M1 | Native offline drafts/outbox and reconnect conflict handling | N1; affected services have idempotency/version checks | Agreed device matrix verifies interrupted writes, authorization recheck, no duplicate posting and private draft cleanup |
 | S1 | Sales ingestion, import deduplication, recipes and usage mappings | I3 | Known examples, refunds, stale data and unmapped sales handled visibly |
 | S2 | Demand, cover, lead-time/par alerts and forecast explanations | S1, I5 | Reproducible calculations and pilot error measurements; estimates remain separate from confirmed stock |
 | R1 | Stretch: invoice entry/import and line-level receiving checklist | I3, I5 | Manual partial receiving, discrepancies and receipt replay tests pass |
 | R2 | Stretch: barcode/SKU mapping, scanning and confirmed receipt posting | R1, C1 | Case/unit conversions, repeat scans, unknown codes and duplicate receipt requests tested |
-| N1 | Later native app delivery | Stable versioned API and pilot evidence | Separately scoped native authentication, device storage and distribution plan |
+| N1 | Priority: React Native + Expo account/reporting app for phones and tablets | Verified Accounts & Access integration and FastAPI services | Native API authorization tests, typecheck/bundling, then separate iPhone/Android and tablet evidence before release |
 
 F3 and inventory discovery can run alongside the backend foundation. Catalog and
 shelf discovery should produce real pilot items, full weights, tare profiles,
 units, pars, photos and sales samples before dependent implementation begins.
-M1 shell design can start earlier; its full release gate includes camera flows.
+N1 begins before catalog delivery; native inventory and capture follow I/C packages.
+M1 offline replay waits for command idempotency and conflict handling.
 
 ## Definition of done
 
@@ -59,9 +66,10 @@ M1 shell design can start earlier; its full release gate includes camera flows.
 
 ## Next bounded task
 
-Review and merge the focused verification fixes with green CI. Then begin
-**A1/A2**: manager Operations/Inventory navigation and explicit inventory actors
-and permissions, followed by **I1** catalog/units/weight profiles. Use a new
-feature branch from the verified merged main, not the historical reports worktree.
-Do not merge the older worktree wholesale or combine framework migration with
-the complete inventory feature set in one release.
+The [shared company catalog and first shelf](workstreams/inventory-foundation-and-shared-catalog.md)
+are implemented as a bounded subset of I1/I2. Enter the real pilot products and
+confirm the first shelf on an iPhone. Next, define the pilot package/base-unit
+conversions before implementing opening counts and the movement ledger.
+Weights, pars and the broader location hierarchy follow. N1 and native Team/Owner administration exist. Preserve their
+behavior and the browser app. Hosted cutover and signed native distribution are
+separate release tasks.

@@ -19,7 +19,7 @@ from database import db_connection
 def test_fresh_and_concurrent_migrations_are_serialized(empty_database):
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(lambda _: migrate(db_connection), range(2)))
-    assert sorted(len(result) for result in results) == [0, 14]
+    assert sorted(len(result) for result in results) == [0, 16]
     assert schema_status(db_connection) == {"status": "ok", "schemaReady": True, "pendingMigrations": []}
     assert migrate(db_connection) == []
 
@@ -38,7 +38,7 @@ def test_migration_lock_wait_is_bounded(empty_database):
         holder.execute("SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext(current_schema() || ':shiftly-migrate'))")
         with pytest.raises(psycopg.errors.LockNotAvailable):
             migrate(db_connection, lock_timeout_ms=50)
-    assert len(migrate(db_connection)) == 14
+    assert len(migrate(db_connection)) == 16
 
 
 def test_runtime_migration_preserves_existing_reports(empty_database, tmp_path):
@@ -59,7 +59,7 @@ def test_runtime_migration_preserves_existing_reports(empty_database, tmp_path):
         connection.execute("INSERT INTO briefing_jobs(report_id) VALUES (%s)", (report_id,))
     with db_connection() as connection:
         before = connection.execute("SELECT * FROM reports WHERE id=%s", (report_id,)).fetchone()
-    assert migrate(db_connection) == ["013_runtime_operations.sql", "014_accounts_access.sql"]
+    assert migrate(db_connection) == ["013_runtime_operations.sql", "014_accounts_access.sql", "015_inventory_catalog_and_shelves.sql", "016_product_container_amounts.sql"]
     with db_connection() as connection:
         after = connection.execute("SELECT * FROM reports WHERE id=%s", (report_id,)).fetchone()
         assert after[:-1] == before
@@ -79,7 +79,7 @@ def test_application_runtime_refuses_schema_without_migrating(empty_database):
 def test_migration_cli_reads_explicit_environment(empty_database, child_environment):
     result = subprocess.run([sys.executable, "-m", "backend.shiftly.runtime.migrate"], env=child_environment(empty_database), capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
-    assert "applied 14 migration(s)" in result.stdout
+    assert "applied 16 migration(s)" in result.stdout
     assert schema_status(db_connection)["schemaReady"]
 
 
@@ -170,7 +170,7 @@ def test_concurrent_migration_commands_share_database_lock(empty_database, child
         results = [(process, process.communicate(timeout=10)) for process in (first, second)]
         assert all(process.returncode == 0 for process, _ in results), results
         assert sorted(output[0].strip() for _, output in results) == [
-            "Migrations ready; applied 0 migration(s).", "Migrations ready; applied 14 migration(s).",
+            "Migrations ready; applied 0 migration(s).", "Migrations ready; applied 16 migration(s).",
         ]
     finally:
         for process in (first, second):
@@ -186,4 +186,4 @@ def test_legacy_migration_wrapper_uses_configured_lock_budget(empty_database, mo
         holder.execute("SELECT pg_advisory_xact_lock(hashtext(current_database()), hashtext(current_schema() || ':shiftly-migrate'))")
         with pytest.raises(psycopg.errors.LockNotAvailable):
             server.initialize_database()
-    assert len(server.initialize_database()) == 14
+    assert len(server.initialize_database()) == 16

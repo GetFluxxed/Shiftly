@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 from .admission import AdmissionControl
 from .accounts_policy import AccountActor, capabilities_for
 from .primitives import hash_store_code, hash_token, password_hash
-from .service import IdentityError, SessionResult
+from .contracts import IdentityError, SessionResult, require_store_context
 
 ACCOUNT_COOKIE = "shiftly_account_session"
 
@@ -135,7 +135,7 @@ class AccountCore:
         (uid, username, display_name, legacy_id, version, sid, business_id, enabled,
          business_active, business_role, business_grants, store_role, store_grants, membership_business) = row
         if business_id is not None and not business_active:
-            raise IdentityError("forbidden", "Business access is unavailable.")
+            raise IdentityError("forbidden", "Business access is unavailable.", reason="access_changed")
         mapped = bool(business_id is not None and enabled)
         if business_role == "owner":
             role, grants = "owner", ()
@@ -143,15 +143,15 @@ class AccountCore:
             role, grants = store_role, store_grants
             if role == "admin":
                 if business_role != "admin":
-                    raise IdentityError("forbidden", "Administrator delegation is unavailable.")
+                    raise IdentityError("forbidden", "Administrator delegation is unavailable.", reason="access_changed")
                 grants = frozenset(grants) & frozenset(business_grants)
             if not mapped and legacy_id and role == "manager":
                 if not connection.execute(
                     "SELECT 1 FROM store_memberships WHERE manager_user_id=%s AND store_id=%s", (legacy_id, sid),
                 ).fetchone():
-                    raise IdentityError("forbidden", "Store membership is unavailable.")
+                    raise IdentityError("forbidden", "Store membership is unavailable.", reason="access_changed")
         else:
-            raise IdentityError("forbidden", "No active membership for this store.")
+            raise IdentityError("forbidden", "No active membership for this store.", reason="access_changed")
         capabilities = capabilities_for(role, grants, mapped=mapped)
         # Shared catalog authority is a separate business-level delegation. A
         # local manager keeps that local role and gains no team/owner powers.
@@ -182,12 +182,22 @@ class AccountCore:
         if store_id is not None and store_id != actor.store_id:
             actor = self._actor_for_user(connection, actor.user_id, store_id)
         if capability and capability not in actor.capabilities:
-            raise IdentityError("forbidden", "This account lacks the required permission.")
+            raise IdentityError("forbidden", "This account lacks the required permission.", reason="permission_denied")
         return actor
 
     def require(self, token, capability, *, connection, store_id=None):
         self._lock(connection)
         return self.resolve_actor(token, connection=connection, capability=capability, store_id=store_id)
+
+    def require_selected_store(self, token, capability, *, connection, expected_store_id):
+        """Authorize a feature transaction without letting a request retarget it.
+
+        The caller retains the policy lock until its write and feature audit
+        commit together. This method never commits on the caller's behalf.
+        """
+        actor = self.require(token, capability, connection=connection)
+        require_store_context(actor, expected_store_id)
+        return actor
 
     def authorized_stores(self, token, *, capability=None, connection=None):
         if connection is None:

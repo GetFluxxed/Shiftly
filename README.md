@@ -6,6 +6,14 @@ briefings, a Weekly Overview, and a shared Head's Up message.
 
 ## Project status
 
+Native phone and tablet development is now the first client priority. The
+[React Native/Expo application](apps/mobile/README.md) provides individual
+sign-in, store selection, account controls, crew reporting and a manager inbox
+through the existing FastAPI services. The browser workspace remains available
+as account administration and remaining workflows move to native screens.
+See the [native roadmap](docs/NATIVE_APP_ROADMAP.md) and
+[foundation handoff](docs/workstreams/react-native-foundation.md).
+
 Accounts & Access integration status, September 22, 2026. This branch builds on
 verified base `9a31a930ebf6fa305e8919d1ff398177666b3577` and published account
 backend `261637a2da7aaaa942acdcd2ac5764bece610b32`. The combined local suite passed
@@ -21,10 +29,16 @@ revisions and evidence. This is integration-review readiness, not production cut
 | FastAPI | Shared services, authentication/reporting/account adapters, protected pages and security middleware |
 | Accounts & Access | Named crew/manager identities, scoped owner/admin/manager/crew policy, invitations, recovery, team and owner workflows |
 | Automated checks | Disposable PostgreSQL, mocked AI, service/regression/contract tests, Chromium browser flows, and pinned CI dependencies |
-| Inventory and installable app | Permission-aware empty Inventory page; stock, camera and installable-app features remain planned |
+| Native app | React Native/Expo phone and tablet foundation; native API, secure sign-in and daily reporting; real-device release checks pending |
+| Inventory | Alphabetized company catalog with editable full-container sizes, add/edit/archive/restore, store shelves and product assignments in the native app; quantities and camera capture remain planned |
 
 Both transports and independent worker/recovery flows are verified locally.
 Hosted staging, actual ownership mapping and production promotion remain separate.
+
+Current inventory work starts with the [foundation and shared company catalog](docs/workstreams/inventory-foundation-and-shared-catalog.md): reuse products/SKUs
+across store-specific shelves. The prerequisite cleanup and first catalog/shelf slice are implemented with
+additive migrations 015–016. Open **Inventory → Company catalog** to add products,
+then **Inventory → Shelves** to create a shelf and assign them.
 
 ## What works today
 

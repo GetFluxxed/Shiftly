@@ -11,12 +11,27 @@ Gate D requires review and merge of these follow-up fixes with green CI; hosted
 staging and production cutover remain Gate P. The original baseline below is
 historical; the feature ordering and acceptance requirements remain applicable.
 
-This is the authoritative implementation sequence for the next Shiftly release.
+**Client direction update — 2026-09-22:** The user selected a phone and tablet
+app built with React Native. [NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md) now
+authorizes native client delivery with Expo and TypeScript in `apps/mobile`,
+reusing the verified Accounts & Access services. It supersedes the earlier
+mobile-web-first choice and orders native work alongside the domain phases below.
+The existing browser app remains available during migration.
+
+This is the authoritative domain implementation sequence for the next Shiftly release.
 It replaces the earlier baseline-only backlog. It describes planned work, not
 features that already exist. Product rules and worked inventory examples are in
 [INVENTORY.md](INVENTORY.md); technical boundaries are in
 [ARCHITECTURE.md](ARCHITECTURE.md); executable work packages are in
 [TASKS.md](TASKS.md).
+
+**Current delivery — 2026-09-23:** Native accounts/reporting and account management
+are implemented in the active worktree. The [shared company catalog and first shelf](workstreams/inventory-foundation-and-shared-catalog.md)
+are also implemented: one company catalog reused across store listings and shelf
+placements, with additive migration 015 and native screens. This completes the
+bounded product/SKU storage and shelf-assignment slice; quantities, conversions
+and camera work follow. Historical F0/F1 instructions below are evidence,
+not a request to repeat completed work.
 
 ## 1. Intended outcome
 
@@ -66,7 +81,7 @@ The inventory workspace will let a manager:
 | Application architecture | One modular application with a FastAPI API and separately supervised durable workers |
 | Existing functionality | Preserve current URLs, cookie behavior, data, and browser workflows during migration |
 | Inventory navigation | Manager window → Inventory; dedicated workspace with a return path to manager operations |
-| First client | Confirmed: installable mobile web app first, with APIs suitable for a later native iPhone/Android client |
+| First client | React Native + Expo phone/tablet app first; keep the existing browser application during migration, without a separate React web rewrite |
 | First stock entry method | Manual counts, receipts, and partial weights establish the trusted workflow before vision automation |
 | Camera results | Proposals that require review; photos cannot directly post stock changes |
 | Partial items | Explicit scale measurements and item-specific conversions; photos alone do not establish remaining weight |
@@ -185,20 +200,18 @@ thresholds are agreed and measured before camera counting is enabled broadly.
 
 ### Phase 5 — App experience and resilient mobile workflows
 
-Confirmed mobile-web direction: add an installable app shell, focused camera
-and weighing screens, saved drafts, explicit upload/sync status, and reconnect
-handling. Keep final stock posting online and authorized. Revalidate inventory
-versions when an offline draft reconnects; never label unsynced counts as posted.
+The primary app is React Native with Expo. Extend the implemented native shell
+with camera/weighing flows and explicit upload/reconnect states when their domain
+modules are ready. Keep final stock posting online and authorized. Any later
+saved drafts need private device storage, version revalidation, and clear pending
+status; they must never appear as posted counts before server confirmation.
 
-Test supported iPhone and Android devices, browser and installed-app modes,
-camera denial, device rotation, large images, poor connectivity, and logout on a
-shared phone. Private inventory data and photos must not enter a generic public
-service-worker cache. A later native client will use the same versioned services;
-native packaging, device storage, and authentication remain a later workstream.
+Test supported iPhone/Android devices, camera denial, background/return, rotation,
+poor connectivity, and sign-out. Preserve the existing browser app during migration.
+Native distribution and real-device acceptance are separate release requirements.
 
-**Exit gate:** the agreed device matrix completes capture → weigh → review →
-post, and interruption/retry/logout tests preserve both privacy and stock accuracy.
-Basic mobile camera support ships in Phase 4; app-shell discovery can run earlier.
+**Exit gate:** the agreed native device matrix completes capture → weigh → review
+→ post with privacy and stock accuracy preserved through interruption and retries.
 
 ### Phase 6 — Par, sales, and shortage insights
 
@@ -259,7 +272,7 @@ outstanding; checklist status matches actual accepted deliveries.
 
 | Needed before | Input or decision | Default until settled |
 | --- | --- | --- |
-| Phase 2 client selection | Supported phones and browser versions; frontend tooling | Installable mobile web first is confirmed; native later |
+| Native client delivery | Supported iPhone/Android phones and tablets; device acceptance | React Native + Expo first; retain existing browser workflows |
 | Phase 2 catalog | Pilot store, item list, base units, case sizes, shelf layout, pars | No invented store values |
 | Phase 3 weighing | Full net weights, tare profiles, scale precision, partial-item list | Manual scale entry; no assumed weights |
 | Phase 3 approvals | Who may count, approve, adjust, and configure | Identified authorized managers only |
@@ -269,7 +282,9 @@ outstanding; checklist status matches actual accepted deliveries.
 
 ## 7. Immediate next work package
 
-Begin with **F0: baseline and worker recovery**, followed by **F1: service
-boundaries and FastAPI compatibility tests**. Inventory discovery (pilot item
-catalog, shelf map, weights, pars, and sales samples) can proceed alongside those
-packages. Do not treat the full feature list as one implementation or deployment.
+Implement the shared company catalog and first store shelf described in the
+[inventory foundation](workstreams/inventory-foundation-and-shared-catalog.md).
+Reuse existing business/store permissions and the prepared native API boundary.
+Start with named shelves and product/SKU assignments; follow with inventory
+quantities and photo workflows at their existing acceptance gates. F0/F1 and the
+local runtime are implemented; hosted cutover remains a separate release task.

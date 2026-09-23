@@ -1,8 +1,20 @@
 # Shiftly inventory module specification
 
-Status: planned, 2026-09-20. Delivery order is controlled by
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). No inventory tables, routes,
-camera processing, or sales integrations described here are implemented yet.
+Status: first catalog/shelf slice implemented, 2026-09-23. Delivery order is
+controlled by [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). This remains the
+broader specification; only the slice below is implemented. Quantities, camera
+processing and sales integrations remain future work.
+
+## Current first slice — 2026-09-23
+
+Implemented directly in React Native: a shared company catalog with
+add/edit/archive/restore, named shelves in a selected store and product/SKU
+assignment/removal. Reuse identical
+company products across stores without duplicating their identities. Follow the
+[inventory foundation and shared company catalog](workstreams/inventory-foundation-and-shared-catalog.md); stock quantities, camera processing and the broader specification below
+remain later work. Migrations 015–016, the independent inventory service/router, and
+native catalog/shelf screens implement this slice. Store-listing deactivation,
+shelf deletion and area/rack/bin hierarchy are not yet exposed.
 
 ## Manager workspace
 
@@ -26,6 +38,24 @@ Planned views:
 The tracker is the application's digital sheet, backed by transactional data.
 Spreadsheet import/export may be added for convenience; an external sheet is
 not a second inventory authority or a prerequisite.
+
+## Standard containers — implemented refinement
+
+The catalog now stores the net amount per full container, in each, grams or
+kilograms. White Quella can use a kg base with a full-container amount of `6`.
+The form displays `6 kg = 6000 g`; container size is visible in catalog cards and
+shelf assignments. Existing products can add/edit this reference with version
+checks. An unknown size stays blank. New litre/millilitre products are disabled.
+The catalog and shelf's catalog picker are alphabetized before pagination/search.
+
+Actual partial measurements remain a later count/scale integration. Store each
+future observation's original amount/unit, net value after known tare, product
+ID and configuration version; normalize grams/kilograms exactly into that same
+SKU's base unit. A 1,250 g net partial contributes 1.25 kg alongside full 6 kg
+containers. It is not a separate SKU and must not be counted again as a full
+container. Changing the current container reference must not recalculate already
+posted quantities. This revision stores standard contents only, not a current
+back-stock balance or purchasing target.
 
 ## Item and shelf information
 

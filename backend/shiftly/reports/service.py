@@ -100,8 +100,15 @@ class ReportsService:
         rows = self.repository.for_manager(manager_id)
         return self._results(rows)
 
-    def list_for_actor(self, token, accounts):
-        return self._results(self.repository.for_actor(token, accounts))
+    def list_for_actor(self, token, accounts, *, include_store=False):
+        rows = self.repository.for_actor(token, accounts)
+        results = self._results(rows)
+        if include_store:
+            # The native inbox spans authorized stores and must label each row.
+            # Existing browser response fields remain unchanged.
+            for result, row in zip(results, rows):
+                result.update(storeId=row[11], storeName=row[12])
+        return results
 
     @staticmethod
     def _results(rows):

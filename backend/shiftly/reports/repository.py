@@ -95,8 +95,10 @@ class ReportsRepository:
             store_ids = [item["storeId"] for item in stores]
             return connection.execute(
                 """SELECT r.id, r.employee, r.shift, r.notes, r.created_at,
-                          j.status, j.last_error, b.summary, b.wins, b.risks, b.follow_up
+                          j.status, j.last_error, b.summary, b.wins, b.risks, b.follow_up,
+                          r.store_id, s.name
                    FROM reports r JOIN briefing_jobs j ON j.report_id = r.id
+                   JOIN stores s ON s.id = r.store_id
                    LEFT JOIN briefings b ON b.report_id = r.id
                    WHERE r.store_id = ANY(%s) ORDER BY r.created_at DESC""", (store_ids,),
             ).fetchall()

@@ -8,3 +8,9 @@ __pycache__/
 .DS_Store
 .vscode/
 
+# Native app dependencies and local build output
+node_modules/
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/ios/
+apps/mobile/android/

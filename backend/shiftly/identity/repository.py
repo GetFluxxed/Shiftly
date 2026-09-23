@@ -147,7 +147,7 @@ class IdentityRepository:
         # Revalidate the exact verified generation under the shared policy lock
         # so password recovery/revocation cannot race a fresh legacy session.
         from .accounts_core import policy_lock
-        from .service import IdentityError
+        from .contracts import IdentityError
         with self.connect() as connection:
             policy_lock(connection)
             store = connection.execute(
@@ -178,7 +178,7 @@ class IdentityRepository:
         # Account, membership and first session succeed or roll back together.
         with self.connect() as connection:
             from .accounts_core import policy_lock
-            from .service import IdentityError
+            from .contracts import IdentityError
             policy_lock(connection)
             if store_id is not None:
                 row = connection.execute(
@@ -209,7 +209,7 @@ class IdentityRepository:
     def authorize_legacy(connection, store_id, *, manager_token="", crew_token="", manager_required=False):
         """Recheck compatibility credentials in the transaction that posts a write."""
         from .accounts_core import policy_lock
-        from .service import IdentityError
+        from .contracts import IdentityError
         policy_lock(connection)
         manager = None
         crew = None

@@ -104,8 +104,9 @@ remain future work. Production startup and `render.yaml` are unchanged.
   and browser smoke tests, and a documented transport cutover/rollback.
 - Provide private object storage and lifecycle rules for inventory evidence;
   define upload/processing limits and per-store AI budgets.
-- Serve the installable mobile web app over HTTPS. Apply camera permissions to
-  capture pages and test the asset-only service-worker cache/update policy.
+- Serve the native API over HTTPS. Deliver React Native/Expo phone/tablet clients
+  and verify private device storage, native camera permissions and signed builds.
+  Keep the existing browser application available during migration.
 - Use store feature flags for catalog, manual inventory, camera proposals,
   sales insights and stretch receiving. Enable each after its acceptance gate.
 - Monitor error rates, pool usage, worker heartbeat, oldest queued job, media

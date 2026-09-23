@@ -11,7 +11,7 @@ import psycopg
 
 from .accounts_policy import ALL_CAPABILITIES, assert_grant
 from .primitives import hash_token
-from .service import IdentityError
+from .contracts import IdentityError
 
 
 class SecretResult(dict):
@@ -53,7 +53,7 @@ class AccountLifecycle:
     @staticmethod
     def _require_owner(actor):
         if actor.role != 'owner' or actor.business_id is None:
-            raise IdentityError('forbidden', 'Business ownership is required.')
+            raise IdentityError('forbidden', 'Business ownership is required.', reason="permission_denied")
 
     def _check_store_grant(self, actor, role, capabilities):
         if not isinstance(role, str):
@@ -70,7 +70,7 @@ class AccountLifecycle:
         if not row:
             raise IdentityError('not_found', 'Account not found.')
         if active and (row[0] != 'active' or (row[1] is not None and not row[2])):
-            raise IdentityError('conflict', 'An active account is required.')
+            raise IdentityError('conflict', 'An active account is required.', reason="state_conflict")
         return row[:2]
 
     @staticmethod
@@ -81,7 +81,7 @@ class AccountLifecycle:
                WHERE m.business_id=%s AND m.role='owner' AND m.state='active'
                  AND u.state='active' AND (u.legacy_manager_id IS NULL OR legacy.active) AND m.user_id<>%s LIMIT 1""", (business_id, excluded_user_id),
         ).fetchone():
-            raise IdentityError('conflict', 'The last active business owner cannot be removed or suspended.')
+            raise IdentityError('conflict', 'The last active business owner cannot be removed or suspended.', reason="state_conflict")
 
     def invite(self, token, *, username, display_name='', role='crew', capabilities=(), store_id=None,
                expires_in=86400, reason=''):
@@ -95,10 +95,10 @@ class AccountLifecycle:
             with self.connect() as connection:
                 actor = self._lifecycle_actor(connection, token, store_id=store_id)
                 if role == 'admin':
-                    raise IdentityError('forbidden', 'Activate an individual account before delegating business administration.')
+                    raise IdentityError('forbidden', 'Activate an individual account before delegating business administration.', reason="permission_denied")
                 grants = self._check_store_grant(actor, role, capabilities)
                 if connection.execute('SELECT 1 FROM account_users WHERE username_key=account_username_key(%s)', (username,)).fetchone():
-                    raise IdentityError('conflict', 'This username already exists; assign membership without changing its password.')
+                    raise IdentityError('conflict', 'This username already exists; assign membership without changing its password.', reason="duplicate_identifier")
                 salt = self.token_factory(24)
                 user_id = connection.execute(
                     """INSERT INTO account_users (username,display_name,password_salt,password_hash,state)
@@ -122,7 +122,7 @@ class AccountLifecycle:
                 connection.commit()
             return SecretResult(userId=user_id, invitationId=str(invitation_id), token=raw_token, expiresIn=expires_in)
         except psycopg.errors.UniqueViolation as error:
-            raise IdentityError('conflict', 'This username already exists.') from error
+            raise IdentityError('conflict', 'This username already exists.', reason="duplicate_identifier") from error
 
     def reissue_invitation(self, token, *, user_id, expires_in=86400, store_id=None, reason=''):
         user_id, reason = self._id(user_id), self._reason(reason)
@@ -132,15 +132,15 @@ class AccountLifecycle:
             actor = self._lifecycle_actor(connection, token, store_id=store_id)
             state, _ = self._assert_target(connection, user_id)
             if state != 'pending':
-                raise IdentityError('conflict', 'Only pending accounts can receive a replacement activation invitation.')
+                raise IdentityError('conflict', 'Only pending accounts can receive a replacement activation invitation.', reason="state_conflict")
             membership = connection.execute(
                 "SELECT role,capabilities FROM account_store_memberships WHERE user_id=%s AND store_id=%s AND state='active'",
                 (user_id, actor.store_id),
             ).fetchone()
             if not membership or membership[0] not in {'crew', 'manager'}:
-                raise IdentityError('forbidden', 'An active permitted store membership is required.')
+                raise IdentityError('forbidden', 'An active permitted store membership is required.', reason="permission_denied")
             if connection.execute('SELECT 1 FROM account_store_memberships WHERE user_id=%s AND store_id<>%s', (user_id, actor.store_id)).fetchone():
-                raise IdentityError('forbidden', 'Activation of a pending account with multiple scopes requires operator reconciliation.')
+                raise IdentityError('forbidden', 'Activation of a pending account with multiple scopes requires operator reconciliation.', reason="permission_denied")
             role, grants = membership
             self._check_store_grant(actor, role, grants)
             connection.execute('UPDATE account_invitations SET revoked_at=NOW() WHERE user_id=%s AND used_at IS NULL', (user_id,))
@@ -183,11 +183,11 @@ class AccountLifecycle:
                     raise IdentityError('invalid', 'Invalid or expired activation token.')
                 invitation_id, user_id, store_id, role, grants, inviter_id = row
                 if connection.execute('SELECT 1 FROM account_store_memberships WHERE user_id=%s AND store_id<>%s', (user_id, store_id)).fetchone():
-                    raise IdentityError('forbidden', 'Activation of a pending account with multiple scopes requires operator reconciliation.')
+                    raise IdentityError('forbidden', 'Activation of a pending account with multiple scopes requires operator reconciliation.', reason="permission_denied")
                 # Withdrawal of inviter authority also withdraws unaccepted grants.
                 inviter = self._actor_for_user(connection, inviter_id, store_id)
                 if 'memberships.manage' not in inviter.capabilities:
-                    raise IdentityError('forbidden', 'Invitation authority was withdrawn.')
+                    raise IdentityError('forbidden', 'Invitation authority was withdrawn.', reason="permission_denied")
                 self._check_store_grant(inviter, role, grants)
                 salt = self.token_factory(24)
                 connection.execute(
@@ -208,16 +208,20 @@ class AccountLifecycle:
     def roster(self, token, *, store_id=None):
         with self.connect() as connection:
             actor = self._lifecycle_actor(connection, token, store_id=store_id)
-            rows = connection.execute(
-                """SELECT u.id,u.username,u.display_name,u.state,m.role,m.state,m.capabilities,
-                          b.role,b.state,COALESCE(b.capabilities,ARRAY[]::TEXT[])
-                   FROM account_store_memberships m JOIN account_users u ON u.id=m.user_id
-                   LEFT JOIN business_memberships b ON b.user_id=u.id AND b.business_id=%s
-                   WHERE m.store_id=%s ORDER BY u.username_key,u.id""", (actor.business_id,actor.store_id),
-            ).fetchall()
-            return {'storeId': actor.store_id, 'members': [dict(zip(
-                ('userId','username','displayName','accountState','role','membershipState','capabilities',
-                 'businessRole','businessState','businessCapabilities'), row)) for row in rows]}
+            return self._roster(connection, actor)
+
+    @staticmethod
+    def _roster(connection, actor):
+        rows = connection.execute(
+            """SELECT u.id,u.username,u.display_name,u.state,m.role,m.state,m.capabilities,
+                      b.role,b.state,COALESCE(b.capabilities,ARRAY[]::TEXT[])
+               FROM account_store_memberships m JOIN account_users u ON u.id=m.user_id
+               LEFT JOIN business_memberships b ON b.user_id=u.id AND b.business_id=%s
+               WHERE m.store_id=%s ORDER BY u.username_key,u.id""", (actor.business_id,actor.store_id),
+        ).fetchall()
+        return {'storeId': actor.store_id, 'members': [dict(zip(
+            ('userId','username','displayName','accountState','role','membershipState','capabilities',
+             'businessRole','businessState','businessCapabilities'), row)) for row in rows]}
 
     def set_membership(self, token, *, user_id, role, capabilities=(), active=True, store_id=None, reason=''):
         user_id, reason = self._id(user_id), self._reason(reason)
@@ -227,26 +231,26 @@ class AccountLifecycle:
             actor = self._lifecycle_actor(connection, token, store_id=store_id)
             target = self._assert_target(connection, user_id)
             if actor.user_id == user_id:
-                raise IdentityError('forbidden', 'Self-modification of membership is not permitted.')
+                raise IdentityError('forbidden', 'Self-modification of membership is not permitted.', reason="permission_denied")
             grants = self._check_store_grant(actor, role, capabilities)
             old = connection.execute('SELECT role,capabilities FROM account_store_memberships WHERE user_id=%s AND store_id=%s', (user_id, actor.store_id)).fetchone()
             if actor.role != 'owner' and connection.execute(
                 "SELECT 1 FROM business_memberships WHERE user_id=%s AND business_id=%s AND state='active'",
                 (user_id, actor.business_id),
             ).fetchone():
-                raise IdentityError('forbidden', 'Only owners can modify memberships of business owners or delegated administrators.')
+                raise IdentityError('forbidden', 'Only owners can modify memberships of business owners or delegated administrators.', reason="permission_denied")
             if target[0] == 'pending' and not old:
-                raise IdentityError('forbidden', 'Activate the existing invitation before assigning another store membership.')
+                raise IdentityError('forbidden', 'Activate the existing invitation before assigning another store membership.', reason="permission_denied")
             # Do not turn an existing manager/admin into crew to bypass management limits.
             if actor.role == 'manager' and old and old[0] != 'crew':
-                raise IdentityError('forbidden', 'Managers can manage crew memberships only.')
+                raise IdentityError('forbidden', 'Managers can manage crew memberships only.', reason="permission_denied")
             if actor.role != 'owner' and old:
                 self._check_store_grant(actor, old[0], old[1])
             if role == 'admin' and not connection.execute(
                 "SELECT 1 FROM business_memberships WHERE user_id=%s AND business_id=%s AND role='admin' AND state='active'",
                 (user_id, actor.business_id),
             ).fetchone():
-                raise IdentityError('conflict', 'An active business administrator delegation is required first.')
+                raise IdentityError('conflict', 'An active business administrator delegation is required first.', reason="state_conflict")
             connection.execute(
                 """INSERT INTO account_store_memberships(user_id,store_id,business_id,role,state,capabilities)
                    VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT(user_id,store_id) DO UPDATE SET
@@ -274,7 +278,7 @@ class AccountLifecycle:
             self._require_owner(actor)
             self._assert_target(connection, user_id, active=active)
             if actor.user_id == user_id and active:
-                raise IdentityError('forbidden', 'Use ownership transfer to change your own role.')
+                raise IdentityError('forbidden', 'Use ownership transfer to change your own role.', reason="permission_denied")
             old = connection.execute('SELECT role,state FROM business_memberships WHERE user_id=%s AND business_id=%s', (user_id, actor.business_id)).fetchone()
             if old == ('owner', 'active') and (role != 'owner' or not active):
                 self._owner_survives(connection, actor.business_id, user_id)
@@ -323,7 +327,7 @@ class AccountLifecycle:
                SELECT s.business_id FROM account_store_memberships m JOIN stores s ON s.id=m.store_id WHERE m.user_id=%s""", (user_id,user_id),
         ).fetchall()}
         if not scopes or None in scopes or not scopes <= owned:
-            raise IdentityError('forbidden', 'Global account authority is not established; use controlled operator recovery.')
+            raise IdentityError('forbidden', 'Global account authority is not established; use controlled operator recovery.', reason="permission_denied")
 
     def suspend_user(self, token, *, user_id, suspended=True, reason=''):
         user_id, reason = self._id(user_id), self._reason(reason)
@@ -334,7 +338,7 @@ class AccountLifecycle:
             state, legacy_id = self._assert_target(connection, user_id)
             self._global_authority(connection, actor, user_id)
             if state == 'pending':
-                raise IdentityError('conflict', 'Revoke pending invitations through their store membership.')
+                raise IdentityError('conflict', 'Revoke pending invitations through their store membership.', reason="state_conflict")
             if suspended:
                 for (business_id,) in connection.execute(
                     "SELECT business_id FROM business_memberships WHERE user_id=%s AND role='owner' AND state='active'", (user_id,),

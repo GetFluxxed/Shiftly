@@ -80,7 +80,7 @@ def _historical_snapshot():
 
 def test_upgrade_preserves_history_and_links_only_verified_legacy_managers(historical_database):
     before = _historical_snapshot()
-    assert migrate(db_connection) == ["014_accounts_access.sql"]
+    assert migrate(db_connection) == ["014_accounts_access.sql", "015_inventory_catalog_and_shelves.sql", "016_product_container_amounts.sql"]
     assert _historical_snapshot() == before
     with db_connection() as connection:
         assert connection.execute(
@@ -112,7 +112,7 @@ def test_concurrent_013_upgrades_apply_accounts_once(historical_database):
     before = _historical_snapshot()
     with ThreadPoolExecutor(max_workers=2) as executor:
         applied = list(executor.map(lambda _: migrate(db_connection), range(2)))
-    assert sorted(applied) == [[], ["014_accounts_access.sql"]]
+    assert sorted(applied) == [[], ["014_accounts_access.sql", "015_inventory_catalog_and_shelves.sql", "016_product_container_amounts.sql"]]
     assert _historical_snapshot() == before
     with db_connection() as connection:
         assert connection.execute("SELECT count(*) FROM account_users").fetchone()[0] == 2
@@ -139,7 +139,7 @@ def test_normalization_collision_rolls_back_entire_upgrade(historical_database, 
                  OR (table_name='reports' AND column_name='actor_user_id'))""",
         ).fetchone()[0] == 0
         assert connection.execute("SELECT to_regprocedure('account_username_key(text)')").fetchone()[0] is None
-    assert schema_status(db_connection)["pendingMigrations"] == ["014_accounts_access.sql"]
+    assert schema_status(db_connection)["pendingMigrations"] == ["014_accounts_access.sql", "015_inventory_catalog_and_shelves.sql", "016_product_container_amounts.sql"]
 
 
 @pytest.fixture

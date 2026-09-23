@@ -1,6 +1,14 @@
 # Shiftly handoff
 
-Updated: 2026-09-21.
+Updated: 2026-09-22.
+
+**Current client direction:** The user selected a React Native phone/tablet app.
+Follow [NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md) and
+[the mobile development guide](../apps/mobile/README.md). The native foundation
+starts from published Accounts & Access integration `7ecb61d` (PR #10 over PR #9).
+Earlier mobile-web-first statements below are historical and superseded. The
+existing browser app remains available; native device/distribution readiness and
+hosted production cutover require separate evidence.
 
 ## Current implementation and readiness
 
