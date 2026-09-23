@@ -1,20 +1,16 @@
+import { Text } from '@/src/ui/Typography';
 import React, { useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
-import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Loading, Notice, Pill, Screen, layout } from '@/src/ui/components';
-import { colors, permissionLabels, roleLabels } from '@/src/ui/theme';
+import { Body, Button, Card, Column, Columns, Field, Heading, Notice, Pill, Screen, layout } from '@/src/ui/components';
+import { useRouter } from 'expo-router';
+import { colors, fonts, permissionLabels, roleLabels } from '@/src/ui/theme';
 import { useTask } from '@/src/ui/useTask';
-import { useResource } from '@/src/ui/useResource';
 import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 
-type TeamMember = {
-  userId: number; username: string; displayName: string; accountState: string; role: string;
-  membershipState: string; capabilities: string[];
-  businessRole?: string | null; businessState?: string | null; businessCapabilities?: string[];
-};
-
 export function AccountsScreen() {
+  const router = useRouter();
   const { actor, stores, switchStore, changePassword, signOut, busy } = useSession();
   const task = useTask();
   const [choosingStore, setChoosingStore] = useState(false);
@@ -55,10 +51,10 @@ export function AccountsScreen() {
     <Columns><Column>
       <Card><View style={layout.row}>
         <View style={styles.avatar}><Text style={styles.initials}>{initials}</Text></View>
-        <View style={layout.flex}><Heading>{name}</Heading><Body muted>@{actor?.username}</Body></View>
+        <View style={layout.flex}><Heading>{name}</Heading><Body muted>@{actor?.username} · Account ID {actor?.userId}</Body></View>
       </View><Pill label={roleLabels[actor?.role || ''] || 'Team member'} />
         <View style={layout.divider} /><Heading>Current store</Heading>
-        <View style={layout.row}><Ionicons name="storefront-outline" color={colors.forest} size={24} />
+        <View style={layout.row}><Ionicons name="storefront-outline" color={colors.primary} size={24} />
           <View style={layout.flex}><Body>{store?.storeName || 'Current store'}</Body></View></View>
         {stores.length > 1 ? <Button title={choosingStore ? 'Close store list' : 'Switch store'} variant="secondary" icon="swap-horizontal"
           disabled={task.pending || busy} onPress={() => setChoosingStore(!choosingStore)} /> : null}
@@ -66,15 +62,15 @@ export function AccountsScreen() {
           accessibilityRole="button" accessibilityLabel={`Switch to ${item.storeName}`}
           accessibilityState={{ selected: item.storeId === actor?.storeId, disabled: task.pending || busy }}
           disabled={task.pending || busy} onPress={() => chooseStore(item.storeId, item.storeName)}
-          style={({ pressed }) => [styles.storeOption, item.storeId === actor?.storeId && { backgroundColor: colors.sage }, pressed && { opacity: 0.7 }]}>
+          style={({ pressed }) => [styles.storeOption, item.storeId === actor?.storeId && { backgroundColor: colors.soft }, pressed && { opacity: 0.7 }]}>
           <View style={layout.flex}><Text style={styles.storeName}>{item.storeName}</Text>
             <Text style={styles.meta}>{roleLabels[item.role] || 'Team member'}</Text></View>
-          <Ionicons name={item.storeId === actor?.storeId ? 'checkmark-circle' : 'chevron-forward'} color={colors.forest} size={22} />
+          <Ionicons name={item.storeId === actor?.storeId ? 'checkmark-circle' : 'chevron-forward'} color={colors.primary} size={22} />
         </Pressable>)}</View> : null}
       </Card>
       <Card><Heading>Your access at this store</Heading><Body muted>Access is set by your account administrator and can differ between stores.</Body>
         {actor?.capabilities.length ? actor.capabilities.map((capability) => <View key={capability} style={layout.row}>
-          <Ionicons name="checkmark-circle-outline" color={colors.forest} size={22} />
+          <Ionicons name="checkmark-circle-outline" color={colors.primary} size={22} />
           <View style={layout.flex}><Body>{permissionLabels[capability] || 'Workspace access'}</Body></View>
         </View>) : <Body muted>No module permissions are assigned at this store.</Body>}
       </Card>
@@ -101,38 +97,21 @@ export function AccountsScreen() {
         <Button title="Sign out of this device" variant="secondary" icon="log-out-outline" loading={task.pending || busy} onPress={() => { void task.run(() => signOut()); }} />
         <Button title="Sign out on every device" variant="danger" disabled={task.pending || busy} onPress={signOutEverywhere} />
       </Card>
-      {actor?.capabilities.includes('memberships.manage') ? <TeamCard storeId={actor.storeId} ownUserId={actor.userId} />
-        : <Card style={{ backgroundColor: colors.sage }}><Heading>Need different access?</Heading>
+      {actor?.capabilities.includes('memberships.manage') ? <Card><Heading>Your team & access</Heading>
+        <Body>Invite people, update permissions, and manage store memberships.</Body>
+        <Button title="Manage team" icon="people-outline" onPress={() => router.push('/team')} />
+        {actor.role === 'owner' ? <Button title="Owner workspace" icon="shield-checkmark-outline" variant="secondary" onPress={() => router.push('/owner')} /> : null}
+      </Card>
+        : <Card style={{ backgroundColor: colors.soft }}><Heading>Need different access?</Heading>
           <Body>Your store manager or account administrator can help update your team permissions.</Body></Card>}
     </Column></Columns>
   </Screen>;
 }
 
-function TeamCard({ storeId, ownUserId }: { storeId: number; ownUserId: number }) {
-  const resource = useResource<{ storeId: number; members: TeamMember[] }>('/accounts/team');
-  const mismatch = resource.data !== null && resource.data.storeId !== storeId;
-  const members = mismatch ? [] : resource.data?.members || [];
-  return <Card><View style={layout.row}><Ionicons name="people-outline" color={colors.forest} size={24} /><Heading>Your store team</Heading></View>
-    <Body muted>View team access here. Invitations, permission changes, and account administration remain available in the web workspace.</Body>
-    {resource.loading ? <Loading label="Loading your team…" />
-      : resource.error || mismatch ? <Notice kind="error" message={resource.error || 'Your selected store changed. Reload the team to continue.'} />
-      : members.length === 0 ? <EmptyState icon="people-outline" title="A team starts here" description="There are no store memberships to show." />
-        : members.map((member) => <View key={member.userId} style={styles.member}>
-          <View style={layout.smallGap}><Text style={styles.storeName}>{member.displayName || member.username}{member.userId === ownUserId ? ' (you)' : ''}</Text>
-            <Text style={styles.meta}>@{member.username} · {member.businessRole === 'owner' && member.businessState === 'active' ? 'Business owner' : roleLabels[member.role] || 'Team member'}</Text>
-            <Pill label={member.accountState === 'pending' ? 'Awaiting activation' : member.accountState === 'suspended' ? 'Suspended' : member.membershipState === 'revoked' ? 'Store access removed' : 'Active'} />
-            {member.businessRole === 'admin' && member.businessState === 'active' ? <Body muted>Business administrator delegation</Body> : null}
-          </View>
-        </View>)}
-    <Button title="Refresh team" variant="secondary" icon="refresh-outline" loading={resource.loading} onPress={() => { void resource.refresh(); }} />
-  </Card>;
-}
-
 const styles = StyleSheet.create({
-  avatar: { width: 64, height: 64, borderRadius: 22, backgroundColor: colors.peach, justifyContent: 'center', alignItems: 'center' },
-  initials: { color: colors.ink, fontSize: 23, fontWeight: '700' },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.blush, justifyContent: 'center', alignItems: 'center' },
+  initials: { color: colors.primary, fontFamily: fonts.display, fontSize: 28 },
   storeOption: { minHeight: 68, padding: 15, borderRadius: 15, borderWidth: 1, borderColor: colors.line, flexDirection: 'row', alignItems: 'center', gap: 12 },
   storeName: { color: colors.ink, fontSize: 16, fontWeight: '600', lineHeight: 23 },
   meta: { color: colors.muted, fontSize: 13, lineHeight: 20, marginTop: 4 },
-  member: { borderBottomWidth: 1, borderBottomColor: colors.line, paddingVertical: 16 },
 });

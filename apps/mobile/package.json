@@ -14,6 +14,8 @@
     "check": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
+    "@expo-google-fonts/newsreader": "0.4.1",
+    "@expo-google-fonts/work-sans": "0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "expo": "~57.0.24",
     "expo-constants": "~57.0.19",

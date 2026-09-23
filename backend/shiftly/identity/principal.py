@@ -1,7 +1,7 @@
 """One principal per request, shared by HTTP adapters without cookie precedence."""
 from dataclasses import dataclass
 
-from .service import IdentityError
+from .contracts import IdentityError
 
 
 @dataclass(frozen=True)

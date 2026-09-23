@@ -80,8 +80,42 @@ test('network failures expose a safe message and never retry writes automaticall
   const api = createTransport('https://shiftly.example', (async () => {
     calls++; throw new Error('private-token private-network-details');
   }) as typeof fetch);
-  await assert.rejects(api.send('/reports', { method: 'POST', body: { notes: 'private report' } }, 'private-token'),
+  await assert.rejects(api.send('/reports', { method: 'POST', body: { notes: 'private report' },
+    uncertainMessage: "We couldn't confirm your report. It may have been saved. Check with your manager before sending it again." }, 'private-token'),
     error => error instanceof ApiError && error.status === 0 && !error.message.includes('private-')
       && error.message.includes('may have been saved') && error.message.includes('before sending it again'));
   assert.equal(calls, 1);
+});
+
+test('new feature paths and stable IDs stay inside the fixed native API', async () => {
+  let target = '';
+  const api = createTransport('https://shiftly.example', (async input => { target = String(input); return json({}); }) as typeof fetch);
+  await api.send('/inventory/shelves/abc_123-456/products', {}, 'opaque');
+  assert.equal(target, 'https://shiftly.example/api/mobile/inventory/shelves/abc_123-456/products');
+  for (const path of ['/inventory/%2e%2e/accounts', '/inventory/%2f%2fattacker', '/inventory\\accounts',
+    '/inventory//shelves', '/inventory/shelves/..', '/inventory/shelves?next=https://attacker', '/inventory/\nshelves', '/inventory/shelves\n']) {
+    await assert.rejects(api.send(path), ApiError);
+  }
+});
+
+test('machine-readable errors retain the message and status, with safe legacy fallback', async () => {
+  for (const errorCode of ['duplicate_identifier', 'store_context_changed', 'future_code', undefined, { invalid: true }]) {
+    const api = createTransport('https://shiftly.example', (async () => json({ error: 'Please correct this field.', errorCode }, 409)) as typeof fetch);
+    await assert.rejects(api.send('/accounts/invitations'), error => error instanceof ApiError
+      && error.status === 409 && error.message === 'Please correct this field.'
+      && error.code === (typeof errorCode === 'string' ? errorCode : undefined));
+  }
+});
+
+test('feature write recovery text stays local and an uncertain write is never replayed', async () => {
+  let calls = 0; let body: string | undefined;
+  const api = createTransport('https://shiftly.example', (async (_url, init) => {
+    calls++; body = String(init?.body); throw new Error('private network details');
+  }) as typeof fetch);
+  await assert.rejects(api.send('/inventory/shelves', { method: 'POST', body: { name: 'Front shelf' },
+    uncertainMessage: 'Refresh shelves before trying again.' }), /Refresh shelves before trying again/);
+  assert.deepEqual(JSON.parse(body!), { name: 'Front shelf' });
+  assert.equal(calls, 1);
+  await assert.rejects(api.send('/inventory/shelves', { method: 'POST' }), /check the result before trying again/);
+  assert.equal(calls, 2);
 });

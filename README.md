@@ -30,10 +30,15 @@ revisions and evidence. This is integration-review readiness, not production cut
 | Accounts & Access | Named crew/manager identities, scoped owner/admin/manager/crew policy, invitations, recovery, team and owner workflows |
 | Automated checks | Disposable PostgreSQL, mocked AI, service/regression/contract tests, Chromium browser flows, and pinned CI dependencies |
 | Native app | React Native/Expo phone and tablet foundation; native API, secure sign-in and daily reporting; real-device release checks pending |
-| Inventory | Permission-aware empty native/browser workspace; stock, SKUs and camera capture remain planned |
+| Inventory | Alphabetized company catalog with editable full-container sizes, add/edit/archive/restore, store shelves and product assignments in the native app; quantities and camera capture remain planned |
 
 Both transports and independent worker/recovery flows are verified locally.
 Hosted staging, actual ownership mapping and production promotion remain separate.
+
+Current inventory work starts with the [foundation and shared company catalog](docs/workstreams/inventory-foundation-and-shared-catalog.md): reuse products/SKUs
+across store-specific shelves. The prerequisite cleanup and first catalog/shelf slice are implemented with
+additive migrations 015–016. Open **Inventory → Company catalog** to add products,
+then **Inventory → Shelves** to create a shelf and assign them.
 
 ## What works today
 

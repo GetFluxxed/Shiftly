@@ -1,7 +1,8 @@
 # Database baseline
 
-Baseline: `e01e84e`. The inventory additions at the end are planned; only the
-existing schema and migrations listed below are currently implemented.
+Current schema: migrations 001–016, including named accounts, businesses, the
+shared product catalog and store shelves. The broader stock/counting additions
+at the end remain planned.
 
 ## Current schema overview
 
@@ -24,6 +25,14 @@ The legacy entry point retains its compatibility migration wrapper.
 - schema_migrations
 - briefing_job_recovery
 - runtime_worker_status
+- businesses
+- account_users
+- business_memberships
+- account_store_memberships
+- account_sessions
+- account_audit
+- account_invitations
+- account_password_resets
 
 ### Key relationships
 - reports belong to a store
@@ -55,6 +64,19 @@ The migration sequence currently includes:
 - 011_weekly_overview_cache.sql
 - 012_briefing_job_recovery.sql
 - 013_runtime_operations.sql
+- 014_accounts_access.sql
+- 015_inventory_catalog_and_shelves.sql
+- 016_product_container_amounts.sql
+
+Migration 014 adds existing business/store ownership, named account memberships,
+sessions, invitations/recovery and audit history. Migration 015 reuses these IDs.
+It adds `inventory_products`, `inventory_product_skus` (current and reserved former
+SKUs), `inventory_store_products`, `inventory_shelves`, `inventory_shelf_products`,
+`inventory_changes` (actor and before/after history), and `inventory_requests`
+(scoped mutation replay results). Company/store composite foreign keys reject
+mis-scoped listings and placements. Products have stable UUIDs, fixed base units
+and optimistic versions; shelves are versioned per store. See the
+[inventory foundation](workstreams/inventory-foundation-and-shared-catalog.md).
 
 Migration 010 replaces the original global report-hash uniqueness constraint
 with uniqueness on `(store_id, report_hash)`. Identical reports at different
@@ -83,16 +105,27 @@ The current design stores the original employee notes and saves the AI-generated
 
 Additive schema changes only. Preserve historical records, avoid rewriting applied migrations, and validate backfills before cutover.
 
+## Product container sizes and catalog order
+
+Migration 016 adds `inventory_products.container_amount` as nullable exact
+`NUMERIC`, with positive/range/precision checks and whole-item validation for
+`each`. Existing products retain unknown sizes (`NULL`); their identity, units,
+versions, SKU reservations and placements are unchanged by the migration.
+`name_sort` is generated from the existing normalized-name function, with an
+index on company/name/ID for alphabetical keyset pagination. Existing volume
+records are preserved for compatibility; the service permits only each/g/kg
+when creating new products. No stock balances are created by this migration.
+
 ## Planned inventory schema boundaries
 
 The detailed model and invariants are in [INVENTORY.md](INVENTORY.md). Add these
 groups incrementally in their implementation phases, not as one speculative
 migration:
 
-- Store items, decimal base units, versioned pack/weight/tare conversions, and
-  internal SKU versus supplier/barcode mappings.
-- Store-owned shelf/location hierarchy, assignments, par history and optional
-  shelf targets.
+- Extend existing company products and store listings with decimal quantities,
+  versioned pack/weight/tare conversions and supplier/barcode mappings.
+- Extend existing store shelves and assignments with area/rack/bin hierarchy,
+  par history and optional shelf targets.
 - Append-only stock movement events and transactionally maintained balance
   projections, with linked reversals and paired transfers.
 - Count sessions, coverage, baseline versions, camera/manual observations,
@@ -110,7 +143,7 @@ Separate observed physical stock, book balances and sales projections. A photo
 is not a receipt, and a forecast is not a confirmed stock movement. Repeated
 uploads, approval retries and invoice imports must not duplicate quantities.
 
-Retain migrations 001–011 unchanged. Coordinate new migration numbers across
-worktrees. During FastAPI deployment work, introduce a serialized migration
-entry point and test upgrade, repeat startup, compatible rollback and forward
-recovery against disposable PostgreSQL and staging copies.
+Retain migrations 001–016 unchanged. Coordinate new migration numbers across
+worktrees and use the existing serialized runtime migration command. Test upgrade,
+repeat migration, compatible rollback and forward recovery against disposable
+PostgreSQL and staging copies.

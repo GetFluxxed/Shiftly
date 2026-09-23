@@ -15,4 +15,10 @@ export interface IssuedSession extends AccountStatus {
 }
 export interface SignInFields { storeCode: string; username: string; password: string }
 export interface RedemptionFields { token: string; password: string }
-export interface RequestOptions { method?: 'GET' | 'POST'; body?: Record<string, unknown> }
+export interface RequestOptions {
+  method?: 'GET' | 'POST';
+  body?: Record<string, unknown>;
+  query?: Record<string, string>;
+  /** Local recovery guidance only; never transmitted to the service. */
+  uncertainMessage?: string;
+}

@@ -255,3 +255,147 @@ def test_native_requests_keep_origin_body_and_secret_boundaries(mobile):
         assert response.status_code == 400 and "sessionToken" not in response.text
     assert m.send("GET", "/api/mobile/accounts/status").json() == {"authenticated": False, "reauthenticationRequired": False}
     assert m.send("GET", "/api/mobile/reports", params={"sessionToken": m.login()}).status_code == 401
+
+
+def test_native_management_choices_are_server_scoped_and_roster_contract_unchanged(mobile):
+    m = mobile
+    owner = m.login()
+    data = m.send('GET', '/api/mobile/accounts/management', token=owner).json()
+    assert data['storeId'] == m.stores[0] and data['isOwner'] is True
+    assert [role['role'] for role in data['roles']] == ['crew', 'manager', 'admin']
+    assert 'catalog.manage' in data['businessCapabilities']
+    assert {person['userId'] for person in data['directory']} == set(m.users.values())
+    assert next(person for person in data['directory'] if person['userId'] == m.users['owner'])['canTransfer'] is False
+    assert next(person for person in data['members'] if person['userId'] == m.users['owner'])['canEdit'] is False
+    assert 'canEdit' not in m.send('GET', '/api/mobile/accounts/team', token=owner).json()['members'][0]
+    for username in ('crew', 'viewer'):
+        assert m.send('GET', '/api/mobile/accounts/management', token=m.login(username)).status_code == 403
+    assert m.send('GET', '/api/mobile/accounts/management', headers=[('Cookie', f'shiftly_account_session={owner}')]).status_code == 401
+    m.accounts.set_membership(owner, user_id=m.users['crew'], role='manager', capabilities=['memberships.manage'])
+    manager = m.login('crew')
+    data = m.send('GET', '/api/mobile/accounts/management', token=manager).json()
+    assert data['isOwner'] is False and data['directory'] == [] and data['businessCapabilities'] == []
+    assert data['sharedCrewEnabled'] is None
+    assert [role['role'] for role in data['roles']] == ['crew']
+    assert 'catalog.manage' not in data['roles'][0]['optional']
+    assert all(not member['canEdit'] for member in data['members'])
+    assert m.send('POST', '/api/mobile/accounts/business-memberships', token=manager, json={
+        'expectedStoreId': m.stores[0], 'userId': m.users['viewer'], 'role': 'owner',
+    }).status_code == 403
+
+
+def test_native_owner_directory_excludes_other_business_and_withholds_global_actions(mobile):
+    m = mobile
+    with db_connection() as connection:
+        foreign = connection.execute("INSERT INTO businesses(name) VALUES('Foreign business') RETURNING id").fetchone()[0]
+        connection.execute('UPDATE stores SET business_id=%s WHERE id=%s', (foreign, m.stores[2]))
+        outsider = connection.execute("INSERT INTO account_users(username,display_name,password_salt,password_hash) VALUES('outsider','Outside','salt','hash') RETURNING id").fetchone()[0]
+        connection.execute("INSERT INTO account_store_memberships(user_id,store_id,business_id,role) VALUES(%s,%s,%s,'crew')", (outsider, m.stores[2], foreign))
+        # Revoked foreign history still prevents local owners from controlling a global account.
+        connection.execute("INSERT INTO account_store_memberships(user_id,store_id,business_id,role,state) VALUES(%s,%s,%s,'crew','revoked')", (m.users['crew'], m.stores[2], foreign))
+    owner = m.login()
+    data = m.send('GET', '/api/mobile/accounts/management', token=owner).json()
+    assert outsider not in {person['userId'] for person in data['directory']}
+    assert next(person for person in data['directory'] if person['userId'] == m.users['crew'])['canSuspend'] is False
+    assert m.send('POST', '/api/mobile/accounts/suspend', token=owner, json={
+        'expectedStoreId': m.stores[0], 'userId': m.users['crew'], 'suspended': True,
+    }).status_code == 403
+    # Owners without a selected-store membership must still appear in the business directory.
+    with db_connection() as connection:
+        connection.execute('DELETE FROM account_store_memberships WHERE user_id=%s', (m.users['owner'],))
+    data = m.send('GET', '/api/mobile/accounts/management', token=owner).json()
+    assert m.users['owner'] in {person['userId'] for person in data['directory']}
+    assert m.users['owner'] not in {person['userId'] for person in data['members']}
+
+
+def test_native_invite_reissue_activate_and_membership_management_journey(mobile):
+    m = mobile
+    owner = m.login()
+    def post(operation, **fields):
+        response = m.send('POST', '/api/mobile/accounts/' + operation, token=owner,
+                          json={'expectedStoreId': m.stores[0], **fields})
+        assert response.status_code == 200, response.text
+        return response.json()
+    first = post('invitations', username='new.person', displayName='New Person', role='crew', capabilities=['inventory.view'])
+    roster = m.send('GET', '/api/mobile/accounts/management', token=owner).json()
+    assert next(person for person in roster['members'] if person['userId'] == first['userId'])['canReissue'] is True
+    replacement = post('invitations/reissue', userId=first['userId'])
+    assert m.send('POST', '/api/mobile/accounts/activate', json={'token': first['token'], 'password': m.password}).status_code == 400
+    activated = m.send('POST', '/api/mobile/accounts/activate', json={'token': replacement['token'], 'password': m.password})
+    assert activated.status_code == 200
+    crew_token = activated.json()['sessionToken']
+    post('memberships', userId=first['userId'], role='crew', capabilities=['inventory.view'], active=False)
+    assert m.send('GET', '/api/mobile/accounts/status', token=crew_token).status_code == 401
+    post('memberships', userId=first['userId'], role='manager', capabilities=[], active=True)
+    login = m.send('POST', '/api/mobile/accounts/login', json={'storeCode': 'mobile-first', 'username': 'new.person', 'password': m.password})
+    assert login.json()['actor']['role'] == 'manager'
+    # Assign this existing active identity to another authorized store without changing its password.
+    switched = m.send('POST', '/api/mobile/accounts/switch-store', token=owner, json={'expectedStoreId': m.stores[0], 'storeId': m.stores[1]})
+    owner = switched.json()['sessionToken']
+    assigned = m.send('POST', '/api/mobile/accounts/memberships', token=owner, json={
+        'expectedStoreId': m.stores[1], 'userId': first['userId'], 'role': 'crew', 'capabilities': [],
+    })
+    assert assigned.status_code == 200
+    assert m.send('POST', '/api/mobile/accounts/login', json={'storeCode': 'mobile-second', 'username': 'new.person', 'password': m.password}).status_code == 200
+
+
+def test_native_owner_delegation_suspension_cutover_and_transfer_journey(mobile):
+    m = mobile
+    owner = m.login()
+    def post(operation, **fields):
+        response = m.send('POST', '/api/mobile/accounts/' + operation, token=owner,
+                          json={'expectedStoreId': m.stores[0], **fields})
+        assert response.status_code == 200, response.text
+        return response.json()
+    crew = m.login('crew')
+    post('business-memberships', userId=m.users['crew'], role='admin', capabilities=['reports.submit', 'inventory.view'])
+    assert m.send('GET', '/api/mobile/accounts/status', token=crew).status_code == 401
+    post('memberships', userId=m.users['crew'], role='admin', capabilities=['reports.submit', 'inventory.view'])
+    crew = m.login('crew')
+    assert m.send('GET', '/api/mobile/accounts/status', token=crew).json()['actor']['role'] == 'admin'
+    post('suspend', userId=m.users['crew'], suspended=True)
+    assert m.send('GET', '/api/mobile/accounts/status', token=crew).status_code == 401
+    post('suspend', userId=m.users['crew'], suspended=False)
+    assert m.send('GET', '/api/mobile/accounts/status', token=m.login('crew')).status_code == 200
+    post('business-memberships', userId=m.users['crew'], role='admin', capabilities=[], active=False)
+    post('memberships', userId=m.users['crew'], role='crew', capabilities=[])
+    post('cutover', storeId=m.stores[0])
+    assert m.send('GET', '/api/mobile/accounts/management', token=owner).json()['sharedCrewEnabled'] is False
+    post('transfer-ownership', userId=m.users['crew'])
+    assert m.send('GET', '/api/mobile/accounts/status', token=owner).status_code == 401
+    new_owner = m.login('crew')
+    assert m.send('GET', '/api/mobile/accounts/status', token=new_owner).json()['actor']['role'] == 'owner'
+    assert m.send('GET', '/api/mobile/accounts/management', token=new_owner).json()['isOwner'] is True
+
+
+def test_native_error_codes_distinguish_domain_conflicts_from_stale_context(mobile):
+    m = mobile
+    token = m.login()
+    fields = {"username": "crew", "expectedStoreId": m.stores[0]}
+    duplicate = m.send("POST", "/api/mobile/accounts/invitations", token=token, json=fields)
+    assert duplicate.status_code == 409
+    assert duplicate.json()["errorCode"] == "duplicate_identifier"
+    assert "already exists" in duplicate.json()["error"]
+    assert m.send("GET", "/api/mobile/accounts/status", token=token).json()["authenticated"]
+    stale = m.send("POST", "/api/mobile/accounts/invitations", token=token,
+                   json={**fields, "expectedStoreId": m.stores[1]})
+    assert stale.status_code == 409
+    assert stale.json()["errorCode"] == "store_context_changed"
+    # Browser response bodies remain compatible, including service exception aliases.
+    web = m.send("POST", "/api/accounts/invitations", headers=[("Cookie", f"shiftly_account_session={token}")], json=fields)
+    assert web.status_code == 409 and web.json() == {"error": duplicate.json()["error"]}
+
+
+def test_native_permission_denial_and_revoked_context_have_distinct_codes(mobile):
+    m = mobile
+    token = m.login("crew")
+    denied = m.send("GET", "/api/mobile/reports", token=token)
+    assert denied.status_code == 403 and denied.json()["errorCode"] == "permission_denied"
+    with db_connection() as connection:
+        connection.execute("UPDATE account_store_memberships SET state='revoked' WHERE user_id=%s", (m.users['crew'],))
+    revoked = m.send("GET", "/api/mobile/reports", token=token)
+    assert revoked.status_code == 403 and revoked.json()["errorCode"] == "access_changed"
+    with db_connection() as connection:
+        connection.execute("UPDATE account_sessions SET revoked_at=NOW() WHERE token_hash=%s", (hash_token(token),))
+    ended = m.send("GET", "/api/mobile/accounts/status", token=token)
+    assert ended.status_code == 401 and ended.json()["errorCode"] == "session_invalid"

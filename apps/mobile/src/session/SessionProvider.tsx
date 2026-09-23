@@ -38,5 +38,5 @@ export function useSession() {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { ...snapshot, signIn: controller.signIn, activate: controller.activate, resetPassword: controller.resetPassword,
     switchStore: controller.switchStore, changePassword: controller.changePassword, signOut: controller.signOut,
-    retry: controller.retry, request: controller.request };
+    retry: controller.retry, request: controller.request, transferOwnership: controller.transferOwnership };
 }

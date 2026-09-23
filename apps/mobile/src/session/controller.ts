@@ -180,12 +180,21 @@ export class SessionController {
     } catch (error) {
       if (version === this.epoch && error instanceof ApiError) {
         if (error.status === 401) await this.clear('Your session has ended. Please sign in again.');
-        if (error.status === 403 || error.status === 409) {
+        if (error.status === 403 && error.code === 'permission_denied') {
+          // A denied action may reveal a remotely changed grant. Revalidate;
+          // unchanged access preserves the form, changed access invalidates it.
+          await this.refreshAccess();
+        } else if ((error.status === 403 || error.status === 409)
+          && !(error.status === 409 && ['duplicate_identifier', 'state_conflict', 'stale_record'].includes(error.code || ''))) {
           this.epoch++; this.publish(empty('locked', 'Your access or store may have changed. Reconnect to continue.'));
         }
       }
       throw error;
     }
+  };
+  transferOwnership = async (userId: number, reason: string) => {
+    await this.request('/accounts/transfer-ownership', { method: 'POST', body: { userId, reason } });
+    await this.clear('Ownership transferred. Please sign in again.');
   };
   changePassword = async (currentPassword: string, newPassword: string) => {
     await this.request('/accounts/password', { method: 'POST', body: { currentPassword, newPassword } });

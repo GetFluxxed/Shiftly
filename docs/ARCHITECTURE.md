@@ -18,7 +18,9 @@ Contract and Chromium browser tests run on both transports. The focused
 verification follow-up closes request-error and recovery coverage gaps; see
 [verification evidence](workstreams/focused-verification.md). Production still
 uses the legacy entry point in `render.yaml`. Inventory, media storage, sales
-ingestion and the installable client remain planned.
+ingestion remain planned. The React Native/Expo account/reporting and account
+administration client is implemented in the active native worktree; signed native
+distribution and hosted FastAPI cutover remain release work.
 
 ## Target application
 
@@ -63,7 +65,7 @@ apps/mobile/
 
 Identity, stores, reports, jobs, runtime and the API/core boundaries are implemented.
 Inventory, media, vision, sales, forecasting and receiving remain targets.
-The native account/reporting foundation is underway. Preserve existing pages
+The native account/reporting foundation and Team/Owner screens are implemented. Preserve existing pages
 while adding native modules and a consistent authenticated API client.
 
 ## Boundary rules
@@ -144,10 +146,12 @@ No photo inference or model-training capability is implied by adopting React Nat
 
 ## Data ownership
 
-Current store IDs remain the authorization boundary. Decide whether a future
-organization groups multiple stores before introducing shared catalogs; do not
-invent an organization migration as a prerequisite for a single-store pilot.
-Inventory IDs and relationships remain store-scoped either way.
+Migration 014 already groups stores under businesses. Reuse that business as the
+company catalog boundary: one product identity/SKU per company, with store listings
+and shelf placements referencing it. Store IDs remain the operational authorization
+boundary. Store-local removal does not delete the shared product or affect another
+store. See the [inventory foundation and shared company catalog](workstreams/inventory-foundation-and-shared-catalog.md) for editing, archive, identifier, and transaction rules.
+No additional organization system is required.
 
 See [INVENTORY.md](INVENTORY.md) for measurement rules, count reconciliation,
 movement history, forecasts, and receiving. See [DATABASE.md](DATABASE.md) for

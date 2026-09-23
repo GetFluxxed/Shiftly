@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useWindowDimensions } from 'react-native';
 import { useSession } from '@/src/session/SessionProvider';
 import { Button, Card, Loading, Notice, Screen } from '@/src/ui/components';
+import { Text } from '@/src/ui/Typography';
 import { colors } from '@/src/ui/theme';
 
 export default function AppLayout() {
@@ -21,12 +22,13 @@ export default function AppLayout() {
   const hasInventory = actor.capabilities.includes('inventory.view');
   return <Tabs key={`${revision}:${actor.userId}:${actor.storeId}:${actor.capabilities.join(',')}`}
     screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.paper },
-      tabBarActiveTintColor: colors.forest, tabBarInactiveTintColor: colors.muted,
+      tabBarActiveTintColor: colors.primary, tabBarInactiveTintColor: colors.muted,
       tabBarHideOnKeyboard: true,
       tabBarPosition: width >= 1000 && fontScale < 1.5 ? 'left' : 'bottom',
-      tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+      tabBarLabel: ({ children, color }) => <Text style={{ color, fontSize: 12, fontWeight: '600' }}>{children}</Text>,
+      tabBarActiveBackgroundColor: colors.blush,
       tabBarStyle: { backgroundColor: colors.card, borderColor: colors.line },
-      tabBarItemStyle: { minHeight: 54 },
+      tabBarItemStyle: { minHeight: 54, borderRadius: 16, marginHorizontal: 3, marginTop: 5, marginBottom: 3 },
     }}>
     <Tabs.Screen name="today" options={{ title: 'Today', tabBarIcon: ({ color, size }) => <Ionicons name="sunny-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="reports" options={{ title: 'Reports', href: canReport ? '/reports' : null,
@@ -34,5 +36,9 @@ export default function AppLayout() {
     <Tabs.Screen name="inventory" options={{ title: 'Inventory', href: hasInventory ? '/inventory' : null,
       tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="accounts" options={{ title: 'Account', tabBarIcon: ({ color, size }) => <Ionicons name="person-circle-outline" color={color} size={size} /> }} />
+    <Tabs.Screen name="team" options={{ href: null }} />
+    <Tabs.Screen name="owner" options={{ href: null }} />
+    <Tabs.Screen name="catalog" options={{ href: null }} />
+    <Tabs.Screen name="shelves" options={{ href: null }} />
   </Tabs>;
 }

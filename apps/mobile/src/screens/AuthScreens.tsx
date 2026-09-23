@@ -44,7 +44,7 @@ A calmer shift." subtitle="Your people, your store, and everything the next shif
         disabled={!storeCode.trim() || !username.trim() || !password} />
       <Button title="Activate or recover an account" variant="quiet" onPress={() => router.push('/activate')} />
     </Card></Column>
-    <Column><Card style={{ backgroundColor: colors.sage, borderColor: colors.sage }}>
+    <Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
       <Heading>Good shifts start with a clear picture.</Heading>
       <Body>Leave a useful handoff, catch up on your team's reports, and keep your store in sync.</Body>
       <View style={layout.divider} />
@@ -102,7 +102,7 @@ export function ActivateScreen() {
           loading={task.pending || busy} disabled={!token.trim() || password.length < 8 || !confirmation} />
         <Button title="Back to sign in" variant="quiet" onPress={() => router.replace('/sign-in')} />
       </>}
-    </Card></Column><Column><Card style={{ backgroundColor: colors.sage, borderColor: colors.sage }}>
+    </Card></Column><Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
       <Heading>A code just for you</Heading><Body>Codes can be used once and expire. If yours no longer works, ask {mode === 'activate' ? 'your manager' : 'your account administrator or operator'} for a replacement.</Body>
       <Body muted>Keep your code private. Your password belongs to you and is never shared with your team.</Body>
     </Card></Column></Columns>

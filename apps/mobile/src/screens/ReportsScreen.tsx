@@ -1,5 +1,6 @@
+import { Text } from '@/src/ui/Typography';
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
 import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Loading, Notice, Pill, Screen, layout, useScrollToTop } from '@/src/ui/components';
@@ -40,6 +41,7 @@ function ReportComposer() {
   const [receipt, setReceipt] = useState<{ date: string; status: string } | null>(null);
   useSensitiveForm(() => setNotes(''));
   const send = () => { void task.run(() => request<{ date: string; status: string }>('/reports', {
+    uncertainMessage: "We couldn't confirm your report. It may have been saved. Check with your manager before sending it again.",
     method: 'POST', body: { employee: actor?.displayName || actor?.username || '', shift, notes },
   }), (result) => { setNotes(''); setReceipt(result); }); };
   return <Columns><Column><Card>
@@ -65,7 +67,7 @@ function ReportComposer() {
       <Button title="Send shift report" icon="arrow-forward" onPress={send} loading={task.pending || busy} disabled={!notes.trim()} />
       <Body muted>Sent reports are saved to this store. Unsent notes are cleared when you leave this screen, change stores, or put the app in the background.</Body>
     </>}
-  </Card></Column><Column><Card style={{ backgroundColor: colors.sage, borderColor: colors.sage }}>
+  </Card></Column><Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
     <Heading>A useful note goes a long way.</Heading>
     <Body>Start with what happened. Add enough detail for someone who wasn't there.</Body>
     <View style={layout.divider} /><Body>Wins worth sharing</Body><Body>Problems and anything still open</Body><Body>What the next shift needs to do</Body>
@@ -102,7 +104,7 @@ function ReportInbox() {
             <Text style={styles.reportName}>{item.employee}</Text>
             <Text style={styles.reportMeta}>{item.shift} · {friendlyDate(item.date)}</Text>
             <Text style={styles.reportStatus}>{item.status}</Text></View>
-          <Ionicons name="chevron-forward" size={20} color={colors.forest} />
+          <Ionicons name="chevron-forward" size={20} color={colors.primary} />
         </Pressable>)}
         {reports.length > limit ? <Button title="Show more reports" variant="secondary" onPress={() => setLimit(limit + 30)} /> : null}
       </Card></Column>{wide ? <Column><Card>
@@ -125,7 +127,7 @@ function ReportDetail({ report }: { report: Report }) {
           {report.briefing.wins.map((win, index) => <Body key={index}>• {win}</Body>)}</> : null}
         {report.briefing.risks?.length > 0 ? <><Heading>Needs attention</Heading>
           {report.briefing.risks.map((risk, index) => <Body key={index}>• {risk}</Body>)}</> : null}
-        {report.briefing.follow_up ? <Card style={{ backgroundColor: colors.sage }}><Heading>Next steps</Heading><Body>{report.briefing.follow_up}</Body></Card> : null}
+        {report.briefing.follow_up ? <Card style={{ backgroundColor: colors.soft }}><Heading>Next steps</Heading><Body>{report.briefing.follow_up}</Body></Card> : null}
         <Body muted>Briefings are generated from shift notes. Check the original report for context.</Body>
       </> : <Body muted>No briefing is available for this report yet.</Body>}
   </View>;
@@ -133,13 +135,13 @@ function ReportDetail({ report }: { report: Report }) {
 
 const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '600', color: colors.ink },
-  shift: { minHeight: 48, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: colors.line, borderRadius: 14, backgroundColor: colors.paper },
-  shiftSelected: { backgroundColor: colors.forest, borderColor: colors.forest },
+  shift: { minHeight: 48, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: colors.line, borderRadius: 24, backgroundColor: colors.card },
+  shiftSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   shiftText: { color: colors.ink, fontSize: 14, fontWeight: '600', textTransform: 'capitalize' },
   reportRow: { borderWidth: 1, borderColor: colors.line, borderRadius: 16, padding: 17, minHeight: 110, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  reportSelected: { backgroundColor: colors.sage, borderColor: colors.forest },
-  reportStore: { color: colors.forest, fontSize: 12, fontWeight: '700', marginBottom: 7 },
+  reportSelected: { backgroundColor: colors.blush, borderColor: colors.primary },
+  reportStore: { color: colors.primary, fontSize: 12, fontWeight: '700', marginBottom: 7 },
   reportName: { fontSize: 18, fontWeight: '600', color: colors.ink, marginBottom: 5 },
   reportMeta: { fontSize: 13, lineHeight: 20, color: colors.muted },
-  reportStatus: { marginTop: 8, fontSize: 12, fontWeight: '700', color: colors.forest, textTransform: 'capitalize' },
+  reportStatus: { marginTop: 8, fontSize: 12, fontWeight: '700', color: colors.primary, textTransform: 'capitalize' },
 });

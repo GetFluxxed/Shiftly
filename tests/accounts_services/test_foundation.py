@@ -304,3 +304,52 @@ def test_invitation_scope_cannot_bypass_composite_fk_with_null(foundation):
                VALUES (%s,%s,%s,%s,NULL,'crew',%s,NOW()+INTERVAL '1 day')""",
             (uuid.uuid4(),hash_token('synthetic-bad-invite'),ids['crew'],ids['first'],ids['owner']),
         )
+
+
+def test_selected_store_write_boundary_rejects_other_authorized_stores(foundation):
+    core, ids = foundation
+    token = signed(core).token
+    for expected in [None, True, str(ids['first']), -1, ids['second'], ids['third']]:
+        with pytest.raises(IdentityError) as failure, db_connection() as connection:
+            core.require_selected_store(token, 'configuration.manage', connection=connection, expected_store_id=expected)
+        assert failure.value.code == ('conflict' if type(expected) is int and expected > 0 else 'invalid')
+        if failure.value.code == 'conflict':
+            assert failure.value.reason == 'store_context_changed'
+    with db_connection() as connection:
+        actor = core.require_selected_store(token, 'configuration.manage', connection=connection, expected_store_id=ids['first'])
+        assert (actor.user_id, actor.store_id, actor.business_id) == (ids['owner'], ids['first'], ids['business'])
+
+
+def test_selected_store_boundary_keeps_writes_in_callers_transaction(foundation):
+    core, ids = foundation
+    token = signed(core).token
+    with pytest.raises(RuntimeError), db_connection() as connection:
+        actor = core.require_selected_store(token, 'configuration.manage', connection=connection, expected_store_id=ids['first'])
+        connection.execute("UPDATE stores SET name='must roll back' WHERE id=%s", (actor.store_id,))
+        raise RuntimeError('Abandon operation')
+    with db_connection() as connection:
+        assert connection.execute('SELECT name FROM stores WHERE id=%s', (ids['first'],)).fetchone()[0] == 'first'
+
+
+def test_selected_store_boundary_waits_for_revocation_before_writing(foundation):
+    core, ids = foundation
+    token = signed(core, 'manager').token
+    waiting = Event()
+    def write_after_authorization():
+        with db_connection() as connection:
+            waiting.set()
+            try:
+                actor = core.require_selected_store(token, 'configuration.manage', connection=connection, expected_store_id=ids['first'])
+            except IdentityError:
+                return 'denied'
+            connection.execute("UPDATE stores SET name='unauthorized' WHERE id=%s", (actor.store_id,))
+            return 'wrote'
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with db_connection() as connection:
+            policy_lock(connection)
+            connection.execute("UPDATE account_store_memberships SET state='revoked' WHERE user_id=%s", (ids['manager'],))
+            result = executor.submit(write_after_authorization)
+            assert waiting.wait(3) and not result.done()
+        assert result.result(timeout=5) == 'denied'
+    with db_connection() as connection:
+        assert connection.execute('SELECT name FROM stores WHERE id=%s', (ids['first'],)).fetchone()[0] == 'first'

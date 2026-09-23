@@ -3,8 +3,6 @@
 Browser adapters remain cookie-only. Native sessions have the same opaque,
 hashed, expiring and revocable server-side records; only their delivery differs.
 """
-import re
-
 import psycopg
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -13,46 +11,12 @@ from backend.shiftly.core.dependencies import AppContext, client_key, get_app_co
 from backend.shiftly.core.request import RequestBodyError, bounded_json
 from backend.shiftly.identity import IdentityError
 from backend.shiftly.reports.errors import ReportRejected
-from .accounts import ACCOUNT_COOKIES, call, error_response, same_origin, store_precondition
+from backend.shiftly.core.http import call, same_origin
+from backend.shiftly.core.native import (
+    native_token, native_session, selected_store, require_actor, unavailable, error_response,
+)
 
 router = APIRouter(prefix="/api/mobile")
-_BEARER = re.compile(r"Bearer ([A-Za-z0-9._~+/-]+={0,2})", re.IGNORECASE)
-
-
-def native_token(request):
-    """Never choose between multiple credentials, including empty auth cookies."""
-    for item in ";".join(request.headers.getlist("cookie")).split(";"):
-        if item.strip().partition("=")[0].strip() in ACCOUNT_COOKIES:
-            raise IdentityError("unauthenticated", "Native sign-in cannot use browser sessions.")
-    values = request.headers.getlist("authorization")
-    if not values:
-        return None
-    if len(values) != 1 or len(values[0]) > 520:
-        raise IdentityError("unauthenticated", "A single valid bearer session is required.")
-    match = _BEARER.fullmatch(values[0])
-    if not match:
-        raise IdentityError("unauthenticated", "A single valid bearer session is required.")
-    return match.group(1)
-
-
-def native_session(result):
-    return {**result.response, "sessionToken": result.token, "expiresIn": result.ttl}
-
-
-def selected_store(fields, actor):
-    if "expectedStoreId" not in fields:
-        raise IdentityError("invalid", "Expected store ID is required.")
-    store_precondition(fields, actor)
-
-
-async def require_actor(context, token, *, capability=None):
-    return await call(context.services.accounts.resolve_actor, token, capability=capability)
-
-
-def unavailable():
-    return JSONResponse(status_code=503, content={"error": "Service is temporarily unavailable."})
-
-
 @router.api_route("/accounts/{operation:path}", methods=["GET", "POST"])
 async def accounts_route(operation: str, request: Request, context: AppContext = Depends(get_app_context)):
     accounts = context.services.accounts
@@ -66,6 +30,8 @@ async def accounts_route(operation: str, request: Request, context: AppContext =
             actor = await require_actor(context, token)
             return {"authenticated": True, "actor": actor.as_dict(),
                     "stores": await call(accounts.authorized_stores, token)}
+        if operation == "management" and request.method == "GET":
+            return await call(accounts.management, token)
         if operation == "team" and request.method == "GET":
             await require_actor(context, token)
             return await call(accounts.roster, token)
@@ -166,7 +132,7 @@ async def heads_up(request: Request, context: AppContext = Depends(get_app_conte
     try:
         actor = await require_actor(context, native_token(request))
         if not ({"reports.view", "reports.submit"} & actor.capabilities):
-            raise IdentityError("forbidden", "Report access is required.")
+            raise IdentityError("forbidden", "Report access is required.", reason="permission_denied")
         return await call(context.services.stores.heads_up, actor.store_id)
     except IdentityError as error:
         return error_response(error)

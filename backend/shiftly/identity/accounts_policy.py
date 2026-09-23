@@ -1,7 +1,7 @@
 """Named-account permissions. Roles are scoped facts, never client input authority."""
 from dataclasses import dataclass
 
-from .service import IdentityError
+from .contracts import IdentityError
 
 CREW_CAPABILITIES = frozenset({
     "reports.submit", "inventory.view", "counts.submit", "receipts.draft", "catalog.propose",
@@ -46,32 +46,32 @@ def capabilities_for(role, grants=(), *, mapped=True):
         capabilities = grants
     elif role == "manager":
         if not grants <= MANAGER_GRANTABLE:
-            raise IdentityError("forbidden", "Managers cannot manage the shared catalog.")
+            raise IdentityError("forbidden", "Managers cannot manage the shared catalog.", reason="permission_denied")
         capabilities = MANAGER_CAPABILITIES | grants
     elif role == "crew":
         if not grants <= CREW_CAPABILITIES:
-            raise IdentityError("forbidden", "Crew cannot receive approval or posting permissions.")
+            raise IdentityError("forbidden", "Crew cannot receive approval or posting permissions.", reason="permission_denied")
         capabilities = frozenset({"reports.submit"}) | grants
     else:
-        raise IdentityError("forbidden", "No active account role.")
+        raise IdentityError("forbidden", "No active account role.", reason="access_changed")
     return frozenset(capabilities if mapped else capabilities & REPORT_CAPABILITIES)
 
 
 def assert_grant(actor, role, grants=(), *, business_id=None):
     """Validate a requested local membership; ownership remains a separate operation."""
     if "memberships.manage" not in actor.capabilities:
-        raise IdentityError("forbidden", "Team management permission is required.")
+        raise IdentityError("forbidden", "Team management permission is required.", reason="permission_denied")
     if business_id is not None and actor.business_id != business_id:
-        raise IdentityError("forbidden", "Business scope does not match.")
+        raise IdentityError("forbidden", "Business scope does not match.", reason="permission_denied")
     if role not in {"manager", "crew", "admin"}:
         raise IdentityError("invalid", "Invalid store role.")
     if actor.role == "manager" and role != "crew":
-        raise IdentityError("forbidden", "Managers can manage crew only.")
+        raise IdentityError("forbidden", "Managers can manage crew only.", reason="permission_denied")
     if actor.role == "admin" and role == "admin":
-        raise IdentityError("forbidden", "Only an owner appoints administrators.")
+        raise IdentityError("forbidden", "Only an owner appoints administrators.", reason="permission_denied")
     if actor.role not in {"owner", "admin", "manager"}:
-        raise IdentityError("forbidden", "This account cannot manage memberships.")
+        raise IdentityError("forbidden", "This account cannot manage memberships.", reason="permission_denied")
     effective = capabilities_for(role, grants)
     if actor.role != "owner" and not effective <= actor.capabilities:
-        raise IdentityError("forbidden", "Cannot grant permissions beyond your own authority.")
+        raise IdentityError("forbidden", "Cannot grant permissions beyond your own authority.", reason="permission_denied")
     return frozenset(grants)

@@ -10,10 +10,22 @@ release acceptance.
 
 Individual sign-in, activation/recovery, store selection, account/password and
 sign-out controls, crew report entry and Head's Up, manager report reading,
-read-only authorized team access, and a permission-aware Inventory empty state.
-Full native owner administration, stock/SKU workflows, camera capture and offline
-posting are later phases. This is a development foundation; bundling is not a
+native Team screens for invitations/reissue, existing-account assignment and
+store permissions/removal/restoration, plus an Owner workspace for business
+delegation, suspension/restoration, ownership transfer and shared-crew cutover.
+Inventory now includes a shared company product/SKU catalog with add, edit,
+archive and restore, plus named store shelves and assignment/removal of existing
+products. Owners or delegated catalog administrators manage shared products;
+store configuration permission controls shelf changes. Catalog products now
+include an editable full-container amount, exact gram/kilogram equivalents and
+A–Z catalog ordering. New unit choices are each, grams and kilograms. Quantities, camera capture
+and offline posting remain later phases. This is a development foundation; bundling is not a
 claim of physical-device or store-release verification.
+
+The [inventory foundation and shared catalog](../../docs/workstreams/inventory-foundation-and-shared-catalog.md)
+documents this implemented slice and its verification. API paths stay under `/api/mobile`; feature code supplies
+uncertain-write guidance. Machine-readable errors distinguish form conflicts from
+session/store invalidation, with conservative fallback for older responses.
 
 ## Requirements
 
@@ -142,3 +154,54 @@ enforced by the backend. If sign-out cannot delete the saved device credential,
 the app stays locked and retries cleanup rather than reopening that session.
 A failed cleanup must be completed before treating the device as signed out; the
 message directs the user to reconnect and retry before closing the app.
+
+## Native account administration
+
+Open **Account → Manage team** to invite someone, add an existing account by their
+Account ID (visible on their own Account screen), or change a store membership.
+Owners can also choose existing people from their business when adding store
+access. Invited people activate their own account and choose their own password.
+Activation codes appear only on the issuing screen, expire after 24 hours, and
+are discarded on navigation/backgrounding; they are never put in routes or storage.
+Reissuing invalidates the earlier code. Editing a pending membership invalidates
+its invitation, so reissue after saving if that membership remains active.
+
+Open **Today → Owner workspace** or **Account → Owner workspace** for business
+roles, account suspension/restoration, ownership transfer, and store sign-in
+cutover. Administrator permissions require matching store grants and active
+business delegation. An ownership transfer ends the current owner's business
+sessions and clears the native credential. Global suspension is offered only
+when the owner has authority across the target's complete account history.
+
+`GET /api/mobile/accounts/management` returns selected-store members, form choices
+derived from Python policy, and eligible row actions. Only owners receive the
+business directory and owner controls. These choices are presentation hints:
+every write still uses the existing service's transaction-level authorization.
+The original browser/native roster response remains unchanged. No migration or
+second permission model was added.
+
+Account changes require explicit confirmation showing scope and effects. Unknown
+network outcomes are never replayed automatically: refresh the team or sign in
+again before retrying, and reissue an activation code if its delivery was lost.
+
+Before a release, exercise the actual iPhone/Android screens for keyboard and
+text scaling, back navigation, backgrounding while an invitation code is visible,
+manager denial, store switches during edits, and transfer/sign-out cleanup.
+Bundle and automated service checks do not replace those device checks.
+
+## Visual theme
+
+The native client uses a cocoa, cream and rose theme inspired by
+[baciodilatte.us](https://baciodilatte.us/): cocoa `#6B4124`, rose `#F08183`,
+cream `#FBF6EE`, and pale blush selections. Shared tokens live in
+`src/ui/theme.ts`; use semantic colors for all new screens. Error and success
+messages keep separate colors and icons. The checked normal-text/background
+pairs exceed 4.5:1 contrast, including secondary text on the cream surfaces.
+
+Newsreader headings and Work Sans body/controls are bundled from the pinned
+open-source Expo Google Fonts packages; loading works in Expo Go. The shared
+`Typography` component selects actual bundled weights and uses native fallbacks
+while fonts load or if loading fails. Fonts are not fetched from a third-party
+font service while the app runs. Layout review used the real screen components
+in a temporary browser renderer at 390-pixel phone and 1024-pixel tablet widths;
+this is not a substitute for final native device accessibility/keyboard checks.

@@ -19,7 +19,7 @@ baseline. They do not establish native device readiness.
 | React Native + Expo + TypeScript | Native phone/tablet screens, navigation, accessible controls, device lifecycle and later camera/barcode integrations |
 | FastAPI `/api/mobile` adapter | Explicit native request/response contract and opaque bearer authentication, delegated to shared services |
 | Existing Python services | Accounts, store selection, roles/capabilities, reports, durable jobs and business rules |
-| Existing PostgreSQL | Verified identities, memberships, sessions, reports and migration history; future inventory records through additive migrations |
+| Existing PostgreSQL | Identities, memberships, sessions, reports, shared company catalog and store shelves; additive migration history through 015 |
 | Existing browser client | Available reporting and full account administration while native workflows reach parity |
 | Future private object storage | Authorized image evidence with store scope, retention and reviewed analysis; image bytes do not belong in account/session storage |
 
@@ -65,10 +65,10 @@ Deliver the app shell and authenticated native API alongside the existing client
   the verified named actor.
 - A manager report inbox with original notes, briefing status and available
   briefings, restricted to authorized stores and labeled with each report's store.
-- A read-only team view for authorized accounts. Keep full owner/admin management
-  in the existing Accounts & Access browser screen during this first slice.
-- An honest Inventory empty state visible only with `inventory.view`; no stock
-  quantities, creation controls or camera results until those services exist.
+- Initial read-only team view for authorized accounts, expanded with native
+  administration in phase 2. The browser Accounts & Access screen remains available.
+- Inventory visible only with `inventory.view`; phase 3 now provides the first
+  catalog/shelf slice. Quantities and camera results remain future work.
 
 **Acceptance:** TypeScript and JavaScript bundle checks pass; API tests exercise
 successful workflows plus absent/expired/revoked tokens, store boundaries,
@@ -84,10 +84,16 @@ checks actually run in the delivery handoff.
 
 ### 2. Complete account and operations parity
 
-Add native invitations/reissue, existing-user membership assignment, scoped
-role/capability editing and revocation, business delegation, authorized
-suspension/restore, ownership transfer and deliberate shared-login cutover.
-Add manager Head's Up editing and Weekly Overview where absent from phase 1.
+Implemented native Team and Owner screens for invitations/reissue, existing-user
+membership assignment, scoped role/capability editing and revocation/restoration,
+business delegation, authorized suspension/restore, ownership transfer and
+shared-login cutover. Native form choices come from the existing Python account
+policy; mutations continue through the shared lifecycle services. Ownership
+transfer clears the native credential, and sensitive codes leave memory when the
+screen loses focus or the app backgrounds.
+
+Manager Head's Up editing and Weekly Overview remain to be implemented where
+absent from phase 1. Native device acceptance below remains a release requirement.
 
 Local managers must never inherit business-owner authority or global recovery
 powers through the client. Destructive access changes need clear effects and
@@ -101,12 +107,19 @@ targets. Test tablet portrait/landscape layouts without stretched phone forms.
 
 ### 3. Catalog, SKUs and trusted manual inventory
 
+**First slice implemented, 2026-09-23:** see the [shared company catalog](workstreams/inventory-foundation-and-shared-catalog.md).
+One editable company catalog, store listings and named shelves with product
+assignments are available. Add/edit/archive/restore products centrally; shelf
+removal is local. Rendered phone/tablet journeys and native bundles are verified;
+physical-device acceptance remains a separate gate. The broader quantity and
+conversion workflow below remains planned.
+
 Build catalog items, SKU/barcode mappings, pack/base units, weight/tare profiles,
 locations and pars first. Then add movement history, balances, receipts, counts,
 approval and corrections using the rules in [INVENTORY.md](INVENTORY.md).
 Prioritize native count entry and manager review screens around real pilot items.
 
-Add migrations after the existing 001–014 history; rehearse fresh databases,
+Add migrations after the existing 001–015 history; rehearse fresh databases,
 upgrades and restoration. Never alter already released migration history to
 accommodate a frontend change. Catalog, counts and stock commands must retain
 store scope, named actors and server-authorized capabilities.

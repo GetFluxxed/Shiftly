@@ -402,3 +402,105 @@ test('duplicate foreground retries do not reject while a pending sign-out cleanu
   logout.resolve({}); await first;
   assertPrivateCleared(h.controller);
 });
+
+test('ownership transfer binds the current store and removes the local credential on success', async () => {
+  const h = harness(); await h.controller.restore();
+  await h.controller.transferOwnership(22, 'Confirmed recipient');
+  const call = h.calls.find(item => item.path === '/accounts/transfer-ownership');
+  assert.deepEqual(call?.options.body, { userId: 22, reason: 'Confirmed recipient', expectedStoreId: 7 });
+  assert.equal(h.stored(), null);
+  assert.equal(h.controller.getSnapshot().status, 'signedOut');
+  assertPrivateCleared(h.controller);
+});
+
+test('a delayed ownership transfer cannot clear a newer account session', async () => {
+  const h = harness(); await h.controller.restore();
+  const pending = deferred<unknown>();
+  h.handle(call => call.path === '/accounts/transfer-ownership' ? pending.promise
+    : call.path === '/accounts/login' ? issued(TOKEN_B) : status());
+  const transferring = h.controller.transferOwnership(22, 'Confirmed recipient');
+  const rejected = assert.rejects(transferring, /session changed/);
+  await h.controller.signOut(); await h.controller.signIn(fields);
+  pending.resolve({ ownerUserId: 22 }); await rejected;
+  assert.equal(h.stored(), TOKEN_B);
+  assert.equal(h.controller.getSnapshot().status, 'ready');
+});
+
+test('uncertain ownership transfer is not replayed and a revoked session is cleared on revalidation', async () => {
+  const h = harness(); await h.controller.restore();
+  h.handle(() => { throw new ApiError('Could not confirm account change'); });
+  await assert.rejects(h.controller.transferOwnership(22, ''), /Could not confirm/);
+  assert.equal(h.calls.filter(call => call.path === '/accounts/transfer-ownership').length, 1);
+  h.handle(() => { throw new ApiError('Session revoked', 401); });
+  await h.controller.refreshAccess();
+  assert.equal(h.controller.getSnapshot().status, 'signedOut');
+  assert.equal(h.stored(), null);
+});
+
+for (const code of ['duplicate_identifier', 'state_conflict', 'stale_record']) {
+  test(`${code} preserves the workspace and pending private results`, async () => {
+    const h = harness(); await h.controller.restore();
+    const before = h.controller.getSnapshot(), pending = deferred<unknown>();
+    h.handle(call => {
+      if (call.path === '/heads-up') return pending.promise;
+      throw new ApiError('Correct this value.', 409, code);
+    });
+    const reading = h.controller.request('/heads-up');
+    await assert.rejects(h.controller.request('/inventory/products', { method: 'POST', body: { sku: '0001' } }), /Correct this value/);
+    assert.equal(h.controller.getSnapshot(), before);
+    assert.equal(h.stored(), TOKEN_A);
+    pending.resolve({ message: 'Still in the same store' });
+    assert.deepEqual(await reading, { message: 'Still in the same store' });
+  });
+}
+
+for (const [statusCode, code] of [[409, 'store_context_changed'], [403, 'access_changed'], [409, 'future_code'],
+  [403, 'duplicate_identifier'], [409, 'permission_denied']] as const) {
+  test(`${statusCode}/${code} cannot bypass workspace invalidation`, async () => {
+    const h = harness(); await h.controller.restore();
+    h.handle(() => { throw new ApiError('Revalidation required', statusCode, code); });
+    await assert.rejects(h.controller.request('/inventory/shelves'), ApiError);
+    assert.equal(h.controller.getSnapshot().status, 'locked'); assertPrivateCleared(h.controller);
+  });
+}
+
+test('denied action with unchanged access preserves the form workspace after revalidation', async () => {
+  const h = harness(); await h.controller.restore(); const before = h.controller.getSnapshot();
+  h.handle(call => {
+    if (call.path === '/accounts/status') return status();
+    throw new ApiError('This action is not permitted.', 403, 'permission_denied');
+  });
+  await assert.rejects(h.controller.request('/inventory/products'), /not permitted/);
+  assert.equal(h.calls.at(-1)?.path, '/accounts/status');
+  assert.equal(h.controller.getSnapshot(), before);
+});
+
+test('denied action with changed grants invalidates earlier responses after revalidation', async () => {
+  const h = harness(); await h.controller.restore(); const before = h.controller.getSnapshot().revision;
+  const pending = deferred<unknown>();
+  h.handle(call => {
+    if (call.path === '/heads-up') return pending.promise;
+    if (call.path === '/accounts/status') {
+      const next = status(); next.actor!.capabilities = []; next.stores![0]!.capabilities = []; return next;
+    }
+    throw new ApiError('Permission removed', 403, 'permission_denied');
+  });
+  const read = h.controller.request('/heads-up');
+  await assert.rejects(h.controller.request('/inventory/shelves'), ApiError);
+  assert.ok(h.controller.getSnapshot().revision > before);
+  assert.deepEqual(h.controller.getSnapshot().actor?.capabilities, []);
+  pending.resolve({ message: 'Old access' }); await assert.rejects(read, /session changed/);
+});
+
+for (const statusCode of [0, 401, 403]) {
+  test(`denied action cannot preserve private state when revalidation fails (${statusCode})`, async () => {
+    const h = harness(); await h.controller.restore();
+    h.handle(call => {
+      if (call.path === '/accounts/status') throw new ApiError('Unavailable', statusCode);
+      throw new ApiError('Permission removed', 403, 'permission_denied');
+    });
+    await assert.rejects(h.controller.request('/inventory/shelves'), ApiError);
+    assertPrivateCleared(h.controller);
+    assert.equal(h.controller.getSnapshot().status, statusCode === 401 ? 'signedOut' : 'locked');
+  });
+}

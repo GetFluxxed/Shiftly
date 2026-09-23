@@ -1,7 +1,16 @@
+// Cocoa and rose sampled from baciodilatte.us; supporting tones tuned for app readability.
 export const colors = {
-  paper: '#F5F4EE', card: '#FFFEF8', ink: '#23382E', muted: '#657267',
-  forest: '#234F3C', sage: '#E3EADD', line: '#DCE1D5', coral: '#BC4A33',
-  peach: '#F8E2D5', white: '#FFFFFF', danger: '#A73328', dangerPaper: '#FFF0E9',
+  paper: '#FBF6EE', card: '#FFFCF7', white: '#FFFFFF',
+  ink: '#4B2E20', muted: '#796252', primary: '#6B4124',
+  soft: '#F2E7D8', line: '#E6D8C8', controlLine: '#A58B78',
+  accent: '#F08183', accentStrong: '#995055', blush: '#F8DFDC',
+  onPrimary: '#FFF9F0', onPrimaryMuted: '#F0DDCB',
+  success: '#46583E', successPaper: '#EDF1E8',
+  danger: '#963D43', dangerPaper: '#FCEBED',
+};
+
+export const fonts = {
+  body: 'WorkSans_400Regular', strong: 'WorkSans_600SemiBold', display: 'Newsreader_500Medium',
 };
 
 export const permissionLabels: Record<string, string> = {

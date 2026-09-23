@@ -2,7 +2,6 @@
 
 import hmac
 import secrets
-from dataclasses import dataclass, field
 
 import psycopg
 
@@ -10,20 +9,8 @@ from .admission import AdmissionControl
 from .primitives import clean, hash_store_code, password_hash
 
 
-class IdentityError(Exception):
-    """Stable domain reason; HTTP adapters translate code into a status."""
-
-    def __init__(self, code, message):
-        super().__init__(message)
-        self.code = code
-
-
-@dataclass(frozen=True)
-class SessionResult:
-    role: str
-    token: str = field(repr=False)
-    response: dict
-    ttl: int
+# Preserve the existing import surface for adapters and callers.
+from .contracts import IdentityError, SessionResult
 
 
 class IdentityService:

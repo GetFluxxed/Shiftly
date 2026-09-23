@@ -15,7 +15,7 @@ CI. The focused verification follow-up adds both-transport API contracts and
 an automated upgrade/outage/restore rehearsal. See
 [verification evidence](workstreams/focused-verification.md) for checks and
 remaining review/merge requirements. Hosted staging, production cutover and
-required-check administration remain release work. A1 onward are not implemented.
+required-check administration remain release work. A1 navigation and A2 named accounts/permissions are implemented; I1 onward remain planned.
 
 ## Ordered work packages
 
@@ -66,9 +66,10 @@ M1 offline replay waits for command idempotency and conflict handling.
 
 ## Next bounded task
 
-Implement and verify **N1** on the published Accounts & Access integration, then
-complete native account/operations parity. Start **I1** catalog/SKU/units/weight
-profiles against the shared permission services. Preserve the existing browser
-app and historical reports worktree. Use the [native roadmap](NATIVE_APP_ROADMAP.md)
-for concrete phase acceptance; native distribution and hosted production cutover
-remain separate release decisions.
+The [shared company catalog and first shelf](workstreams/inventory-foundation-and-shared-catalog.md)
+are implemented as a bounded subset of I1/I2. Enter the real pilot products and
+confirm the first shelf on an iPhone. Next, define the pilot package/base-unit
+conversions before implementing opening counts and the movement ledger.
+Weights, pars and the broader location hierarchy follow. N1 and native Team/Owner administration exist. Preserve their
+behavior and the browser app. Hosted cutover and signed native distribution are
+separate release tasks.
