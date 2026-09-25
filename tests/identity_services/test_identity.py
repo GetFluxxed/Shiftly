@@ -159,7 +159,7 @@ def test_admission_and_validation_order_without_database():
     assert not services.admission.signups
     with pytest.raises(IdentityError) as error:
         services.identity.login_payload({"storeCode": []}, client_key="peer")
-    assert str(error.value) == "Invalid login request."
+    assert str(error.value) == "Invalid store code."
     with pytest.raises(IdentityError) as error:
         services.identity.login("store", "owner", "secret", client_key="peer")
     assert error.value.code == "invalid"

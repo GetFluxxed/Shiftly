@@ -121,33 +121,8 @@ def deterministic_ai(monkeypatch):
 
 
 def create_workspace(api, *, store_code, manager_name):
-    response = api.request(
-        "POST",
-        "/api/auth/signup",
-        payload={
-            "adminKey": "contract-admin-key",
-            "storeName": f"{manager_name} Store",
-            "storeCode": store_code,
-            "crewPassword": "crew-password-123",
-            "managerUsername": manager_name,
-            "managerPassword": "manager-password-123",
-            "confirmPassword": "manager-password-123",
-        },
-    )
-    assert response.status == 201, response.body
-    manager_cookie = response.cookies()[0]
-    with db_connection() as connection:
-        store_id = connection.execute(
-            "SELECT id FROM stores WHERE access_code_hash = %s",
-            (hashlib.sha256(store_code.casefold().encode()).hexdigest(),),
-        ).fetchone()[0]
-    return {
-        "store_code": store_code,
-        "crew_password": "crew-password-123",
-        "manager_password": "manager-password-123",
-        "manager_cookie": manager_cookie,
-        "store_id": store_id,
-    }
+    from tests.account_fixtures import seed_workspace
+    return seed_workspace(store_code=store_code,manager_name=manager_name)
 
 
 @pytest.fixture

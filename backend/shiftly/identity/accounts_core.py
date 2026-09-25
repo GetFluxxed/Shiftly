@@ -152,6 +152,13 @@ class AccountCore:
                     raise IdentityError("forbidden", "Store membership is unavailable.", reason="access_changed")
         else:
             raise IdentityError("forbidden", "No active membership for this store.", reason="access_changed")
+        if role in {"crew", "manager"} and connection.execute(
+            "SELECT 1 FROM account_store_memberships WHERE user_id=%s AND state='active' AND store_id<>%s",
+            (uid, sid),
+        ).fetchone():
+            # Existing ambiguous assignments fail closed. An administrator must
+            # remove the extra memberships; never infer a person's home store.
+            raise IdentityError("forbidden", "Ask your administrator to assign your account to one store.", reason="access_changed")
         capabilities = capabilities_for(role, grants, mapped=mapped)
         # Shared catalog authority is a separate business-level delegation. A
         # local manager keeps that local role and gains no team/owner powers.
@@ -180,6 +187,8 @@ class AccountCore:
         if actor.credential_version != row[2]:
             raise IdentityError("unauthenticated", "Named session is no longer current.")
         if store_id is not None and store_id != actor.store_id:
+            if actor.role not in {"owner", "admin"}:
+                raise IdentityError("forbidden", "Your account is assigned to one store.", reason="permission_denied")
             actor = self._actor_for_user(connection, actor.user_id, store_id)
         if capability and capability not in actor.capabilities:
             raise IdentityError("forbidden", "This account lacks the required permission.", reason="permission_denied")
@@ -204,6 +213,9 @@ class AccountCore:
             with self.connect() as owned:
                 return self.authorized_stores(token, capability=capability, connection=owned)
         selected = self.resolve_actor(token, connection=connection)
+        if selected.role not in {"owner", "admin"}:
+            name = connection.execute("SELECT name FROM stores WHERE id=%s", (selected.store_id,)).fetchone()[0]
+            return [{**selected.as_dict(), "storeName": name}] if not capability or capability in selected.capabilities else []
         candidates = connection.execute(
             """SELECT DISTINCT s.id,s.name FROM stores s
                LEFT JOIN account_store_memberships sm ON sm.store_id=s.id AND sm.user_id=%s AND sm.state='active'
@@ -227,13 +239,14 @@ class AccountCore:
         return self.login(fields.get("storeCode"), fields.get("username"), fields.get("password"), client_key=client_key)
 
     def login(self, store_code, username, password, *, client_key):
-        if not isinstance(store_code, str) or not store_code.strip() or len(store_code) > 40:
-            raise IdentityError("invalid", "A store code is required.")
+        if store_code is not None and (not isinstance(store_code, str) or not store_code.strip() or len(store_code) > 40):
+            raise IdentityError("invalid", "Invalid store code.")
         username = self._validate_username(username)
         if not isinstance(password, str) or not password or len(password) > 1024:
-            raise IdentityError("unauthenticated", "Incorrect store code, username or password.")
-        store_code = store_code.strip()
-        if not self.admission.reserve_login(client_key, store_code):
+            raise IdentityError("unauthenticated", "Incorrect username or password.")
+        store_code = store_code.strip() if store_code is not None else None
+        # A supplied store code cannot split the password-guessing budget.
+        if not self.admission.reserve_login(client_key, "named-sign-in"):
             raise IdentityError("limited", "Too many failed sign-in attempts. Try again later.")
         success = False
         try:
@@ -241,9 +254,9 @@ class AccountCore:
                 self._lock(connection)
                 store = connection.execute(
                     "SELECT id FROM stores WHERE access_code_hash=%s AND active", (hash_store_code(store_code),),
-                ).fetchone()
-                if not store:
-                    raise IdentityError("unauthenticated", "Incorrect store code, username or password.")
+                ).fetchone() if store_code is not None else None
+                if store_code is not None and not store:
+                    raise IdentityError("unauthenticated", "Incorrect username or password.")
                 # This compatibility lookup identifies a manager by its unique ID;
                 # it never chooses a manager by password or merges username matches.
                 managers = connection.execute(
@@ -258,18 +271,37 @@ class AccountCore:
                        WHERE username_key=account_username_key(%s) AND state='active'""", (username,),
                 ).fetchone()
                 if not row or not hmac.compare_digest(row[2], self.password_hasher(password, row[1])):
-                    raise IdentityError("unauthenticated", "Incorrect store code, username or password.")
+                    raise IdentityError("unauthenticated", "Incorrect username or password.")
+                if store is None:
+                    # Owners/admins start in their first available store and can
+                    # explicitly switch. Staff must have exactly one assignment.
+                    candidates = connection.execute(
+                        """SELECT DISTINCT s.id FROM stores s
+                           LEFT JOIN account_store_memberships m ON m.store_id=s.id AND m.user_id=%s AND m.state='active'
+                           LEFT JOIN business_memberships b ON b.business_id=s.business_id AND b.user_id=%s AND b.state='active' AND b.role='owner'
+                           WHERE s.active AND (m.user_id IS NOT NULL OR b.user_id IS NOT NULL) ORDER BY s.id""",
+                        (row[0], row[0]),
+                    ).fetchall()
+                    for candidate in candidates:
+                        try:
+                            self._actor_for_user(connection, row[0], candidate[0])
+                        except IdentityError:
+                            continue
+                        store = candidate
+                        break
+                    if store is None:
+                        raise IdentityError("forbidden", "Ask your administrator to check your store assignment.", reason="access_changed")
                 try:
                     result = self._issue_session(connection, row[0], store[0])
                 except IdentityError as error:
                     if error.code in {"forbidden", "unauthenticated"}:
-                        raise IdentityError("unauthenticated", "Incorrect store code, username or password.") from error
+                        raise IdentityError("unauthenticated", "Incorrect username or password.") from error
                     raise
                 self._audit(connection, row[0], "session.login", store_id=store[0])
             success = True
             return result
         finally:
-            self.admission.finish_login(client_key, store_code, failed=not success)
+            self.admission.finish_login(client_key, "named-sign-in", failed=not success)
 
     def _issue_session(self, connection, user_id, store_id):
         actor = self._actor_for_user(connection, user_id, store_id)
@@ -293,6 +325,8 @@ class AccountCore:
         with self.connect() as connection:
             self._lock(connection)
             actor = self.resolve_actor(token, connection=connection)
+            if actor.role not in {"owner", "admin"}:
+                raise IdentityError("forbidden", "Only owners and administrators can switch stores.", reason="permission_denied")
             target = self._actor_for_user(connection, actor.user_id, store_id)
             # Rotate the bearer token so a copy of the old selected-store token
             # cannot continue to operate under the new context.

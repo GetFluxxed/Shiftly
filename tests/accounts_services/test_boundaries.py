@@ -41,9 +41,10 @@ def test_named_session_is_the_only_authenticated_person(identity_boundary):
     identity_boundary.repository.crew_store.assert_not_called()
 
 
-def test_same_person_and_same_store_compatibility_pair_is_allowed(identity_boundary):
-    result = resolve_principal(identity_boundary, account_token="named", manager_token="legacy")
-    assert result.named and result.actor.user_id == 10 and result.store_id == 11
+def test_even_matching_legacy_cookies_require_fresh_individual_signin(identity_boundary):
+    with pytest.raises(IdentityError):
+        resolve_principal(identity_boundary, account_token='named', manager_token='legacy')
+
 
 
 @pytest.mark.parametrize("manager_id,store_id", [(None, None), (999, 11), (13, 999), (13, None)])
@@ -76,30 +77,22 @@ def test_expired_or_revoked_named_session_never_falls_back(identity_boundary, ot
     identity_boundary.repository.crew_store.assert_not_called()
 
 
-def test_legacy_manager_link_does_not_inflate_named_crew_permission(identity_boundary):
-    identity_boundary.accounts.resolve_actor.return_value = replace(
-        identity_boundary.accounts.resolve_actor.return_value, role="crew", capabilities=frozenset({"reports.submit"}),
-    )
-    result = resolve_principal(identity_boundary, account_token="named", manager_token="legacy")
-    assert result.manager_id == 13 and result.named and not result.can_manage
+def test_legacy_link_cannot_supply_a_release_principal(identity_boundary):
+    with pytest.raises(IdentityError):
+        resolve_principal(identity_boundary, account_token='named', manager_token='legacy')
 
 
-def test_shared_crew_principal_never_acquires_a_person_id(identity_boundary):
-    result = resolve_principal(identity_boundary, crew_token="shared")
-    assert result.store_id == 11 and not result.named and result.manager_id is None
-    assert not result.can_manage
+
+def test_shared_crew_principal_is_retired(identity_boundary):
+    with pytest.raises(IdentityError):
+        resolve_principal(identity_boundary, crew_token='shared')
+
 
 
 @pytest.mark.parametrize("expired_kind", ["crew", "manager"])
-def test_one_valid_legacy_session_survives_an_expired_other_cookie(identity_boundary, expired_kind):
-    if expired_kind == "crew":
-        identity_boundary.repository.crew_store.return_value = None
-    else:
-        identity_boundary.repository.manager_id.return_value = None
-        identity_boundary.repository.selected_store.return_value = None
-    result = resolve_principal(identity_boundary, manager_token="legacy", crew_token="shared")
-    assert result.store_id == 11 and not result.named
-    assert result.can_manage is (expired_kind == "crew")
+def test_legacy_cookies_are_rejected_even_if_only_one_is_valid(identity_boundary, expired_kind):
+    with pytest.raises(IdentityError):
+        resolve_principal(identity_boundary, manager_token='legacy', crew_token='shared')
 
 
 @pytest.mark.parametrize("kind", ["manager", "crew"])
@@ -235,7 +228,7 @@ def test_legacy_transport_named_login_uses_verified_identity_and_safe_cookies(le
 def test_legacy_cookie_cannot_open_new_account_surfaces(legacy_account_http):
     api = legacy_account_http
     status = api.request("GET", "/api/accounts/status", cookie=api.cookies["legacy"])
-    assert status.status == 200 and status.json() == {"authenticated": False, "reauthenticationRequired": True}
+    assert status.status == 401
     assert api.request("GET", "/api/accounts/team", cookie=api.cookies["legacy"]).status == 401
     assert api.request("POST", "/api/accounts/invitations", cookie=api.cookies["legacy"], payload={
         "username": "unauthorized-invite", "role": "crew",
@@ -291,18 +284,12 @@ def test_legacy_logout_waits_for_in_progress_authorized_writes(legacy_account_ht
     assert legacy_account_http.request('GET', '/api/auth/status', cookie=legacy_account_http.cookies['shared']).json()['authenticated'] is False
 
 
-def test_expired_legacy_crew_cookie_does_not_block_valid_manager_compatibility(legacy_account_http):
-    api = legacy_account_http
-    with db_connection() as connection:
-        connection.execute("UPDATE crew_sessions SET expires_at=NOW()-INTERVAL '1 second'")
-    cookie = api.cookies["legacy"] + "; " + api.cookies["shared"]
-    status = api.request("GET", "/api/auth/status", cookie=cookie)
-    assert status.status == 200 and status.json()["authenticated"] is True
-    assert status.json()["role"] == "manager"
-    assert api.request("GET", "/api/reports", cookie=cookie).status == 200
-    assert api.request("GET", "/api/accounts/status", cookie=cookie).json() == {
-        "authenticated": False, "reauthenticationRequired": True,
-    }
+def test_expired_legacy_cookie_does_not_restore_retired_login(legacy_account_http):
+    api=legacy_account_http
+    cookie=api.cookies['legacy']+'; '+api.cookies['shared']
+    assert api.request('GET','/api/auth/status',cookie=cookie).json()['authenticated'] is False
+    assert api.request('GET','/api/reports',cookie=cookie).status==401
+    assert api.request('GET','/api/accounts/status',cookie=cookie).status==401
 
 
 def test_revoked_selected_store_cannot_be_rescued_by_another_authorized_store(legacy_account_http):
@@ -374,13 +361,13 @@ def test_conflicting_credentials_are_denied_across_legacy_transport(legacy_accou
 
 def test_cutover_blocks_existing_and_new_shared_crew_sessions(legacy_account_http):
     api = legacy_account_http
-    assert api.request("GET", "/api/auth/status", cookie=api.cookies["shared"]).json()["authenticated"] is True
+    assert api.request("GET", "/api/auth/status", cookie=api.cookies["shared"]).json()["authenticated"] is False
     result = api.request("POST", "/api/accounts/cutover", cookie=api.cookies["owner"], payload={"reason": "Verified enrollment complete"})
     assert result.status == 200 and result.json()["sharedCrewEnabled"] is False
     assert api.request("GET", "/api/auth/status", cookie=api.cookies["shared"]).json()["authenticated"] is False
     assert api.request("POST", "/api/auth/login", payload={
         "storeCode": "boundary-1", "password": api.password, "role": "crew",
-    }).status == 401
+    }).status == 400
     assert api.request("GET", "/api/accounts/status", cookie=api.cookies["crew"]).json()["authenticated"] is True
 
 
@@ -407,39 +394,13 @@ def test_named_account_mutation_rejects_cross_origin_before_writing(legacy_accou
 
 
 @pytest.mark.parametrize("legacy_role", ["manager", "auto"])
-def test_password_change_between_legacy_verification_and_session_issue_fails_closed(legacy_account_http, monkeypatch, legacy_role):
-    api = legacy_account_http
-    original = IdentityRepository.issue_session
-    replacements = []
-
-    def change_after_verification(repository, *args, **kwargs):
-        replacements.append(api.accounts.change_password(
-            api.cookies["owner"].split("=", 1)[1], current_password=api.password,
-            new_password="rotated-password-456",
-        ))
-        return original(repository, *args, **kwargs)
-
-    monkeypatch.setattr(IdentityRepository, "issue_session", change_after_verification)
-    result = api.request("POST", "/api/auth/login", payload={
-        "storeCode": "boundary-1", "password": api.password, "role": legacy_role,
-    })
-    assert len(replacements) == 1 and replacements[0]["changed"] is True
-    assert result.status == 401, result.body
-    assert result.cookies == []
-    with db_connection() as connection:
-        assert connection.execute(
-            """SELECT count(*) FROM manager_sessions WHERE manager_user_id=(
-               SELECT legacy_manager_id FROM account_users WHERE id=%s)""", (api.users["owner"],),
-        ).fetchone()[0] == 0
-    monkeypatch.setattr(IdentityRepository, "issue_session", original)
-    old_named = api.request("POST", "/api/accounts/login", payload={
-        "storeCode": "boundary-1", "username": "boundary-owner", "password": api.password,
-    })
-    assert old_named.status == 401
-    new_named = api.request("POST", "/api/accounts/login", payload={
-        "storeCode": "boundary-1", "username": "boundary-owner", "password": "rotated-password-456",
-    })
-    assert new_named.status == 200, new_named.body
+def test_retired_password_only_login_cannot_issue_sessions(legacy_account_http, monkeypatch, legacy_role):
+    api=legacy_account_http
+    issue=Mock(side_effect=AssertionError('A legacy session must never be issued'))
+    monkeypatch.setattr(IdentityRepository,'issue_session',issue)
+    response=api.request('POST','/api/auth/login',payload={'storeCode':'boundary-1','password':api.password,'role':legacy_role})
+    assert response.status==400 and response.cookies==[]
+    issue.assert_not_called()
 
 
 @pytest.mark.parametrize("credential_kind", ["shared", "legacy", "crew"])
@@ -469,7 +430,7 @@ def test_revocation_during_report_quality_check_prevents_enqueue(legacy_account_
     result = api.request("POST", "/api/reports", cookie=api.cookies[credential_kind], payload={
         "employee": "Crew", "shift": "closing", "notes": "The cooler shelves were stocked and the shift completed its safety checks.",
     })
-    assert len(checked) == 1
+    assert len(checked) == (1 if credential_kind == "crew" else 0)
     assert result.status == 401, result.body
     with db_connection() as connection:
         assert connection.execute("SELECT count(*) FROM reports").fetchone()[0] == 0

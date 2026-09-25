@@ -61,16 +61,8 @@ class IdentityService:
         self.repository.logout(manager_token, crew_token)
 
     def login_payload(self, fields, *, client_key):
-        try:
-            raw_code = fields.get("storeCode")
-            if raw_code is not None and not isinstance(raw_code, str):
-                raise ValueError("Store code must be text.")
-            code = clean(raw_code, 40)
-            role = str(fields.get("role", "auto")).strip().casefold()
-            password = str(fields.get("password", ""))
-        except (ValueError, TypeError, UnicodeError) as error:
-            raise IdentityError("invalid", "Invalid login request.") from error
-        return self.login(code, role, password, client_key=client_key)
+        # Both public login URLs use the same individual-account workflow.
+        return self.accounts.login_payload(fields, client_key=client_key)
 
     def login(self, store_code, role, password, *, client_key):
         if role not in {"auto", "crew", "manager"}:

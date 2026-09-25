@@ -1,5 +1,6 @@
 """Usable named-account workflows through the legacy and FastAPI browsers."""
 import re
+from urllib.parse import urlparse, parse_qs
 
 from playwright.sync_api import expect
 
@@ -9,7 +10,6 @@ from tests.browser.conftest import BrowserApi
 
 def login_named(page, workspace, role, *, password=None):
     page.goto(workspace['base_url'] + '/')
-    page.locator('#store-code').fill(workspace['stores'][0]['code'])
     page.locator('#username').fill('account-' + role)
     page.locator('#password').fill(password or workspace['password'])
     page.locator('#sign-in-form button[type=submit]').click()
@@ -78,21 +78,24 @@ def test_invitation_reissue_activation_and_replay(page, named_workspace):
     page.locator('#invite-role').select_option('crew')
     page.locator('#invite-form button[type=submit]').click()
     expect(page.locator('#invitation-code')).not_to_have_value('')
-    old_token = page.locator('#invitation-code').input_value()
+    old_link = page.locator('#invitation-code').input_value()
+    old_token = parse_qs(urlparse(old_link).fragment)['invitation'][0]
     page.locator('#dismiss-invitation').click()
     row = page.locator('#team-list [data-user-id]').filter(has_text='New Teammate')
     page.once('dialog', lambda dialog: dialog.accept())
     row.get_by_role('button', name='Reissue invitation').click()
     expect(page.locator('#invitation-code')).not_to_have_value('')
-    token = page.locator('#invitation-code').input_value()
+    link = page.locator('#invitation-code').input_value()
+    token = parse_qs(urlparse(link).fragment)['invitation'][0]
     assert token != old_token
     assert BrowserApi(workspace['base_url']).request('POST', '/api/accounts/activate', payload={'token': old_token, 'password': workspace['password']}).status == 400
     assert token not in page.url
     assert page.evaluate('JSON.stringify({...localStorage,...sessionStorage})') == '{}'
     page.locator('#account-logout').click()
     page.wait_for_url('**/')
-    page.goto(workspace['base_url'] + '/activate.html')
-    page.locator('#activation-token').fill(token)
+    page.goto(link)
+    expect(page.locator('#activation-token')).to_have_value(token)
+    assert token not in page.url
     page.locator('#activation-password').fill(workspace['password'])
     page.locator('#activation-confirm').fill(workspace['password'])
     page.locator('#activation-form button[type=submit]').click()
@@ -102,10 +105,10 @@ def test_invitation_reissue_activation_and_replay(page, named_workspace):
     assert BrowserApi(workspace['base_url']).request('POST', '/api/accounts/activate', payload={'token': token, 'password': workspace['password']}).status == 400
 
 
-def test_manager_can_grant_crew_inventory_and_revoke_local_membership(page, named_workspace):
+def test_owner_can_grant_crew_inventory_and_revoke_local_membership(page, named_workspace):
     workspace = named_workspace
     previous = workspace['accounts'].login('market-store', 'account-crew', workspace['password'], client_key='browser-existing').token
-    login_named(page, workspace, 'manager')
+    login_named(page, workspace, 'owner')
     open_account(page, workspace)
     row = page.locator(f"#team-list [data-user-id='{workspace['users']['crew']}']")
     row.get_by_role('button', name='Edit access').click()
@@ -193,22 +196,14 @@ def test_inventory_only_admin_has_usable_navigation_and_logout_all(page, named_w
     assert BrowserApi(workspace['base_url']).request('GET', '/api/accounts/status', cookie='shiftly_account_session=' + other).status == 401
 
 
-def test_owner_cutover_disables_shared_crew_without_disabling_named_accounts(page, named_workspace):
-    workspace = named_workspace
-    api = BrowserApi(workspace['base_url'])
-    shared = api.request('POST', '/api/auth/login', payload={'storeCode': 'market-store', 'role': 'crew', 'password': 'shared-password-123'})
-    assert shared.status == 200
-    shared_cookie = shared.cookie('shiftly_crew_session')
-    login_named(page, workspace, 'owner')
-    open_account(page, workspace)
-    page.get_by_text('Require individual crew sign-in', exact=True).click()
-    page.once('dialog', lambda dialog: dialog.accept())
-    with page.expect_response(lambda response: response.url.endswith('/api/accounts/cutover')) as cutover:
-        page.locator('#cutover-button').click()
-    assert cutover.value.status == 200
-    assert api.request('GET', '/api/auth/status', cookie=shared_cookie).json()['authenticated'] is False
-    assert api.request('POST', '/api/auth/login', payload={'storeCode': 'market-store', 'role': 'crew', 'password': 'shared-password-123'}).status == 401
-    assert api.request('POST', '/api/accounts/login', payload={'storeCode': 'market-store', 'username': 'account-crew', 'password': workspace['password']}).status == 200
+def test_individual_signin_is_required_without_a_cutover_step(page, named_workspace):
+    workspace=named_workspace
+    shared=BrowserApi(workspace['base_url']).request('POST','/api/auth/login',payload={'storeCode':'market-store','password':'shared-password-123','role':'crew'})
+    assert shared.status==400
+    login_named(page,workspace,'owner')
+    open_account(page,workspace)
+    expect(page.locator('#cutover-button')).to_have_count(0)
+    assert BrowserApi(workspace['base_url']).request('GET','/api/accounts/status',cookie=named_cookie(page)).json()['actor']['role']=='owner'
 
 
 def test_owner_business_delegation_suspension_and_transfer(page, named_workspace, tmp_path):

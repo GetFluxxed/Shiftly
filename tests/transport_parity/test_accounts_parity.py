@@ -111,7 +111,7 @@ def test_account_http_login_exact_identity_cookie_and_status_contract(account_ht
 def test_account_status_distinguishes_missing_legacy_and_minimal_named(account_http):
     api=account_http
     assert api.request("GET","/api/accounts/status").json()=={"authenticated":False,"reauthenticationRequired":False}
-    assert api.request("GET","/api/accounts/status",cookie=api.cookies["legacy"]).json()=={"authenticated":False,"reauthenticationRequired":True}
+    assert api.request("GET","/api/accounts/status",cookie=api.cookies["legacy"]).status==401
     status=api.request("GET","/api/auth/status",cookie=api.cookies["minimal"])
     assert status.status==200 and status.json()["authenticated"] and status.json()["actor"]["capabilities"]==[]
     for page,expected in (("accounts",200),("inventory",302),("crew",302),("manager",302)):
@@ -149,14 +149,11 @@ def test_mixed_cookie_principal_denied_across_all_surfaces(account_http,case):
         assert connection.execute("SELECT count(*) FROM account_users WHERE username='forbidden'").fetchone()[0]==0
 
 
-def test_matching_named_legacy_cookie_and_expired_legacy_peer_are_unambiguous(account_http):
+def test_matching_named_and_legacy_cookies_require_fresh_signin(account_http):
     api=account_http
-    exact=api.cookies["owner"]+"; "+api.cookies["legacy"]
-    assert api.request("GET","/api/accounts/status",cookie=exact).json()["actor"]["userId"]==api.users["owner"]
-    assert api.request("GET","/api/accounts/team",cookie=exact).status==200
-    legacy=api.cookies["legacy"]+"; shiftly_crew_session=expired"
-    assert api.request("GET","/api/auth/status",cookie=legacy).json()["role"]=="manager"
-    assert api.request("GET","/api/reports",cookie=legacy).status==200
+    for cookie in (api.cookies['owner']+'; '+api.cookies['legacy'],api.cookies['legacy']+'; shiftly_crew_session=expired'):
+        assert api.request('GET','/api/accounts/status',cookie=cookie).status==401
+        assert api.request('GET','/api/reports',cookie=cookie).status==401
 
 
 def test_new_manager_without_legacy_id_and_named_crew_reporting(account_http):
@@ -179,7 +176,7 @@ def test_new_manager_without_legacy_id_and_named_crew_reporting(account_http):
 def test_camel_case_lifecycle_invite_reissue_activate_membership_switch_password(account_http):
     api=account_http
     invited=api.request("POST","/api/accounts/invitations",cookie=api.cookies["owner"],payload={"username":"new-crew","displayName":"New Crew",
-                        "role":"crew","capabilities":["inventory.view","counts.submit"],"storeId":api.stores[1],"expiresIn":120,"reason":"Scoped invitation."})
+                        "role":"crew","capabilities":[],"storeId":api.stores[1],"expiresIn":120,"reason":"Scoped invitation."})
     assert invited.status==200,invited.body
     user_id=invited.json()["userId"]
     replaced=api.request("POST","/api/accounts/invitations/reissue",cookie=api.cookies["owner"],payload={"userId":user_id,"storeId":api.stores[1],"expiresIn":180,"reason":"Replacement invitation."})
@@ -193,11 +190,14 @@ def test_camel_case_lifecycle_invite_reissue_activate_membership_switch_password
     assert api.request("POST","/api/accounts/activate",payload={"token":replaced.json()["token"],"password":api.password}).status==400
     changed=api.request("POST","/api/accounts/memberships",cookie=api.cookies["owner"],payload={"userId":user_id,"role":"crew",
                         "capabilities":["inventory.view"],"active":True,"storeId":api.stores[0],"reason":"Second store."})
-    assert changed.status==200,changed.body
-    switched=api.request("POST","/api/accounts/switch-store",cookie=cookie,payload={"storeId":api.stores[0],"expectedStoreId":api.stores[1]})
-    assert switched.status==200 and switched.json()["actor"]["storeId"]==api.stores[0]
-    assert api.request("GET","/api/accounts/status",cookie=cookie).status==401
-    fresh=switched.cookies[0]
+    assert changed.status==409,changed.body
+    assert api.request('POST','/api/accounts/switch-store',cookie=cookie,payload={'storeId':api.stores[0]}).status==403
+    removed=api.request('POST','/api/accounts/memberships',cookie=api.cookies['owner'],payload={'userId':user_id,'role':'crew','active':False,'storeId':api.stores[1]})
+    assert removed.status==200
+    changed=api.request('POST','/api/accounts/memberships',cookie=api.cookies['owner'],payload={'userId':user_id,'role':'crew','active':True,'storeId':api.stores[0]})
+    assert changed.status==200
+    assert api.request('GET','/api/accounts/status',cookie=cookie).status==401
+    fresh=api.request('POST','/api/accounts/login',payload={'username':'new-crew','password':api.password}).cookies[0]
     changed=api.request("POST","/api/accounts/password",cookie=fresh,payload={"currentPassword":api.password,"newPassword":"synthetic-new-password"})
     assert changed.status==200,changed.body
     assert _clear_cookie_names(changed)=={"shiftly_account_session","shiftly_manager_session","shiftly_crew_session"}
@@ -286,10 +286,10 @@ def test_account_database_errors_are_sanitized(account_http,monkeypatch):
 def test_explicit_legacy_login_replaces_named_and_other_legacy_cookies(account_http):
     api=account_http
     response=api.request("POST","/api/auth/login",cookie="shiftly_account_session=expired; "+api.cookies["shared"],
-                         payload={"storeCode":"account-store-0","role":"manager","password":api.password})
+                         payload={"username":"owner","password":api.password})
     assert response.status==200,response.body
-    assert response.cookies[0].startswith("shiftly_manager_session=")
-    assert _clear_cookie_names(response)=={"shiftly_account_session","shiftly_crew_session"}
+    assert response.cookies[0].startswith("shiftly_account_session=")
+    assert _clear_cookie_names(response)=={"shiftly_manager_session","shiftly_crew_session"}
     assert api.request("GET","/api/auth/status",cookie=response.cookies[0]).json()["role"]=="manager"
 
 
@@ -312,7 +312,7 @@ def test_report_authorization_is_rechecked_after_quality_gate(account_http,monke
     response=api.request("POST","/api/reports",cookie=api.cookies[key],payload={"employee":"Race report","shift":"closing",
                          "notes":"Completed the detailed handoff before credentials changed."})
     assert response.status in {401,403},response.body
-    assert calls==["quality"]
+    assert calls==(["quality"] if kind=="named_crew" else [])
     with db_connection() as connection:
         assert connection.execute("SELECT count(*) FROM reports").fetchone()[0]==0
         assert connection.execute("SELECT count(*) FROM briefing_jobs").fetchone()[0]==0

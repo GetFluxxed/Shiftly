@@ -2,6 +2,21 @@
   const form = document.querySelector('#activation-form');
   const status = document.querySelector('#activation-status');
   const mode = document.querySelector('#activation-mode');
+  // Fragments do not reach the HTTP server or referrer. Remove the secret from
+  // browser history immediately; opening a link does not consume it.
+  const invitation = new URLSearchParams(window.location.hash.slice(1)).getAll('invitation');
+  if (window.location.hash) history.replaceState(null, '', window.location.pathname);
+  if (invitation.length === 1 && /^[A-Za-z0-9_-]{32,512}$/.test(invitation[0])) {
+    document.querySelector('#activation-token').value = invitation[0];
+    fetch('/api/accounts/invitation-details', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: invitation[0] }) }).then(async response => {
+        const value = await response.json();
+        if (response.ok && document.querySelector('#activation-token').value === invitation[0]) {
+          document.querySelector('#activation-intro').textContent = `Join ${value.storeName} as @${value.username}. Your account starts as crew.`;
+        }
+      }).catch(() => {});
+  }
+
   const clearSecrets = () => {
     document.querySelector('#activation-token').value = '';
     document.querySelector('#activation-password').value = '';

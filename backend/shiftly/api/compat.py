@@ -73,29 +73,10 @@ async def login(request: Request, context: AppContext = Depends(get_app_context)
     return _set_session_cookie(JSONResponse(status_code=200, content=result.response), context, result, request)
 
 
-async def _account_creation(request, context, *, action):
-    try:
-        await _service_call(context.services.identity.admit_account_creation, client_key(request), action=action)
-        fields = await bounded_json(request, max_body=100_000, invalid_message="Invalid report format.")
-        creator = context.services.identity.signup if action == "signup" else context.services.identity.add_manager
-        result = await _service_call(creator, fields)
-    except RequestBodyError as error:
-        return _error(str(error), 400)
-    except IdentityError as error:
-        return _identity_error(error)
-    except psycopg.Error:
-        return _error("Service is temporarily unavailable.", 503)
-    return _set_session_cookie(JSONResponse(status_code=201, content=result.response), context, result, request)
-
-
 @router.post("/api/auth/signup")
-async def signup(request: Request, context: AppContext = Depends(get_app_context)):
-    return await _account_creation(request, context, action="signup")
-
-
 @router.post("/api/auth/add-manager")
-async def add_manager(request: Request, context: AppContext = Depends(get_app_context)):
-    return await _account_creation(request, context, action="add_manager")
+async def invitation_required(request: Request):
+    return _error("Accounts require an invitation. Ask your store administrator.", 403)
 
 
 @router.post("/api/auth/logout")
@@ -210,7 +191,9 @@ async def managers(request: Request, context: AppContext = Depends(get_app_conte
         resolved = await _optional_principal(context, request)
         if not resolved or not resolved.can_manage:
             return _error("Manager sign-in required.", 401)
-        return {"managers": await _service_call(context.services.stores.manager_accounts, resolved.store_id)}
+        return {"managers": await _service_call(context.services.accounts.report_managers, named_account_token(request))}
+    except IdentityError as error:
+        return _identity_error(error)
     except psycopg.Error:
         return _error("Service is temporarily unavailable.", 503)
 

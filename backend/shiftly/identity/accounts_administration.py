@@ -4,6 +4,29 @@ from .contracts import IdentityError
 
 
 class AccountAdministration:
+    def report_managers(self, token):
+        """The report directory uses individual identities and current store policy."""
+        with self.connect() as connection:
+            actor = self.require(token, 'reports.view', connection=connection)
+            rows = connection.execute(
+                """SELECT DISTINCT u.id,
+                          (SELECT MAX(created_at) FROM account_sessions a WHERE a.user_id=u.id AND a.store_id=%s)
+                   FROM account_users u
+                   LEFT JOIN account_store_memberships m ON m.user_id=u.id AND m.store_id=%s AND m.state='active'
+                   LEFT JOIN business_memberships b ON b.user_id=u.id AND b.business_id=%s AND b.state='active'
+                   WHERE u.state='active' AND (m.role IN ('manager','admin') OR b.role='owner') ORDER BY u.id""",
+                (actor.store_id, actor.store_id, actor.business_id),
+            ).fetchall()
+            result = []
+            for user_id, last_sign_in in rows:
+                try:
+                    person = self._actor_for_user(connection, user_id, actor.store_id)
+                except IdentityError:
+                    continue
+                if 'reports.view' in person.capabilities:
+                    result.append({'name': person.display_name, 'lastSignIn': last_sign_in.isoformat() if last_sign_in else None})
+            return result
+
     def management(self, token):
         with self.connect() as connection:
             actor = self._lifecycle_actor(connection, token)
@@ -24,7 +47,7 @@ class AccountAdministration:
                         pass
                 roles.append({'role': role, 'included': sorted(included), 'optional': optional})
             for member in roster['members']:
-                editable = member['userId'] != actor.user_id
+                editable = actor.role in {'owner', 'admin'} and member['userId'] != actor.user_id
                 if actor.role != 'owner':
                     editable = editable and member['businessState'] != 'active'
                     try:
@@ -37,7 +60,7 @@ class AccountAdministration:
                 ).fetchone()
                 member['canEdit'] = editable
                 member['canReissue'] = bool(editable and member['accountState'] == 'pending'
-                    and member['membershipState'] == 'active' and member['role'] in {'crew', 'manager'}
+                    and member['membershipState'] == 'active' and member['role'] == 'crew' and not member['capabilities']
                     and not multiple_scopes)
             directory = []
             owner = actor.role == 'owner' and actor.business_id is not None
@@ -81,7 +104,7 @@ class AccountAdministration:
                             member['canRevokeBusiness'] = False
                     del member['legacyActive']
                     directory.append(member)
-            shared = connection.execute('SELECT shared_crew_enabled FROM stores WHERE id=%s', (actor.store_id,)).fetchone()[0]
+            shared = False  # Shared credentials are never accepted by release request authentication.
             return {**roster, 'roles': roles, 'directory': directory, 'isOwner': owner,
                     'businessCapabilities': sorted(ALL_CAPABILITIES) if owner else [],
                     'sharedCrewEnabled': shared if owner else None}

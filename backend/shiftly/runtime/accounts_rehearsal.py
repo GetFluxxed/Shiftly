@@ -191,10 +191,9 @@ def _denied(operation, description):
 
 def _exercise_accounts(dsn, facts):
     connect,accounts,identity,reports = _services(dsn)
-    owner_session = accounts.login("account-rehearsal-a","rehearsal-owner",PASSWORD,client_key="synthetic-owner")
-    owner_id = accounts.resolve_actor(owner_session.token).user_id
-    _check(accounts.resolve_actor(owner_session.token).capabilities == {"reports.submit","reports.view","reports.manage"},
-           "Unmapped legacy identity acquired non-reporting permissions.")
+    with connect() as connection:
+        owner_id=connection.execute("SELECT id FROM account_users WHERE username='rehearsal-owner'").fetchone()[0]
+    _denied(lambda:accounts.login('account-rehearsal-a','rehearsal-owner',PASSWORD,client_key='unmapped'), 'ambiguous manager assignments before explicit ownership mapping')
     manifest = {"reason":"Synthetic account recovery rehearsal only.",
                 "businesses":[{"id":901,"name":"Synthetic rehearsal business","owner_user_ids":[owner_id]}],
                 "stores":[{"store_id":sid,"business_id":901,"accounts_enabled":True} for sid in facts["stores"]]}
@@ -204,10 +203,10 @@ def _exercise_accounts(dsn, facts):
     bootstrap_mapping(connect,manifest,apply=True)
     owner_session = accounts.login("account-rehearsal-a","rehearsal-owner",PASSWORD,client_key="synthetic-owner")
     facts.update(owner_id=owner_id,old_owner_named_token=owner_session.token)
-    invite = accounts.invite(owner_session.token,username="rehearsal-crew",capabilities=["inventory.view","counts.submit"],reason="Synthetic enrollment.")
+    invite = accounts.invite(owner_session.token,username="rehearsal-crew",reason="Synthetic enrollment.")
     crew_session = accounts.activate_invitation(invite["token"],PASSWORD,client_key="synthetic-activation")
     crew_id = accounts.resolve_actor(crew_session.token).user_id
-    accounts.set_membership(owner_session.token,user_id=crew_id,role="crew",store_id=facts["stores"][1],reason="Synthetic second-store enrollment.")
+    _denied(lambda:accounts.set_membership(owner_session.token,user_id=crew_id,role="crew",store_id=facts["stores"][1]),"multiple staff stores")
     named_report, _ = reports.queue_report("Typed name is preserved","opening","Named crew report before recovery.",
                                          facts["stores"][0],actor_token=crew_session.token,accounts=accounts)
     with connect() as connection:
@@ -219,9 +218,10 @@ def _exercise_accounts(dsn, facts):
     _denied(lambda:accounts.reset_password(reset["token"],PASSWORD,client_key="synthetic-recovery"),"reset replay")
     _denied(lambda:accounts.login("account-rehearsal-a","rehearsal-crew",PASSWORD,client_key="synthetic-old-password"),"old password")
     crew_a = accounts.login("account-rehearsal-a","rehearsal-crew",NEW_PASSWORD,client_key="synthetic-crew")
-    crew_b = accounts.login("account-rehearsal-b","rehearsal-crew",NEW_PASSWORD,client_key="synthetic-crew")
     accounts.set_membership(owner_session.token,user_id=crew_id,role="crew",active=False,reason="Synthetic local access removal.")
     _denied(lambda:accounts.resolve_actor(crew_a.token),"revoked local membership")
+    accounts.set_membership(owner_session.token,user_id=crew_id,role="crew",store_id=facts["stores"][1])
+    crew_b = accounts.login("account-rehearsal-b","rehearsal-crew",NEW_PASSWORD,client_key="synthetic-crew")
     _check(accounts.resolve_actor(crew_b.token).store_id == facts["stores"][1], "Local revocation removed another store's access.")
     pending = accounts.invite(owner_session.token,username="restore-activation",reason="Synthetic pending restore activation.")
     suspended = accounts.invite(owner_session.token,username="suspended-crew",reason="Synthetic suspension fixture.")

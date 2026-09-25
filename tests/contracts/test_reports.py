@@ -6,7 +6,7 @@ def test_report_submission_returns_pending_contract(api, workspace):
     crew_login = api.request(
         "POST",
         "/api/auth/login",
-        payload={"storeCode": workspace["store_code"], "role": "crew", "password": workspace["crew_password"]},
+        payload={"username": workspace["crew_username"], "password": workspace["crew_password"]},
     )
     crew_cookie = crew_login.cookies()[0]
     submitted = api.request(
@@ -36,7 +36,7 @@ def test_heads_up_is_store_scoped_for_crew_and_manager(api, workspace):
     crew_login = api.request(
         "POST",
         "/api/auth/login",
-        payload={"storeCode": workspace["store_code"], "role": "crew", "password": workspace["crew_password"]},
+        payload={"username": workspace["crew_username"], "password": workspace["crew_password"]},
     )
     visible = api.request("GET", "/api/heads-up", cookie=crew_login.cookies()[0])
     assert visible.status == 200

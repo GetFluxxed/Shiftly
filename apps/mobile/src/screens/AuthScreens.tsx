@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
-import { Redirect, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { TextInput, View } from 'react-native';
 import { useSession } from '@/src/session/SessionProvider';
 import { Body, Brand, Button, Card, Column, Columns, Field, Heading, Loading, Notice, Screen, layout } from '@/src/ui/components';
 import { useTask } from '@/src/ui/useTask';
+import { invitationToken, type InvitationDetails } from '@/src/accounts/invitations';
 import { colors } from '@/src/ui/theme';
 import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 
@@ -11,7 +12,6 @@ export function SignInScreen() {
   const { status, signIn, message, busy } = useSession();
   const router = useRouter();
   const task = useTask();
-  const [storeCode, setStoreCode] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const usernameInput = useRef<TextInput>(null);
@@ -22,7 +22,7 @@ export function SignInScreen() {
   const submit = () => { void task.run(async () => {
     const secret = password;
     setPassword('');
-    await signIn({ storeCode: storeCode.trim(), username: username.trim(), password: secret });
+    await signIn({ username: username.trim(), password: secret });
   }); };
   return <Screen title="A better handoff.
 A calmer shift." subtitle="Your people, your store, and everything the next shift needs to know.">
@@ -30,9 +30,6 @@ A calmer shift." subtitle="Your people, your store, and everything the next shif
     <Columns><Column><Card>
       <Heading>Welcome back</Heading><Body muted>Sign in with your individual account.</Body>
       <Notice message={task.error || message} kind={task.error ? 'error' : 'info'} />
-      <Field label="Store code" value={storeCode} onChangeText={setStoreCode} autoCapitalize="none"
-        autoCorrect={false} maxLength={120} placeholder="Your store code" returnKeyType="next"
-        submitBehavior="submit" onSubmitEditing={() => usernameInput.current?.focus()} />
       <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none"
         autoCorrect={false} autoComplete="username" textContentType="username" maxLength={80}
         placeholder="Your username" returnKeyType="next" inputRef={usernameInput}
@@ -41,31 +38,53 @@ A calmer shift." subtitle="Your people, your store, and everything the next shif
         autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password"
         maxLength={1024} returnKeyType="go" onSubmitEditing={submit} />
       <Button title="Sign in" icon="arrow-forward" onPress={submit} loading={task.pending || busy}
-        disabled={!storeCode.trim() || !username.trim() || !password} />
+        disabled={!username.trim() || !password} />
       <Button title="Activate or recover an account" variant="quiet" onPress={() => router.push('/activate')} />
     </Card></Column>
     <Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
       <Heading>Good shifts start with a clear picture.</Heading>
       <Body>Leave a useful handoff, catch up on your team's reports, and keep your store in sync.</Body>
       <View style={layout.divider} />
-      <Body muted>New to the team? Ask your manager for an invitation code to set up your own account.</Body>
+      <Body muted>New to the team? Ask your manager for an invitation link to set up your own account.</Body>
     </Card></Column></Columns>
   </Screen>;
 }
 
 export function ActivateScreen() {
-  const { status, activate, resetPassword, busy } = useSession();
+  const { status, activate, resetPassword, invitationDetails, signOut, busy } = useSession();
   const router = useRouter();
   const task = useTask();
   const [mode, setMode] = useState<'activate' | 'recover'>('activate');
-  const [token, setToken] = useState('');
+  const params = useLocalSearchParams<{ '#': string }>();
+  const [token, setToken] = useState(() => invitationToken(params['#']));
+  const [details, setDetails] = useState<InvitationDetails | null>(null);
+  useEffect(() => {
+    if (!params['#']) return;
+    setToken(invitationToken(params['#']));
+    router.setParams({ '#': '' });
+  }, [params['#'], router]);
+  useEffect(() => {
+    let current = true;
+    setDetails(null);
+    const timer = setTimeout(() => {
+      if (mode === 'activate' && token.trim().length === 43) {
+        void invitationDetails(token.trim()).then(value => { if (current) setDetails(value); }).catch(() => undefined);
+      }
+    }, 400);
+    return () => { current = false; clearTimeout(timer); };
+  }, [mode, token, invitationDetails]);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [complete, setComplete] = useState(false);
   const passwordInput = useRef<TextInput>(null);
   const confirmationInput = useRef<TextInput>(null);
-  useSensitiveForm(() => { setToken(''); setPassword(''); setConfirmation(''); });
-  if (status === 'ready' || status === 'locked') return <Redirect href="/today" />;
+  useSensitiveForm(() => { setToken(''); setPassword(''); setConfirmation(''); setDetails(null); });
+  if (status === 'ready' && (complete || task.pending)) return <Redirect href="/today" />;
+  if (status === 'ready' || status === 'locked') return <Screen title="An invitation for a new account">
+    <Card><Body>Sign out of your current account before activating this invitation.</Body>
+      <Button title="Sign out to activate" onPress={() => { void signOut(); }} />
+      <Button title="Keep my current account" variant="secondary" onPress={() => router.replace('/today')} /></Card>
+  </Screen>;
   if (status === 'loading') return <Loading />;
   const changeMode = (value: 'activate' | 'recover') => {
     setMode(value); setToken(''); setPassword(''); setConfirmation(''); setComplete(false); task.setError(null);
@@ -79,15 +98,16 @@ export function ActivateScreen() {
     }, () => setComplete(true));
   };
   return <Screen title={mode === 'activate' ? 'Make it yours.' : 'A fresh start.'} eyebrow="Your Shiftly account"
-    subtitle="Use the private code given to you by your manager or account administrator.">
+    subtitle="Use the private invitation link or code given to you by your manager or account administrator.">
     <Columns><Column><Card>
       <View style={layout.wrap}>
         <Button title="Activate account" variant={mode === 'activate' ? 'primary' : 'secondary'} onPress={() => changeMode('activate')} disabled={task.pending || busy} />
         <Button title="Reset password" variant={mode === 'recover' ? 'primary' : 'secondary'} onPress={() => changeMode('recover')} disabled={task.pending || busy} />
       </View>
-      {complete ? <><Notice kind="success" message={mode === 'activate' ? 'Your account is ready. Sign in with your store code and username.' : 'Your password has been reset. Sign in with your new password.'} />
+      {complete ? <><Notice kind="success" message={mode === 'activate' ? 'Your account is ready. Sign in with your username and password.' : 'Your password has been reset. Sign in with your new password.'} />
         <Button title="Back to sign in" onPress={() => router.replace('/sign-in')} /></> : <>
         <Notice message={task.error} kind="error" />
+        {details ? <Notice message={`Join ${details.storeName} as @${details.username}. Your account starts as crew.`} /> : null}
         <Field label={mode === 'activate' ? 'Invitation code' : 'Recovery code'} value={token} onChangeText={setToken}
           autoCapitalize="none" autoCorrect={false} secureTextEntry maxLength={1024} returnKeyType="next"
           submitBehavior="submit" onSubmitEditing={() => passwordInput.current?.focus()} />

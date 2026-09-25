@@ -37,6 +37,6 @@ export function useSession() {
   if (!controller) throw new Error('SessionProvider is required.');
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { ...snapshot, signIn: controller.signIn, activate: controller.activate, resetPassword: controller.resetPassword,
-    switchStore: controller.switchStore, changePassword: controller.changePassword, signOut: controller.signOut,
+    switchStore: controller.switchStore, invitationDetails: controller.invitationDetails, changePassword: controller.changePassword, signOut: controller.signOut,
     retry: controller.retry, request: controller.request, transferOwnership: controller.transferOwnership };
 }

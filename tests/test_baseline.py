@@ -14,6 +14,8 @@ import server
 from auth import is_manager, session_store_id
 from config import load_settings
 from database import db_connection
+from tests.account_fixtures import seed_workspace
+from backend.shiftly.identity.accounts import AccountsService
 
 
 class DummyHandler:
@@ -36,6 +38,8 @@ class DummyHandler:
         self.response["status"] = status
 
     def send_header(self, name, value):
+        if name == 'Set-Cookie' and 'Max-Age=0' in value:
+            return
         self.response.setdefault("headers", {})[name] = value
 
     def end_headers(self):
@@ -53,6 +57,14 @@ class DummyHandler:
 
     def log_message(self, *args, **kwargs):
         return None
+
+
+def bootstrap_fixture(handler):
+    fields=json.loads(handler.rfile.getvalue())
+    fixture=seed_workspace(store_code=fields['storeCode'],manager_name=fields['managerUsername'],
+                          manager_password=fields['managerPassword'],crew_password=fields['crewPassword'])
+    handler.send_response(201)
+    handler.send_header('Set-Cookie',fixture['manager_cookie'])
 
 
 @pytest.fixture(scope="function")
@@ -135,38 +147,22 @@ def test_session_helpers_resolve_manager_store(reset_db, monkeypatch):
         "adminKey": "test-admin-key",
     }
     handler = DummyHandler(payload)
-    server.ShiftlyHandler.signup(handler)
+    bootstrap_fixture(handler)
     cookie_value = handler.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
-    manager_cookie = DummyHandler(cookies=f"shiftly_manager_session={cookie_value}")
+    manager_cookie = DummyHandler(cookies=f"shiftly_account_session={cookie_value}")
     manager_id = is_manager(manager_cookie)
     assert manager_id is not None
     assert session_store_id(manager_cookie, manager_id) is not None
 
 
-def test_signup_creates_store_and_manager_session(reset_db, monkeypatch):
-    monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "test-admin-key")
-    payload = {
-        "storeName": "Aster Creek",
-        "storeCode": "Aster1",
-        "crewPassword": "crewpass123",
-        "managerUsername": "manager1",
-        "managerPassword": "managerpass123",
-        "confirmPassword": "managerpass123",
-        "adminKey": "test-admin-key",
-    }
-    handler = DummyHandler(payload)
-
+def test_public_signup_requires_invitation(reset_db, monkeypatch):
+    monkeypatch.setattr(server,'ADMIN_SIGNUP_KEY','test-admin-key')
+    handler=DummyHandler({'adminKey':'test-admin-key'})
     server.ShiftlyHandler.signup(handler)
+    assert handler.response['status']==403
+    with db_connection() as c:
+        assert c.execute('SELECT count(*) FROM account_users').fetchone()[0]==0
 
-    assert handler.response["status"] == 201
-    store = server.store_for_code("Aster1")
-    assert store is not None
-    store_id, _ = store
-    cookie_value = handler.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
-    manager_cookie = DummyHandler(cookies=f"shiftly_manager_session={cookie_value}")
-    manager_id = server.is_manager(manager_cookie)
-    assert manager_id is not None
-    assert server.session_store_id(manager_cookie, manager_id) == store_id
 
 def test_crew_login_after_signup_uses_store_code_boundary(reset_db, monkeypatch):
     monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "test-admin-key")
@@ -179,17 +175,17 @@ def test_crew_login_after_signup_uses_store_code_boundary(reset_db, monkeypatch)
         "confirmPassword": "managerpass123",
         "adminKey": "test-admin-key",
     })
-    server.ShiftlyHandler.signup(signup_handler)
+    bootstrap_fixture(signup_handler)
 
     login_handler = DummyHandler({
         "storeCode": "aster1",
-        "role": "crew",
+        "username": "manager1-crew",
         "password": "crewpass123",
     })
     server.ShiftlyHandler.login(login_handler)
 
     assert login_handler.response["status"] == 200
-    assert "shiftly_crew_session" in login_handler.response["headers"]["Set-Cookie"]
+    assert "shiftly_account_session" in login_handler.response["headers"]["Set-Cookie"]
     assert json.loads(login_handler.wfile.getvalue())["role"] == "crew"
 
 
@@ -204,9 +200,9 @@ def test_manager_logout_invalidates_session(reset_db, monkeypatch):
         "confirmPassword": "managerpass123",
         "adminKey": "test-admin-key",
     })
-    server.ShiftlyHandler.signup(signup_handler)
+    bootstrap_fixture(signup_handler)
     cookie_value = signup_handler.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
-    manager_cookie = f"shiftly_manager_session={cookie_value}"
+    manager_cookie = f"shiftly_account_session={cookie_value}"
 
     assert server.is_manager(DummyHandler(cookies=manager_cookie)) is not None
 
@@ -218,40 +214,11 @@ def test_manager_logout_invalidates_session(reset_db, monkeypatch):
     assert server.is_manager(DummyHandler(cookies=manager_cookie)) is None
 
 
-def test_add_manager_creates_second_manager_session(reset_db, monkeypatch):
-    monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "test-admin-key")
-    signup_handler = DummyHandler({
-        "storeName": "Aster Creek",
-        "storeCode": "Aster1",
-        "crewPassword": "crewpass123",
-        "managerUsername": "manager1",
-        "managerPassword": "managerpass123",
-        "confirmPassword": "managerpass123",
-        "adminKey": "test-admin-key",
-    })
-    server.ShiftlyHandler.signup(signup_handler)
-
-    add_handler = DummyHandler({
-        "storeCode": "aster1",
-        "managerUsername": "manager2",
-        "managerPassword": "managerpass456",
-        "confirmPassword": "managerpass456",
-        "adminKey": "test-admin-key",
-    })
-    add_handler.path = "/api/auth/add-manager"
-    server.ShiftlyHandler.do_POST(add_handler)
-
-    assert add_handler.response["status"] == 201
-    assert json.loads(add_handler.wfile.getvalue())["managerName"] == "manager2"
-
-    login_handler = DummyHandler({
-        "storeCode": "Aster1",
-        "role": "manager",
-        "password": "managerpass456",
-    })
-    server.ShiftlyHandler.login(login_handler)
-    assert login_handler.response["status"] == 200
-    assert json.loads(login_handler.wfile.getvalue())["managerName"] == "manager2"
+def test_public_manager_creation_requires_invitation(reset_db, monkeypatch):
+    handler=DummyHandler({'adminKey':'test-admin-key'})
+    handler.path='/api/auth/add-manager'
+    server.ShiftlyHandler.do_POST(handler)
+    assert handler.response['status']==403
 
 
 def test_reports_listing_requires_manager_and_returns_reports(reset_db, monkeypatch):
@@ -265,9 +232,9 @@ def test_reports_listing_requires_manager_and_returns_reports(reset_db, monkeypa
         "confirmPassword": "managerpass123",
         "adminKey": "test-admin-key",
     })
-    server.ShiftlyHandler.signup(signup_handler)
+    bootstrap_fixture(signup_handler)
     manager_token = signup_handler.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
-    manager_cookie = f"shiftly_manager_session={manager_token}"
+    manager_cookie = f"shiftly_account_session={manager_token}"
     manager_id = server.is_manager(DummyHandler(cookies=manager_cookie))
     store_id = server.session_store_id(DummyHandler(cookies=manager_cookie), manager_id)
     server.queue_report("Alice", "opening", "Restocked cooler", store_id)
@@ -286,49 +253,12 @@ def test_reports_listing_requires_manager_and_returns_reports(reset_db, monkeypa
     assert anonymous_handler.response["status"] == 401
 
 
-def test_auth_status_reports_current_role(reset_db, monkeypatch):
-    monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "test-admin-key")
-    signup_handler = DummyHandler({
-        "storeName": "Aster Creek",
-        "storeCode": "Aster1",
-        "crewPassword": "crewpass123",
-        "managerUsername": "manager1",
-        "managerPassword": "managerpass123",
-        "confirmPassword": "managerpass123",
-        "adminKey": "test-admin-key",
-    })
-    server.ShiftlyHandler.signup(signup_handler)
-    manager_token = signup_handler.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
-
-    manager_status = DummyHandler(cookies=f"shiftly_manager_session={manager_token}")
-    manager_status.path = "/api/auth/status"
-    server.ShiftlyHandler.do_GET(manager_status)
-    assert json.loads(manager_status.response["body"]) == {
-        "authenticated": True,
-        "role": "manager",
-        "managerName": "manager1",
-    }
-
-    crew_login = DummyHandler({"storeCode": "aster1", "role": "crew", "password": "crewpass123"})
-    server.ShiftlyHandler.login(crew_login)
-    crew_token = crew_login.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
-    crew_status = DummyHandler(cookies=f"shiftly_crew_session={crew_token}")
-    crew_status.path = "/api/auth/status"
-    server.ShiftlyHandler.do_GET(crew_status)
-    assert json.loads(crew_status.response["body"]) == {
-        "authenticated": True,
-        "role": "crew",
-        "managerName": None,
-    }
-
-    anonymous_status = DummyHandler()
-    anonymous_status.path = "/api/auth/status"
-    server.ShiftlyHandler.do_GET(anonymous_status)
-    assert json.loads(anonymous_status.response["body"]) == {
-        "authenticated": False,
-        "role": None,
-        "managerName": None,
-    }
+def test_auth_status_reports_verified_individual_role(reset_db, monkeypatch):
+    fixture=seed_workspace(store_code='status',manager_name='Status Manager')
+    handler=DummyHandler(cookies=fixture['manager_cookie']);handler.path='/api/auth/status'
+    server.ShiftlyHandler.do_GET(handler)
+    result=json.loads(handler.response['body'])
+    assert result['authenticated'] and result['actor']['userId']==fixture['user_id'] and result['actor']['role']=='manager'
 
 
 def test_heads_up_manager_write_crew_read(reset_db, monkeypatch):
@@ -342,23 +272,23 @@ def test_heads_up_manager_write_crew_read(reset_db, monkeypatch):
         "confirmPassword": "managerpass123",
         "adminKey": "test-admin-key",
     })
-    server.ShiftlyHandler.signup(signup_handler)
+    bootstrap_fixture(signup_handler)
     manager_token = signup_handler.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
 
-    crew_login = DummyHandler({"storeCode": "aster1", "role": "crew", "password": "crewpass123"})
+    crew_login = DummyHandler({"storeCode": "aster1", "username": "manager1-crew", "password": "crewpass123"})
     server.ShiftlyHandler.login(crew_login)
     crew_token = crew_login.response["headers"]["Set-Cookie"].split("=")[1].split(";")[0]
 
     write_handler = DummyHandler(
         {"message": "Store closed early today."},
-        cookies=f"shiftly_manager_session={manager_token}",
+        cookies=f"shiftly_account_session={manager_token}",
     )
     write_handler.path = "/api/heads-up"
     server.ShiftlyHandler.do_POST(write_handler)
     assert write_handler.response["status"] == 200
     assert json.loads(write_handler.response["body"])["message"] == "Store closed early today."
 
-    read_handler = DummyHandler(cookies=f"shiftly_crew_session={crew_token}")
+    read_handler = DummyHandler(cookies=f"shiftly_account_session={crew_token}")
     read_handler.path = "/api/heads-up"
     server.ShiftlyHandler.do_GET(read_handler)
     assert read_handler.response["status"] == 200
@@ -366,21 +296,8 @@ def test_heads_up_manager_write_crew_read(reset_db, monkeypatch):
 
 
 def test_report_submission_queues_job_and_completes(reset_db, monkeypatch):
-    code_hash = hashlib.sha256("Aster2".casefold().encode()).hexdigest()
-    crew_hash = server.password_hash("crewpass123", f"shiftly-crew:{code_hash}")
-    with psycopg.connect(server.DB_URL) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO stores (name, access_code_hash, crew_password_hash) VALUES (%s, %s, %s) RETURNING id",
-                ("Aster Two", code_hash, crew_hash),
-            )
-            store_id = cursor.fetchone()[0]
-            token = "crew-session-token"
-            cursor.execute(
-                "INSERT INTO crew_sessions (token_hash, store_id, expires_at) VALUES (%s, %s, NOW() + INTERVAL '1 hour')",
-                (hashlib.sha256(token.encode()).hexdigest(), store_id),
-            )
-        connection.commit()
+    fixture=seed_workspace(store_code='report-test',manager_name='Report Manager')
+    token=AccountsService(db_connection).login(None,fixture['crew_username'],fixture['crew_password'],client_key='report-test').token
 
     monkeypatch.setattr(server, "validate_report", lambda report: {"status": "accepted", "reason": "ok"})
     report_payload = {
@@ -388,7 +305,7 @@ def test_report_submission_queues_job_and_completes(reset_db, monkeypatch):
         "shift": "closing",
         "notes": "The rush was busy, but we closed the floor and restocked the cooler before the end of shift.",
     }
-    handler = DummyHandler(report_payload, cookies=f"shiftly_crew_session={token}")
+    handler = DummyHandler(report_payload, cookies=f"shiftly_account_session={token}")
 
     server.ShiftlyHandler.submit_report(handler)
 
@@ -421,26 +338,13 @@ def test_report_submission_queues_job_and_completes(reset_db, monkeypatch):
 
 
 def test_report_submission_rejected_by_quality_gate(reset_db, monkeypatch):
-    code_hash = hashlib.sha256("Aster3".casefold().encode()).hexdigest()
-    crew_hash = server.password_hash("crewpass123", f"shiftly-crew:{code_hash}")
-    with psycopg.connect(server.DB_URL) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO stores (name, access_code_hash, crew_password_hash) VALUES (%s, %s, %s) RETURNING id",
-                ("Aster Three", code_hash, crew_hash),
-            )
-            store_id = cursor.fetchone()[0]
-            token = "crew-session-token-rejected"
-            cursor.execute(
-                "INSERT INTO crew_sessions (token_hash, store_id, expires_at) VALUES (%s, %s, NOW() + INTERVAL '1 hour')",
-                (hashlib.sha256(token.encode()).hexdigest(), store_id),
-            )
-        connection.commit()
+    fixture=seed_workspace(store_code='report-test',manager_name='Report Manager')
+    token=AccountsService(db_connection).login(None,fixture['crew_username'],fixture['crew_password'],client_key='report-test').token
 
     monkeypatch.setattr(server, "validate_report", lambda report: {"status": "rejected", "reason": "Not enough detail."})
     handler = DummyHandler(
         {"employee": "Nina", "shift": "closing", "notes": "Too brief."},
-        cookies=f"shiftly_crew_session={token}",
+        cookies=f"shiftly_account_session={token}",
     )
 
     server.ShiftlyHandler.submit_report(handler)

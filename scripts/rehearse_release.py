@@ -326,6 +326,18 @@ def verify_database_outage(dsn, base_url, worker):
                "API reconnects after database outage")
 
 
+def seed_release_owner(dsn):
+    """Controlled synthetic bootstrap; public account creation stays disabled."""
+    from backend.shiftly.identity.primitives import hash_store_code, password_hash
+    with psycopg.connect(dsn) as connection:
+        business=connection.execute("INSERT INTO businesses(name) VALUES('Release rehearsal') RETURNING id").fetchone()[0]
+        connection.execute("INSERT INTO stores(name,access_code_hash,business_id,accounts_enabled,shared_crew_enabled) VALUES('Rehearsal Store',%s,%s,true,false)",
+                           (hash_store_code('rehearsal-store'),business))
+        user=connection.execute("INSERT INTO account_users(username,display_name,password_salt,password_hash) VALUES('rehearsal-manager','Rehearsal Owner','rehearsal-salt',%s) RETURNING id",
+                                (password_hash('manager-password-123','rehearsal-salt'),)).fetchone()[0]
+        connection.execute("INSERT INTO business_memberships(user_id,business_id,role) VALUES(%s,%s,'owner')",(user,business))
+
+
 def rehearse():
     source_dsn = os.environ["REHEARSAL_DATABASE_URL"]
     restore_dsn = os.environ["REHEARSAL_RESTORE_DATABASE_URL"]
@@ -362,6 +374,7 @@ def rehearse():
         for process in concurrent:
             stop_process(process)
 
+    seed_release_owner(source_dsn)
     api_port = free_port()
     api_env = dict(env)
     api_env["PORT"] = str(api_port)
@@ -374,33 +387,30 @@ def rehearse():
         if status != 503 or health["state"] != "not_started":
             raise RuntimeError("API must report the absent separate worker.")
         worker = start_process("worker", env)
-        status, signup, cookies = request(
-            base_url,
-            "POST",
-            "/api/auth/signup",
-            {
-                "adminKey": "rehearsal-admin-key",
-                "storeName": "Rehearsal Store",
-                "storeCode": "rehearsal-store",
-                "crewPassword": "crew-password-123",
-                "managerUsername": "rehearsal-manager",
-                "managerPassword": "manager-password-123",
-                "confirmPassword": "manager-password-123",
-            },
-        )
-        if status != 201:
-            raise RuntimeError(f"Signup rehearsal failed with status {status}.")
-        manager_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_manager_session="))
+        status, _, cookies = request(base_url,'POST','/api/accounts/login',
+                                     {'username':'rehearsal-manager','password':'manager-password-123'})
+        if status != 200:
+            raise RuntimeError('Owner login rehearsal failed.')
+        manager_cookie=next(cookie for cookie in cookies if cookie.startswith('shiftly_account_session='))
+        status, invitation, _=request(base_url,'POST','/api/accounts/invitations',
+                                      {'username':'rehearsal-crew'},manager_cookie)
+        if status != 200:
+            raise RuntimeError('Individual invitation rehearsal failed.')
+        status, _, activation_cookies=request(base_url,'POST','/api/accounts/activate',
+                                              {'token':invitation['token'],'password':'crew-password-123'})
+        if status != 200:
+            raise RuntimeError('Individual activation rehearsal failed.')
+        request(base_url,'POST','/api/auth/logout',cookie=activation_cookies[0])
         request(base_url, "POST", "/api/auth/logout", cookie=manager_cookie)
         status, _, cookies = request(
             base_url,
             "POST",
             "/api/auth/login",
-            {"storeCode": "rehearsal-store", "role": "crew", "password": "crew-password-123"},
+            {"username": "rehearsal-crew", "password": "crew-password-123"},
         )
         if status != 200:
             raise RuntimeError("Crew login rehearsal failed.")
-        crew_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_crew_session="))
+        crew_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_account_session="))
         status, _, _ = request(
             base_url,
             "POST",
@@ -415,9 +425,9 @@ def rehearse():
             base_url,
             "POST",
             "/api/auth/login",
-            {"storeCode": "rehearsal-store", "password": "manager-password-123"},
+            {"username": "rehearsal-manager", "password": "manager-password-123"},
         )
-        manager_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_manager_session="))
+        manager_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_account_session="))
         deadline = time.monotonic() + 30
         reports = []
         while time.monotonic() < deadline:
@@ -435,9 +445,9 @@ def rehearse():
             base_url,
             "POST",
             "/api/auth/login",
-            {"storeCode": "rehearsal-store", "role": "crew", "password": "crew-password-123"},
+            {"username": "rehearsal-crew", "password": "crew-password-123"},
         )
-        crew_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_crew_session="))
+        crew_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_account_session="))
         status, _, _ = request(
             base_url,
             "POST",
@@ -480,9 +490,9 @@ def rehearse():
             base_url,
             "POST",
             "/api/auth/login",
-            {"storeCode": "rehearsal-store", "password": "manager-password-123"},
+            {"username": "rehearsal-manager", "password": "manager-password-123"},
         )
-        manager_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_manager_session="))
+        manager_cookie = next(cookie for cookie in cookies if cookie.startswith("shiftly_account_session="))
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             _, payload, _ = request(base_url, "GET", "/api/reports", cookie=manager_cookie)
@@ -538,7 +548,7 @@ def rehearse():
             wait_for_http(restored_url)
             verify_reports(restored_url, manager_cookie)
             status, _, cookies = request(restored_url, "POST", "/api/auth/login", {
-                "storeCode": "rehearsal-store", "password": "manager-password-123",
+                "username": "rehearsal-manager", "password": "manager-password-123",
             })
             if status != 200:
                 raise RuntimeError("Manager could not sign in to the restored database.")

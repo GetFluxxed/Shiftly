@@ -24,7 +24,7 @@ export function ReportsScreen() {
   const store = stores.find((item) => item.storeId === actor?.storeId);
   if (!canRead && !canSubmit) return <Screen title="Shift reports"><Notice message="Your account does not have reporting access for this store." /></Screen>;
   return <Screen title={writing ? 'Leave a good handoff.' : 'Every shift, in the loop.'} eyebrow="Shift reports"
-    subtitle={writing ? `${store?.storeName || 'Current store'} · Share the details that matter to your team.` : 'Read reports from the stores you have permission to view.'}>
+    subtitle={writing ? `${store?.storeName || 'Current store'} · Share the details that matter to your team.` : `${store?.storeName || 'Current store'} · Your team’s reports.`}>
     {canRead && canSubmit ? <View style={layout.wrap}>
       <Button title="Report inbox" variant={!writing ? 'primary' : 'secondary'} onPress={() => setWriting(false)} icon="reader-outline" />
       <Button title="Write a report" variant={writing ? 'primary' : 'secondary'} onPress={() => setWriting(true)} icon="create-outline" />

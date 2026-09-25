@@ -13,7 +13,7 @@ const status = (storeId = 7): AccountStatus => ({ authenticated: true, actor: pe
   stores: [7, 8].map(id => ({ ...person(id), storeName: `Store ${id}` })) });
 const issued = (token = TOKEN_A, storeId = 7): IssuedSession => ({ ...status(storeId),
   sessionToken: token, expiresIn: 28_800, storeName: `Store ${storeId}` });
-const fields = { storeCode: 'test-store', username: 'crew.one', password: 'test-password' };
+const fields = { username: 'crew.one', password: 'test-password' };
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: Error) => void;
@@ -122,8 +122,10 @@ test('backgrounding discards a previously started private response and blocks ne
   await assert.rejects(h.controller.request('/reports'), ApiError); assert.equal(h.calls.length, count);
 });
 
-test('switching stores rotates credentials and discards responses from the previous store', async () => {
-  const h = harness(); await h.controller.restore();
+test('owner store switching rotates credentials and discards responses from the previous store', async () => {
+  const h = harness();
+  h.handle(() => ({ ...status(), actor: { ...person(), role: 'owner' } }));
+  await h.controller.restore();
   const oldReports = deferred<unknown>();
   h.handle(call => call.path === '/reports' ? oldReports.promise
     : call.path === '/accounts/switch-store' ? issued(TOKEN_B, 8) : status(8));
@@ -504,3 +506,13 @@ for (const statusCode of [0, 401, 403]) {
     assert.equal(h.controller.getSnapshot().status, statusCode === 401 ? 'signedOut' : 'locked');
   });
 }
+
+test('crew and manager store switches never reach the transport even if a stale list contains another store', async () => {
+  for (const role of ['crew', 'manager'] as const) {
+    const h = harness(); h.handle(() => ({ ...status(), actor: { ...person(), role } }));
+    await h.controller.restore(); const calls = h.calls.length;
+    await assert.rejects(h.controller.switchStore(8), /assigned to one store/);
+    assert.equal(h.calls.length, calls);
+    assert.equal(h.controller.getSnapshot().actor?.storeId, 7);
+  }
+});

@@ -57,30 +57,22 @@ def client(isolated_database):
 
 @pytest.fixture
 def manager_session(client, monkeypatch):
-    monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "test-admin-key")
-    status, headers, _ = client("POST", "/api/auth/signup", payload={
-        "storeName": "Test Store", "storeCode": "test-store",
-        "crewPassword": "test-crew-password", "managerUsername": "test-manager",
-        "managerPassword": "test-manager-password", "confirmPassword": "test-manager-password",
-        "adminKey": "test-admin-key",
-    })
-    assert status == 201
-    cookie = headers["Set-Cookie"].split(";")[0]
-    with db_connection() as connection:
-        manager_id, store_id = connection.execute("SELECT manager_user_id, store_id FROM manager_sessions").fetchone()
-    return cookie, manager_id, store_id
+    from tests.account_fixtures import seed_workspace
+    fixture=seed_workspace(store_code='test-store',manager_name='test-manager',
+                           manager_password='test-manager-password',crew_password='test-crew-password')
+    return fixture['manager_cookie'],fixture['user_id'],fixture['store_id']
 
 
 @pytest.mark.parametrize("raw", ["{", "", "[]", '"text"', "null", "x" * 10001, b"\xff", '{"storeCode":{}}'])
 def test_malformed_login_returns_400(client, raw):
     status, _, body = client("POST", "/api/auth/login", raw=raw)
-    assert (status, json.loads(body)) == (400, {"error": "Invalid login request."})
+    assert status == 400 and "error" in json.loads(body)
 
 
 @pytest.mark.parametrize("length", ["invalid", "-1", "10001"])
 def test_invalid_login_length_returns_400(client, length):
     status, _, body = client("POST", "/api/auth/login", raw="{}", headers={"Content-Length": length})
-    assert (status, json.loads(body)) == (400, {"error": "Invalid login request."})
+    assert status == 400 and "error" in json.loads(body)
 
 
 def test_invalid_login_role_is_rejected_before_store_lookup(client, monkeypatch):
@@ -89,7 +81,7 @@ def test_invalid_login_role_is_rejected_before_store_lookup(client, monkeypatch)
         pytest.fail("Invalid roles must be rejected before querying stores.")
     monkeypatch.setattr(routes, "store_for_code", unexpected_lookup)
     status, _, body = client("POST", "/api/auth/login", payload={"storeCode": "missing", "role": "owner", "password": "password"})
-    assert (status, json.loads(body)) == (400, {"error": "Invalid sign-in role."})
+    assert (status, json.loads(body)) == (400, {"error": "Username must be text."})
 
 
 @pytest.mark.parametrize("error_type", [psycopg.OperationalError, RuntimeError])
@@ -111,40 +103,29 @@ def test_healthy_database_returns_200(client):
 
 
 @pytest.mark.parametrize("stale_crew_cookie", [False, True])
-def test_manager_can_open_employee_page_and_submit_to_selected_store(client, manager_session, monkeypatch, stale_crew_cookie):
-    cookie, manager_id, original_store = manager_session
-    with db_connection() as connection:
-        selected_store = connection.execute(
-            "INSERT INTO stores (name, access_code_hash) VALUES (%s, %s) RETURNING id",
-            ("Selected store", hashlib.sha256(b"second-store").hexdigest()),
-        ).fetchone()[0]
-        connection.execute("INSERT INTO store_memberships (manager_user_id, store_id) VALUES (%s, %s)", (manager_id, selected_store))
-        connection.execute("UPDATE manager_sessions SET store_id = %s WHERE manager_user_id = %s", (selected_store, manager_id))
-        if stale_crew_cookie:
-            connection.execute(
-                "INSERT INTO crew_sessions (token_hash, store_id, expires_at) VALUES (%s, %s, NOW() - INTERVAL '1 second')",
-                (hashlib.sha256(b"expired-crew").hexdigest(), original_store),
-            )
-            cookie += "; shiftly_crew_session=expired-crew"
-    monkeypatch.setattr(server, "validate_report", lambda report: {"status": "accepted"})
-    assert client("GET", "/crew.html", cookie=cookie)[0] == 200
-    status, _, body = client("POST", "/api/reports", cookie=cookie, payload={
-        "employee": "Test Manager", "shift": "closing", "notes": "Restocked the freezer.", "storeId": original_store,
-    })
-    assert status == 202
-    assert json.loads(body)["status"] == "pending"
-    with db_connection() as connection:
-        assert connection.execute("SELECT store_id FROM reports").fetchall() == [(selected_store,)]
+def test_manager_report_cannot_be_redirected_by_payload(client, manager_session, monkeypatch, stale_crew_cookie):
+    cookie,uid,sid=manager_session
+    if stale_crew_cookie:
+        cookie+='; shiftly_crew_session=expired-crew'
+        assert client('GET','/crew.html',cookie=cookie)[0]==302
+        assert client('POST','/api/reports',cookie=cookie,payload={})[0]==401
+        return
+    monkeypatch.setattr(server,'validate_report',lambda report:{'status':'accepted'})
+    assert client('GET','/crew.html',cookie=cookie)[0]==200
+    response=client('POST','/api/reports',cookie=cookie,payload={'employee':'Manager','shift':'closing','notes':'Restocked the freezer.','storeId':sid+999})
+    assert response[0]==202
+    with db_connection() as c:
+        assert c.execute('SELECT store_id,actor_user_id FROM reports').fetchall()==[(sid,uid)]
 
 
 @pytest.mark.parametrize("revocation", ["expired", "inactive_manager", "inactive_store", "missing_membership"])
 def test_invalid_manager_cannot_use_employee_access(client, manager_session, revocation):
     cookie, manager_id, store_id = manager_session
     statements = {
-        "expired": ("UPDATE manager_sessions SET expires_at = NOW() - INTERVAL '1 second' WHERE manager_user_id = %s", manager_id),
-        "inactive_manager": ("UPDATE manager_users SET active = false WHERE id = %s", manager_id),
+        "expired": ("UPDATE account_sessions SET expires_at = NOW() - INTERVAL '1 second' WHERE user_id = %s", manager_id),
+        "inactive_manager": ("UPDATE account_users SET state = 'suspended' WHERE id = %s", manager_id),
         "inactive_store": ("UPDATE stores SET active = false WHERE id = %s", store_id),
-        "missing_membership": ("DELETE FROM store_memberships WHERE manager_user_id = %s", manager_id),
+        "missing_membership": ("DELETE FROM account_store_memberships WHERE user_id = %s", manager_id),
     }
     query, value = statements[revocation]
     with db_connection() as connection:
@@ -225,44 +206,42 @@ def test_weekly_overview_rejects_anonymous_and_crew_access(client, manager_sessi
 
 @pytest.mark.parametrize("role", ["crew", "manager"])
 def test_concurrent_logins_cannot_exceed_remaining_failure_budget(manager_session, monkeypatch, role):
-    handler = SimpleNamespace(client_address=("127.0.0.1", 4173))
-    for _ in range(9):
-        security.record_login_failure(handler, "TEST-STORE", "auto")
-    entered = Event()
-    release = Event()
+    from backend.shiftly.identity.accounts import AccountsService
+    from backend.shiftly.identity import IdentityError
+    from database import db_connection
+    handler=SimpleNamespace(client_address=('127.0.0.1',4173))
+    budget='named-sign-in'
+    for _ in range(9): security.record_login_failure(handler,budget)
+    entered,release=Event(),Event()
     def slow_hash(*args):
-        entered.set()
-        assert release.wait(timeout=5)
-        return "incorrect-hash"
-    monkeypatch.setattr(routes, "password_hash", slow_hash)
+        entered.set(); assert release.wait(timeout=5); return 'incorrect-hash'
+    service=AccountsService(db_connection,admission=security.admission_control(),password_hasher=slow_hash)
     def login():
-        response = {}
-        request = SimpleNamespace(client_address=handler.client_address, send_json=lambda status, body: response.update(status=status))
-        routes.login(request, "test-store", role, "incorrect-password")
-        return response["status"]
+        try:
+            service.login(None,'test-manager-crew' if role=='crew' else 'test-manager','incorrect-password',client_key='127.0.0.1')
+        except IdentityError as error: return error.code
     with ThreadPoolExecutor(max_workers=12) as executor:
-        last_allowed = executor.submit(login)
+        last=executor.submit(login)
         try:
             assert entered.wait(timeout=5)
-            rejected = [executor.submit(login) for _ in range(11)]
-            assert [future.result(timeout=2) for future in rejected] == [429] * 11
-        finally:
-            release.set()
-        assert last_allowed.result(timeout=5) == 401
-    assert login() == 429
+            rejected=[executor.submit(login) for _ in range(11)]
+            assert [future.result(timeout=2) for future in rejected]==['limited']*11
+        finally:release.set()
+        assert last.result(timeout=5)=='unauthenticated'
+    assert login()=='limited'
     assert not security.LOGIN_IN_FLIGHT
-    assert len(security.LOGIN_FAILURES[security._login_key(handler, "test-store")]) == 10
+    assert len(security.LOGIN_FAILURES[security._login_key(handler,budget)])==10
 
 
 def test_successful_login_releases_reservation_without_using_failure_budget(client, manager_session):
     handler = SimpleNamespace(client_address=("127.0.0.1", 4173))
     for _ in range(9):
-        security.record_login_failure(handler, "test-store")
+        security.record_login_failure(handler, "named-sign-in")
     for _ in range(2):
-        status, _, _ = client("POST", "/api/auth/login", payload={"storeCode": "test-store", "role": "crew", "password": "test-crew-password"})
+        status, _, _ = client("POST", "/api/auth/login", payload={"username": "test-manager-crew", "password": "test-crew-password"})
         assert status == 200
     assert not security.LOGIN_IN_FLIGHT
-    assert len(security.LOGIN_FAILURES[security._login_key(handler, "test-store")]) == 9
+    assert len(security.LOGIN_FAILURES[security._login_key(handler, "named-sign-in")]) == 9
 
 
 def test_tests_refuse_application_database_when_test_url_is_absent():

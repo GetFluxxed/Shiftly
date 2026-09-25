@@ -218,7 +218,12 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             if not store_id:
                 self.send_json(401, {"error": "Manager sign-in required."})
                 return
-            self.send_json(200, {"managers": manager_accounts(store_id)})
+            try:
+                self.send_json(200, {"managers": make_identity_service().accounts.report_managers(named_account_token(self))})
+            except IdentityError as error:
+                self.send_json(401, {"error": str(error)})
+            except (psycopg.Error, RuntimeError):
+                self.send_json(503, {"error": "Service is temporarily unavailable."})
             return
         if path == "/api/weekly-overview":
             manager_id = is_manager(self)

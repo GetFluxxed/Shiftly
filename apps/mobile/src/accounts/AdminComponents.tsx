@@ -1,6 +1,8 @@
 import { Text } from '@/src/ui/Typography';
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, Share, StyleSheet, View } from 'react-native';
+import { createURL } from 'expo-linking';
+import { invitationLink } from './invitations';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
@@ -70,10 +72,19 @@ export function Reason({ value, onChange, disabled }: { value: string; onChange:
 export function InvitationResult({ invitation, username, onDismiss }: {
   invitation: Invitation; username: string; onDismiss: () => void;
 }) {
-  return <Card><Heading>Invitation ready</Heading><Body>Give this activation code only to @{username}. It expires in {Math.round(invitation.expiresIn / 3600)} hours.</Body>
+  const link = invitationLink(createURL('activate'), invitation.token);
+  const [error, setError] = useState<string | null>(null);
+  return <Card><Heading>Invitation ready</Heading><Body>Share this private link only with @{username}. It expires in {Math.round(invitation.expiresIn / 3600)} hours and can create one crew account.</Body>
+    <Text selectable style={styles.code} accessibilityLabel="Invitation link">{link}</Text>
+    <Button title="Share invitation link" icon="share-outline" onPress={() => {
+      void Share.share({ message: `Join Shiftly as @${username}. Open this single-use invitation and choose your password:\n${link}` })
+        .catch(() => setError('Sharing is unavailable. Select and copy the invitation link.'));
+    }} />
+    <Notice message={error} kind="error" />
+    <Body muted>Alternatively, enter this code on the activation screen:</Body>
     <Text selectable style={styles.code} accessibilityLabel={`Activation code: ${invitation.token}`}>{invitation.token}</Text>
-    <Body muted>On the sign-in screen, choose Activate account, enter this code, and set a personal password. This code is hidden when you leave this screen or background the app. Reissue it if needed.</Body>
-    <Button title="Done with this code" onPress={onDismiss} />
+    <Body muted>The link opens account activation. An administrator can change their role after activation. In Expo Go, the recipient must be able to reach the local development server. The link and code are hidden when you leave this screen or background the app.</Body>
+    <Button title="Done with this invitation" onPress={onDismiss} />
   </Card>;
 }
 const styles = StyleSheet.create({

@@ -56,6 +56,19 @@ class BrowserApi:
             connection.close()
 
 
+class BrowserHTTPServer(ThreadingHTTPServer):
+    # server_close() must drain request handlers before empty_database drops the
+    # schema. The stdlib default leaves daemon handlers running during teardown.
+    daemon_threads = False
+
+    def get_request(self):
+        connection, address = super().get_request()
+        # A browser may preconnect without sending a request. Bound that idle
+        # socket wait while still allowing active database work to drain fully.
+        connection.settimeout(5)
+        return connection, address
+
+
 @pytest.fixture(params=["legacy", "fastapi"], ids=["legacy", "fastapi"])
 def browser_app(isolated_database, monkeypatch, request):
     monkeypatch.setattr(server, "ADMIN_SIGNUP_KEY", "browser-admin-key")
@@ -82,7 +95,7 @@ def browser_app(isolated_database, monkeypatch, request):
     monkeypatch.setattr(server, "validate_report", lambda report: {"status": "accepted"})
 
     if request.param == "legacy":
-        httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.ShiftlyHandler)
+        httpd = BrowserHTTPServer(("127.0.0.1", 0), server.ShiftlyHandler)
         thread = Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         base_url = f"http://127.0.0.1:{httpd.server_address[1]}"
@@ -144,33 +157,8 @@ def browser_app(isolated_database, monkeypatch, request):
 
 @pytest.fixture
 def browser_workspace(browser_app):
-    api = BrowserApi(browser_app)
-    signup = api.request(
-        "POST",
-        "/api/auth/signup",
-        payload={
-            "adminKey": "browser-admin-key",
-            "storeName": "Browser Store",
-            "storeCode": "browser-store",
-            "crewPassword": "crew-password-123",
-            "managerUsername": "browser-manager",
-            "managerPassword": "manager-password-123",
-            "confirmPassword": "manager-password-123",
-        },
-    )
-    assert signup.status == 201, signup.body
-    with db_connection() as connection:
-        store_id = connection.execute(
-            "SELECT id FROM stores WHERE access_code_hash = %s",
-            (hashlib.sha256(b"browser-store").hexdigest(),),
-        ).fetchone()[0]
-    return {
-        "base_url": browser_app,
-        "store_id": store_id,
-        "store_code": "browser-store",
-        "crew_password": "crew-password-123",
-        "manager_password": "manager-password-123",
-    }
+    from tests.account_fixtures import seed_workspace
+    return dict(base_url=browser_app,**seed_workspace(store_code='browser-store',manager_name='browser-manager',store_name='Browser Store'))
 
 
 @pytest.fixture

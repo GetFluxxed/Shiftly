@@ -9,7 +9,7 @@ from database import db_connection
 
 def login(page, workspace, role):
     page.goto(f"{workspace['base_url']}/")
-    page.locator("#store-code").fill(workspace["store_code"])
+    page.locator("#username").fill(workspace["manager_username" if role == "manager" else "crew_username"])
     password = workspace["manager_password"] if role == "manager" else workspace["crew_password"]
     page.locator("#password").fill(password)
     page.locator("#sign-in-form button[type='submit']").click()
