@@ -160,12 +160,15 @@ export class SessionController {
   }
   signIn = (fields: SignInFields) => this.issue('/accounts/login', { ...fields });
   activate = (fields: RedemptionFields) => this.issue('/accounts/activate', { ...fields });
+  invitationDetails = (token: string) => this.transport.send<import('../accounts/invitations').InvitationDetails>(
+    '/accounts/invitation-details', { method: 'POST', body: { token } });
   resetPassword = async (fields: RedemptionFields) => {
     await this.transport.send('/accounts/reset-password', { method: 'POST', body: { ...fields } });
   };
   switchStore = async (storeId: number) => {
     const actor = this.state.actor, token = this.token;
     if (this.state.status !== 'ready' || !actor || !token) throw stale();
+    if (!['owner', 'admin'].includes(actor.role)) throw new ApiError('Your account is assigned to one store.', 403, 'permission_denied');
     if (!this.state.stores.some(s => s.storeId === storeId)) throw new ApiError('That store is not available to your account.', 403);
     await this.issue('/accounts/switch-store', { storeId, expectedStoreId: actor.storeId }, token);
   };

@@ -1,18 +1,9 @@
 def test_fastapi_auth_cookie_status_logout_and_crew_login(transport_clients):
     fastapi_client, _ = transport_clients
-    signup = fastapi_client.post(
-        "/api/auth/signup",
-        json={
-            "adminKey": "test-admin-key",
-            "storeName": "FastAPI Store",
-            "storeCode": "fastapi-store",
-            "crewPassword": "crew-password-123",
-            "managerUsername": "fastapi-manager",
-            "managerPassword": "manager-password-123",
-            "confirmPassword": "manager-password-123",
-        },
-    )
-    assert signup.status_code == 201
+    from tests.account_fixtures import seed_workspace
+    seed_workspace(store_code='fastapi-store',manager_name='fastapi-manager')
+    signup=fastapi_client.post('/api/accounts/login',json={'username':'fastapi-manager','password':'manager-password-123'})
+    assert signup.status_code==200
     assert signup.json()["role"] == "manager"
     assert fastapi_client.get("/api/auth/status").json()["role"] == "manager"
 
@@ -22,7 +13,7 @@ def test_fastapi_auth_cookie_status_logout_and_crew_login(transport_clients):
 
     login = fastapi_client.post(
         "/api/auth/login",
-        json={"storeCode": "fastapi-store", "role": "crew", "password": "crew-password-123"},
+        json={"username": "fastapi-manager-crew", "password": "crew-password-123"},
     )
     assert login.status_code == 200
     assert login.json()["role"] == "crew"
@@ -31,24 +22,15 @@ def test_fastapi_auth_cookie_status_logout_and_crew_login(transport_clients):
 
 def test_fastapi_reports_heads_up_managers_and_weekly_contract(transport_clients):
     fastapi_client, _ = transport_clients
-    signup = fastapi_client.post(
-        "/api/auth/signup",
-        json={
-            "adminKey": "test-admin-key",
-            "storeName": "Operations Store",
-            "storeCode": "operations-store",
-            "crewPassword": "crew-password-123",
-            "managerUsername": "operations-manager",
-            "managerPassword": "manager-password-123",
-            "confirmPassword": "manager-password-123",
-        },
-    )
-    assert signup.status_code == 201
+    from tests.account_fixtures import seed_workspace
+    seed_workspace(store_code='operations-store',manager_name='operations-manager')
+    signup=fastapi_client.post('/api/accounts/login',json={'username':'operations-manager','password':'manager-password-123'})
+    assert signup.status_code==200
     fastapi_client.post("/api/auth/logout")
 
     crew = fastapi_client.post(
         "/api/auth/login",
-        json={"storeCode": "operations-store", "role": "crew", "password": "crew-password-123"},
+        json={"username": "operations-manager-crew", "password": "crew-password-123"},
     )
     assert crew.status_code == 200
     report = fastapi_client.post(
@@ -62,7 +44,7 @@ def test_fastapi_reports_heads_up_managers_and_weekly_contract(transport_clients
 
     manager = fastapi_client.post(
         "/api/auth/login",
-        json={"storeCode": "operations-store", "password": "manager-password-123"},
+        json={"username": "operations-manager", "password": "manager-password-123"},
     )
     assert manager.status_code == 200
     saved = fastapi_client.post("/api/heads-up", json={"message": "Delivery before close."})

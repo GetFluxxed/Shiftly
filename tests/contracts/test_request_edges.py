@@ -23,8 +23,8 @@ def test_login_rejects_invalid_body_consistently(api, raw):
 ], ids=["empty", "oversize", "broken-json", "array", "non-utf8"])
 def test_json_request_errors_are_stable(api, workspace, path, raw, message):
     response = api.request("POST", path, raw=raw, cookie=workspace["manager_cookie"])
-    assert response.status == 400
-    assert response.json() == {"error": message}
+    assert response.status == (403 if path.startswith("/api/auth/") else 400)
+    assert response.json() == {"error": "Accounts require an invitation. Ask your store administrator." if path.startswith("/api/auth/") else message}
 
 
 @pytest.mark.parametrize("path", ["/api/reports", "/api/heads-up"])
@@ -59,14 +59,14 @@ def test_unsupported_methods_keep_legacy_status(api, method):
 
 def test_session_cookie_attributes_and_security_headers(api, workspace):
     response = api.request("POST", "/api/auth/login", payload={
-        "storeCode": workspace["store_code"], "password": workspace["manager_password"],
+        "username": workspace["manager_username"], "password": workspace["manager_password"],
     })
     assert response.status == 200
     cookies = SimpleCookie()
     for name, value in response.headers:
         if name.lower() == "set-cookie":
             cookies.load(value)
-    cookie = cookies["shiftly_manager_session"]
+    cookie = cookies["shiftly_account_session"]
     assert cookie["httponly"] and cookie["path"] == "/"
     assert cookie["samesite"].lower() == "strict" and int(cookie["max-age"]) == 28800
     headers = {key.lower(): value for key, value in response.headers}

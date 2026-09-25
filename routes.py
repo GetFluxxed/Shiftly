@@ -79,20 +79,7 @@ def login(handler, store_code=None, role=None, password=None, *, identity=None, 
 
 
 def _create_account(handler, *, identity, secure_cookies, action):
-    identity = identity if identity is not None else make_identity_service()
-    if secure_cookies is None:
-        secure_cookies = load_settings().secure_cookies
-    try:
-        identity.admit_account_creation(client_key(handler), action=action)
-        payload = parse_json(handler)
-        result = identity.signup(payload) if action == "signup" else identity.add_manager(payload)
-    except IdentityError as error:
-        _identity_error(handler, error)
-        return
-    except ValueError as error:
-        handler.send_json(400, {"error": str(error)})
-        return
-    _session_response(handler, result, 201, secure_cookies)
+    handler.send_json(403, {"error": "Accounts require an invitation. Ask your store administrator."})
 
 
 def signup(handler, *, identity=None, secure_cookies=None):
@@ -262,6 +249,9 @@ def account_route(handler, *, method, identity=None, secure_cookies=False):
         if path == '/api/accounts/login':
             result = accounts.login_payload(fields, client_key=client_key(handler))
             _session_response(handler, result, 200, secure_cookies)
+            return True
+        if path == '/api/accounts/invitation-details':
+            handler.send_json(200, accounts.invitation_details(fields.get('token'), client_key=client_key(handler)))
             return True
         if path == '/api/accounts/activate':
             result = accounts.activate_invitation(fields.get('token'), fields.get('password'), client_key=client_key(handler))

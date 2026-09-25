@@ -10,7 +10,6 @@ def _named_login(page, workspace, role):
             "SELECT username FROM account_users WHERE id=%s", (workspace["users"][role],),
         ).fetchone()[0]
     page.goto(workspace["base_url"] + "/")
-    page.locator("#store-code").fill(workspace["stores"][0]["code"])
     page.locator("#username").fill(username)
     page.locator("#password").fill(workspace["password"])
     page.locator("#sign-in-form button[type=submit]").click()

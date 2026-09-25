@@ -167,7 +167,7 @@ def test_native_activation_team_grants_and_suspension_use_existing_services(mobi
     assert m.send("GET", "/api/mobile/accounts/team", token=crew).status_code == 403
     invite = m.send("POST", "/api/mobile/accounts/invitations", token=owner, json={
         "expectedStoreId": m.stores[0], "username": "new-mobile", "displayName": "New Mobile", "role": "crew",
-        "capabilities": ["inventory.view"], "reason": "Native activation test.",
+        "capabilities": [], "reason": "Native activation test.",
     })
     assert invite.status_code == 200
     payload = {"token": invite.json()["token"], "password": m.password}
@@ -198,8 +198,8 @@ def test_native_reports_record_actor_and_label_only_authorized_stores(mobile):
     m.client.app.state.context.services.reports.queue_report(
         "Unrelated person", "opening", "A report that must stay outside this account's scope.", m.stores[2])
     rows = m.send("GET", "/api/mobile/reports", token=second).json()["reports"]
-    assert {row["storeId"] for row in rows} == set(m.stores[:2])
-    assert {row["storeName"] for row in rows} == {"mobile-first", "mobile-second"}
+    assert {row["storeId"] for row in rows} == {m.stores[1]}
+    assert {row["storeName"] for row in rows} == {"mobile-second"}
     browser = m.send("GET", "/api/reports", headers=[("Cookie", f"shiftly_account_session={second}")])
     assert browser.status_code == 200 and all("storeId" not in row for row in browser.json()["reports"])
     assert m.send("GET", "/api/mobile/reports", token=crew).status_code == 403
@@ -316,7 +316,7 @@ def test_native_invite_reissue_activate_and_membership_management_journey(mobile
                           json={'expectedStoreId': m.stores[0], **fields})
         assert response.status_code == 200, response.text
         return response.json()
-    first = post('invitations', username='new.person', displayName='New Person', role='crew', capabilities=['inventory.view'])
+    first = post('invitations', username='new.person', displayName='New Person', role='crew', capabilities=[])
     roster = m.send('GET', '/api/mobile/accounts/management', token=owner).json()
     assert next(person for person in roster['members'] if person['userId'] == first['userId'])['canReissue'] is True
     replacement = post('invitations/reissue', userId=first['userId'])
@@ -335,8 +335,8 @@ def test_native_invite_reissue_activate_and_membership_management_journey(mobile
     assigned = m.send('POST', '/api/mobile/accounts/memberships', token=owner, json={
         'expectedStoreId': m.stores[1], 'userId': first['userId'], 'role': 'crew', 'capabilities': [],
     })
-    assert assigned.status_code == 200
-    assert m.send('POST', '/api/mobile/accounts/login', json={'storeCode': 'mobile-second', 'username': 'new.person', 'password': m.password}).status_code == 200
+    assert assigned.status_code == 409
+    assert m.send('POST', '/api/mobile/accounts/login', json={'storeCode': 'mobile-second', 'username': 'new.person', 'password': m.password}).status_code == 401
 
 
 def test_native_owner_delegation_suspension_cutover_and_transfer_journey(mobile):

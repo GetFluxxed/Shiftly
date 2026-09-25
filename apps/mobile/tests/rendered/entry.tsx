@@ -31,7 +31,7 @@ function App() {
    if(typeof value==='string') setRoute({path:value,params:{}});
    else {const r=value as {pathname:string;params:Record<string,string>};setRoute({path:r.pathname,params:r.params});}
  },[]);
- const ctx=React.useMemo(()=>({go,params:route.params}),[go,route.params]);
+ const ctx=React.useMemo(()=>({go,params:route.params,setParams:()=>{}}),[go,route.params]);
  if(snapshot.status!=='ready') return <div>Workspace {snapshot.status}</div>;
  const Screen=({'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,
    '/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen} as Record<string,React.ComponentType>)[route.path]!;

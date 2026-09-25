@@ -104,7 +104,7 @@ class ReportsService:
         rows = self.repository.for_actor(token, accounts)
         results = self._results(rows)
         if include_store:
-            # The native inbox spans authorized stores and must label each row.
+            # The native inbox is selected-store scoped and labels its store context.
             # Existing browser response fields remain unchanged.
             for result, row in zip(results, rows):
                 result.update(storeId=row[11], storeName=row[12])

@@ -20,8 +20,8 @@ function OwnerList({ data, changed }: AdminContext) {
     <Body>Appoint administrators or additional owners, review account status, and transfer ownership. These controls apply to the business behind your selected store.</Body>
     <Button title="Manage this store's team" variant="secondary" icon="people-outline" onPress={() => router.push('/team')} />
   </Card></Column><Column><Card><Heading>Individual sign-in</Heading>
-    <Pill label={data.sharedCrewEnabled ? 'Shared crew sign-in is enabled' : 'Individual crew sign-in only'} />
-    <Body>Move this store to personal crew accounts when everyone has an active sign-in.</Body>
+    <Pill label="Individual sign-in required" />
+    <Body>Everyone joins by invitation and uses their own username and password.</Body>
     <Button title="Review store sign-in" variant="secondary" icon="key-outline" onPress={() => router.push('/owner/cutover')} />
   </Card></Column></Columns>
   <Button title="Refresh business access" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Business access refreshed.'); }} />
@@ -89,25 +89,7 @@ function BusinessMemberForm({ data, member, changed }: AdminContext & { member: 
 export function CutoverScreen() {
   return <AdministrationScreen title="Personal sign-ins for everyone." ownerOnly>{context => <CutoverForm {...context} />}</AdministrationScreen>;
 }
-function CutoverForm({ data, storeName, changed }: AdminContext) {
-  const { request } = useSession();
-  const task = useTask();
-  const [confirmation, setConfirmation] = useState('');
-  const [reason, setReason] = useState('');
-  useSensitiveForm(() => { setConfirmation(''); setReason(''); });
-  const pending = data.members.filter(person => person.accountState === 'pending' && person.membershipState === 'active').length;
-  const cutover = () => confirmChange(`Disable shared crew sign-in at ${storeName}?`,
-    'Shared crew sessions at this store will end immediately. People must use individual accounts. This screen cannot turn shared sign-in back on.', () => {
-      void task.run(() => request('/accounts/cutover', { method: 'POST', uncertainMessage: accountChangeUncertain, body: { storeId: data.storeId, reason } }),
-        () => { void changed('Shared crew sign-in is disabled for this store.'); });
-    }, true);
-  return <><Notice message={task.error} kind="error" /><Card><Heading>{storeName}</Heading>
-    {!data.sharedCrewEnabled ? <><Pill label="Individual crew sign-in only" /><Body>Shared crew sign-in is already disabled at this store. Personal accounts continue to work.</Body></>
-      : <><Body>Confirm that everyone who works here has activated an individual account. Disabling shared sign-in ends shared crew sessions at this store immediately.</Body>
-        <Notice message={pending ? `${pending} active store invitation${pending === 1 ? ' is' : 's are'} still awaiting activation.` : 'No active store invitations are awaiting activation. Confirm that your full crew has personal access.'} />
-        <Field label="Type the store name to confirm" value={confirmation} onChangeText={setConfirmation} autoCorrect={false} editable={!task.pending} hint={storeName} />
-        <Reason value={reason} onChange={setReason} disabled={task.pending} />
-        <Button title="Disable shared crew sign-in" variant="danger" loading={task.pending} disabled={confirmation !== storeName} onPress={cutover} />
-      </>}
-  </Card></>;
+function CutoverForm({ storeName }: AdminContext) {
+  return <Card><Heading>{storeName}</Heading><Pill label="Individual sign-in required" />
+    <Body>Every new person joins through a single-use invitation. Crew and managers belong to one store. Administrators control roles and permissions after activation.</Body></Card>;
 }

@@ -56,7 +56,7 @@ export function AccountsScreen() {
         <View style={layout.divider} /><Heading>Current store</Heading>
         <View style={layout.row}><Ionicons name="storefront-outline" color={colors.primary} size={24} />
           <View style={layout.flex}><Body>{store?.storeName || 'Current store'}</Body></View></View>
-        {stores.length > 1 ? <Button title={choosingStore ? 'Close store list' : 'Switch store'} variant="secondary" icon="swap-horizontal"
+        {['owner', 'admin'].includes(actor?.role || '') && stores.length > 1 ? <Button title={choosingStore ? 'Close store list' : 'Switch store'} variant="secondary" icon="swap-horizontal"
           disabled={task.pending || busy} onPress={() => setChoosingStore(!choosingStore)} /> : null}
         {choosingStore ? <View style={layout.smallGap}>{stores.map((item) => <Pressable key={item.storeId}
           accessibilityRole="button" accessibilityLabel={`Switch to ${item.storeName}`}

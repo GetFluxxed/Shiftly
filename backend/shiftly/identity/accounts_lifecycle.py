@@ -94,8 +94,8 @@ class AccountLifecycle:
         try:
             with self.connect() as connection:
                 actor = self._lifecycle_actor(connection, token, store_id=store_id)
-                if role == 'admin':
-                    raise IdentityError('forbidden', 'Activate an individual account before delegating business administration.', reason="permission_denied")
+                if role != 'crew' or self._grants(capabilities):
+                    raise IdentityError('forbidden', 'Invitations create crew accounts. An administrator can change access after activation.', reason="permission_denied")
                 grants = self._check_store_grant(actor, role, capabilities)
                 if connection.execute('SELECT 1 FROM account_users WHERE username_key=account_username_key(%s)', (username,)).fetchone():
                     raise IdentityError('conflict', 'This username already exists; assign membership without changing its password.', reason="duplicate_identifier")
@@ -137,7 +137,7 @@ class AccountLifecycle:
                 "SELECT role,capabilities FROM account_store_memberships WHERE user_id=%s AND store_id=%s AND state='active'",
                 (user_id, actor.store_id),
             ).fetchone()
-            if not membership or membership[0] not in {'crew', 'manager'}:
+            if not membership or membership != ('crew', []):
                 raise IdentityError('forbidden', 'An active permitted store membership is required.', reason="permission_denied")
             if connection.execute('SELECT 1 FROM account_store_memberships WHERE user_id=%s AND store_id<>%s', (user_id, actor.store_id)).fetchone():
                 raise IdentityError('forbidden', 'Activation of a pending account with multiple scopes requires operator reconciliation.', reason="permission_denied")
@@ -160,6 +160,35 @@ class AccountLifecycle:
         if not self.admission.reserve_login(client_key, purpose):
             raise IdentityError('limited', 'Too many failed account attempts. Try again later.')
 
+    def invitation_details(self, invitation_token, *, client_key):
+        self._admit_secret(client_key, 'account-activation')
+        succeeded = False
+        try:
+            if not isinstance(invitation_token, str) or not invitation_token or len(invitation_token) > 512:
+                raise IdentityError('invalid', 'Invalid or expired invitation.')
+            with self.connect() as connection:
+                self._lock(connection)
+                row = connection.execute(
+                    """SELECT u.username,u.display_name,s.name,i.created_by,i.store_id
+                       FROM account_invitations i JOIN account_users u ON u.id=i.user_id
+                       JOIN stores s ON s.id=i.store_id
+                       JOIN account_store_memberships m ON m.user_id=i.user_id AND m.store_id=i.store_id
+                       WHERE i.token_hash=%s AND i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>NOW()
+                         AND u.state='pending' AND s.active AND s.accounts_enabled
+                         AND m.state='active' AND m.role='crew' AND m.capabilities=ARRAY[]::TEXT[]
+                         AND i.role=m.role AND i.capabilities=m.capabilities
+                         AND NOT EXISTS (SELECT 1 FROM account_store_memberships extra
+                                         WHERE extra.user_id=u.id AND extra.store_id<>s.id)""",
+                    (hash_token(invitation_token),),
+                ).fetchone()
+                if not row:
+                    raise IdentityError('invalid', 'Invalid or expired invitation.')
+                self._check_store_grant(self._actor_for_user(connection, row[3], row[4]), 'crew', ())
+                succeeded = True
+                return {'username': row[0], 'displayName': row[1], 'storeName': row[2], 'role': 'crew'}
+        finally:
+            self.admission.finish_login(client_key, 'account-activation', failed=not succeeded)
+
     def activate_invitation(self, invitation_token, password, *, client_key):
         self._admit_secret(client_key, 'account-activation')
         succeeded = False
@@ -177,6 +206,7 @@ class AccountLifecycle:
                        WHERE i.token_hash=%s AND i.expires_at>NOW() AND i.used_at IS NULL AND i.revoked_at IS NULL
                          AND u.state='pending' AND m.state='active' AND s.active AND s.accounts_enabled
                          AND m.role=i.role AND m.capabilities=i.capabilities
+                         AND i.role='crew' AND i.capabilities=ARRAY[]::TEXT[]
                        FOR UPDATE OF i,u,m""", (hash_token(invitation_token),),
                 ).fetchone()
                 if not row:
@@ -230,9 +260,13 @@ class AccountLifecycle:
         with self.connect() as connection:
             actor = self._lifecycle_actor(connection, token, store_id=store_id)
             target = self._assert_target(connection, user_id)
+            if actor.role not in {'owner', 'admin'}:
+                raise IdentityError('forbidden', 'Only an administrator can change account permissions.', reason="permission_denied")
             if actor.user_id == user_id:
                 raise IdentityError('forbidden', 'Self-modification of membership is not permitted.', reason="permission_denied")
             grants = self._check_store_grant(actor, role, capabilities)
+            if target[0] == 'pending' and (role != 'crew' or grants):
+                raise IdentityError('conflict', 'Activate this account before changing its role or permissions.', reason="state_conflict")
             old = connection.execute('SELECT role,capabilities FROM account_store_memberships WHERE user_id=%s AND store_id=%s', (user_id, actor.store_id)).fetchone()
             if actor.role != 'owner' and connection.execute(
                 "SELECT 1 FROM business_memberships WHERE user_id=%s AND business_id=%s AND state='active'",
@@ -251,6 +285,14 @@ class AccountLifecycle:
                 (user_id, actor.business_id),
             ).fetchone():
                 raise IdentityError('conflict', 'An active business administrator delegation is required first.', reason="state_conflict")
+            if active and role in {'crew', 'manager'} and not connection.execute(
+                "SELECT 1 FROM business_memberships WHERE user_id=%s AND business_id=%s AND role='owner' AND state='active'",
+                (user_id, actor.business_id),
+            ).fetchone() and connection.execute(
+                "SELECT 1 FROM account_store_memberships WHERE user_id=%s AND store_id<>%s AND state='active'",
+                (user_id, actor.store_id),
+            ).fetchone():
+                raise IdentityError('conflict', 'Crew and managers belong to one store. Remove their previous store access before assigning this store.', reason="state_conflict")
             connection.execute(
                 """INSERT INTO account_store_memberships(user_id,store_id,business_id,role,state,capabilities)
                    VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT(user_id,store_id) DO UPDATE SET

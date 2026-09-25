@@ -90,9 +90,7 @@ class ReportsRepository:
         from backend.shiftly.identity.accounts_core import policy_lock
         with self.connect() as connection:
             policy_lock(connection)
-            accounts.resolve_actor(token, connection=connection, capability="reports.view")
-            stores = accounts.authorized_stores(token, connection=connection, capability="reports.view")
-            store_ids = [item["storeId"] for item in stores]
+            actor = accounts.resolve_actor(token, connection=connection, capability="reports.view")
             return connection.execute(
                 """SELECT r.id, r.employee, r.shift, r.notes, r.created_at,
                           j.status, j.last_error, b.summary, b.wins, b.risks, b.follow_up,
@@ -100,7 +98,7 @@ class ReportsRepository:
                    FROM reports r JOIN briefing_jobs j ON j.report_id = r.id
                    JOIN stores s ON s.id = r.store_id
                    LEFT JOIN briefings b ON b.report_id = r.id
-                   WHERE r.store_id = ANY(%s) ORDER BY r.created_at DESC""", (store_ids,),
+                   WHERE r.store_id = %s ORDER BY r.created_at DESC""", (actor.store_id,),
             ).fetchall()
 
     @contextmanager

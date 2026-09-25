@@ -14,11 +14,12 @@ export function TeamScreen() {
 }
 function TeamList({ data, changed }: AdminContext) {
   const router = useRouter();
+  const { actor } = useSession();
   const [search, setSearch] = useState('');
   const members = data.members.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.toLowerCase()));
   return <><Columns><Column><Card><Heading>Build your team</Heading><Body>Give each person their own sign-in and the access they need at this store.</Body>
     <Button title="Invite a new person" icon="person-add-outline" disabled={!data.roles.some(role => role.role !== 'admin')} onPress={() => router.push('/team/invite')} />
-    <Button title="Add an existing account" variant="secondary" disabled={!data.roles.length} onPress={() => router.push('/team/assign')} />
+    <Button title="Add an existing account" variant="secondary" disabled={!data.roles.length || !['owner', 'admin'].includes(actor?.role || '')} onPress={() => router.push('/team/assign')} />
   </Card></Column><Column><Card><Heading>Store access</Heading><Body>Changing a membership ends that person's current sessions at this store. Business owners retain access through their business role.</Body>
     {data.isOwner ? <Button title="Open owner workspace" variant="secondary" icon="shield-checkmark-outline" onPress={() => router.push('/owner')} /> : null}
   </Card></Column></Columns>
@@ -39,18 +40,17 @@ function InviteForm({ data, storeName }: AdminContext) {
   const { request } = useSession();
   const router = useRouter();
   const task = useTask();
-  const choices = data.roles.filter(choice => choice.role !== 'admin');
+  const choices = data.roles.filter(choice => choice.role === 'crew');
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState(choices[0]?.role || '');
-  const [grants, setGrants] = useState<string[]>([]);
+  const role = 'crew';
   const [reason, setReason] = useState('');
   const [invitation, setInvitation] = useState<Invitation | null>(null);
-  useSensitiveForm(() => { setInvitation(null); setUsername(''); setName(''); setReason(''); setGrants([]); });
+  useSensitiveForm(() => { setInvitation(null); setUsername(''); setName(''); setReason(''); });
   const choice = choices.find(item => item.role === role);
   const submit = () => confirmChange(`Invite @${username.trim()}?`, `${roleLabels[role]} access at ${storeName}. The invitation expires in 24 hours.`, () => {
     void task.run(() => request<Invitation>('/accounts/invitations', { method: 'POST', uncertainMessage: accountChangeUncertain, body: {
-      username: username.trim(), displayName: name.trim(), role, capabilities: grants, storeId: data.storeId, expiresIn: 86400, reason,
+      username: username.trim(), displayName: name.trim(), role: 'crew', capabilities: [], storeId: data.storeId, expiresIn: 86400, reason,
     } }), setInvitation);
   });
   if (invitation) return <InvitationResult invitation={invitation} username={username.trim()} onDismiss={() => { setInvitation(null); router.replace('/team'); }} />;
@@ -59,8 +59,8 @@ function InviteForm({ data, storeName }: AdminContext) {
     <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} maxLength={80} editable={!task.pending} />
     <Field label="Display name" value={name} onChangeText={setName} maxLength={120} editable={!task.pending} />
     <Reason value={reason} onChange={setReason} disabled={task.pending} />
-  </Card></Column><Column><Card><Roles choices={choices} value={role} disabled={task.pending} onChange={value => { setRole(value); setGrants([]); }} />
-    {choice ? <Permissions included={choice.included} optional={choice.optional} value={grants} onChange={setGrants} disabled={task.pending} /> : null}
+  </Card></Column><Column><Card><Heading>Crew first</Heading>
+    <Body>Every invitation creates an individual crew account at this store. After activation, an administrator can promote them to manager or change their permissions.</Body>
     <Button title="Create invitation" loading={task.pending} disabled={!username.trim() || !choice} onPress={submit} />
   </Card></Column></Columns></>;
 }
@@ -84,7 +84,7 @@ function MembershipForm({ data, storeName, changed, member }: AdminContext & { m
   const [reason, setReason] = useState('');
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   useSensitiveForm(() => { setInvitation(null); setReason(''); setUser(''); setGrants([]); });
-  const choices = data.roles.filter(choice => choice.role !== 'admin' || !member || (member.businessRole === 'admin' && member.businessState === 'active'));
+  const choices = data.roles.filter(choice => (member?.accountState !== 'pending' || choice.role === 'crew') && (choice.role !== 'admin' || !member || (member.businessRole === 'admin' && member.businessState === 'active')));
   const choice = choices.find(item => item.role === role);
   const userId = member?.userId ?? accountId(user);
   const name = member ? `@${member.username}` : `account ${userId}`;
@@ -100,7 +100,7 @@ function MembershipForm({ data, storeName, changed, member }: AdminContext & { m
   return <><Notice message={task.error} kind="error" /><Columns><Column><Card>
     <Heading>{member?.displayName || 'An account they already use'}</Heading>
     {member ? <><Body muted>@{member.username} · Account ID {member.userId}</Body><Pill label={accountState(member, member.membershipState)} /></>
-      : <><Body>Ask the person for their Account ID, shown on their Account screen. Their password stays the same. Activate pending invitations before adding another store.</Body>
+      : <><Body>Ask the person for their Account ID, shown on their Account screen. Their password stays the same. Crew and managers can belong to one store. An administrator must remove their previous store membership before a transfer.</Body>
         <Field label="Account ID" value={user} onChangeText={setUser} keyboardType="number-pad" maxLength={16} editable={!task.pending} />
         {data.isOwner && data.directory.filter(person => person.userId !== actor?.userId && person.accountState === 'active' && !data.members.some(item => item.userId === person.userId)).map(person =>
           <Button key={person.userId} title={`Choose ${person.displayName} (@${person.username})`} variant="secondary" disabled={task.pending} onPress={() => setUser(String(person.userId))} />)}
@@ -112,7 +112,7 @@ function MembershipForm({ data, storeName, changed, member }: AdminContext & { m
     setRole(value); setGrants(roleGrants(choices.find(item => item.role === value), grants));
   }} />
     {role === 'admin' ? <Body muted>Administrator access also requires an active business delegation with matching permissions. An owner sets that in the owner workspace.</Body> : null}
-    {choice ? <Permissions included={choice.included} optional={choice.optional} value={grants} onChange={setGrants} disabled={task.pending} /> : null}
+    {choice && member?.accountState !== 'pending' ? <Permissions included={choice.included} optional={choice.optional} value={grants} onChange={setGrants} disabled={task.pending} /> : null}
     <Button title={member?.membershipState === 'revoked' ? 'Restore store access' : 'Save store access'} loading={task.pending}
       disabled={!userId || userId === actor?.userId || !choice} onPress={() => save(true)} />
     {member?.membershipState === 'active' ? <Button title="Remove store access" variant="danger" disabled={task.pending || !choice} onPress={() => save(false)} /> : null}

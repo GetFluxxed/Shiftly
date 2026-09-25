@@ -43,6 +43,8 @@ async def accounts_route(operation: str, request: Request, context: AppContext =
         fields = await bounded_json(request, max_body=20_000, invalid_message="Invalid account request.")
         if operation == "login":
             return native_session(await call(accounts.login_payload, fields, client_key=client_key(request)))
+        if operation == "invitation-details":
+            return await call(accounts.invitation_details, fields.get("token"), client_key=client_key(request))
         if operation == "activate":
             return native_session(await call(accounts.activate_invitation, fields.get("token"), fields.get("password"),
                                              client_key=client_key(request)))

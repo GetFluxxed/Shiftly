@@ -79,7 +79,7 @@ def denied(code,call):
 
 
 def test_invitation_activation_token_hash_and_single_use(life):
-    result=life.service.invite(life.manager_token,username='New Crew',capabilities=['counts.submit'])
+    result=life.service.invite(life.manager_token,username='New Crew')
     assert result['token'] not in repr(result)
     with life.connect() as connection:
         row=connection.execute('SELECT token_hash FROM account_invitations WHERE user_id=%s',(result['userId'],)).fetchone()
@@ -122,7 +122,7 @@ def test_revoking_inviter_authority_blocks_pending_activation(life):
 
 
 def test_manager_allowed_crew_grants_cannot_promote_or_modify_manager(life):
-    life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',capabilities=['counts.submit','inventory.view'])
+    denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',capabilities=['counts.submit','inventory.view']))
     denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',capabilities=['counts.approve']))
     denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='manager'))
     other=life.user('Second Manager')
@@ -143,16 +143,15 @@ def test_admin_delegation_is_store_scoped_and_cannot_overgrant(life):
     denied('forbidden',lambda:life.service.set_business_membership(token,user_id=life.crew,role='owner'))
 
 
-def test_local_membership_revocation_preserves_other_store_and_global_credentials(life):
-    life.membership(life.crew,life.stores[2],'manager')
+def test_staff_transfer_requires_removal_then_preserves_individual_credentials(life):
     local_token=life.token(life.crew,life.stores[0])
-    foreign_token=life.token(life.crew,life.stores[2])
-    life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',active=False)
+    denied('conflict',lambda:life.service.set_membership(life.owner_token,user_id=life.crew,role='manager',store_id=life.stores[1]))
+    life.service.set_membership(life.owner_token,user_id=life.crew,role='crew',active=False)
     denied('unauthenticated',lambda:life.service.resolve_actor(local_token))
-    assert life.service.resolve_actor(foreign_token).role=='manager'
-    assert life.service.login('store3','Crew One','original-password',client_key='foreign').response['authenticated']
-    denied('forbidden',lambda:life.service.suspend_user(life.manager_token,user_id=life.crew))
-    denied('forbidden',lambda:life.service.suspend_user(life.owner_token,user_id=life.crew))
+    life.service.set_membership(life.owner_token,user_id=life.crew,role='manager',store_id=life.stores[1])
+    session=life.service.login(None,'Crew One','original-password',client_key='transferred')
+    assert life.service.resolve_actor(session.token).store_id==life.stores[1]
+    denied('forbidden',lambda:life.service.switch_store(session.token,life.stores[0]))
 
 
 def test_owner_global_suspension_requires_all_scopes_and_revokes_sessions(life):
@@ -241,7 +240,7 @@ def test_audit_failure_rolls_back_membership_and_session_revocation(life,monkeyp
         raise RuntimeError('injected audit failure')
     monkeypatch.setattr(life.service,'_audit',fail)
     with pytest.raises(RuntimeError):
-        life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',active=False)
+        life.service.set_membership(life.owner_token,user_id=life.crew,role='crew',active=False)
     assert life.service.resolve_actor(crew_token).user_id==life.crew
 
 
@@ -338,3 +337,49 @@ def test_limited_admin_cannot_demote_manager_outside_delegation(life):
     token=life.token(admin,life.stores[0])
     denied('forbidden',lambda:life.service.set_membership(token,user_id=life.manager,role='crew',active=False))
     assert life.service.resolve_actor(life.manager_token).role=='manager'
+
+@pytest.mark.parametrize('role,grants', [('manager',[]),('admin',[]),('owner',[]),('crew',['inventory.view']),('crew',['memberships.manage'])])
+def test_invitation_never_assigns_privileges(life,role,grants):
+    denied('forbidden',lambda:life.service.invite(life.owner_token,username='Tampered',role=role,capabilities=grants))
+    with life.connect() as c:
+        assert not c.execute("SELECT 1 FROM account_users WHERE username='Tampered'").fetchone()
+
+
+def test_preview_does_not_consume_and_promotion_requires_activation(life):
+    invite=life.service.invite(life.owner_token,username='Individual Account')
+    assert life.service.invitation_details(invite['token'],client_key='preview')['username']=='Individual Account'
+    denied('conflict',lambda:life.service.set_membership(life.owner_token,user_id=invite['userId'],role='manager'))
+    session=life.service.activate_invitation(invite['token'],'personal-password',client_key='accept')
+    assert life.service.resolve_actor(session.token).role=='crew'
+    denied('invalid',lambda:life.service.invitation_details(invite['token'],client_key='used'))
+    denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=invite['userId'],role='crew'))
+    life.service.set_membership(life.owner_token,user_id=invite['userId'],role='manager')
+    denied('unauthenticated',lambda:life.service.resolve_actor(session.token))
+    promoted=life.service.login_payload({'username':'Individual Account','password':'personal-password','role':'owner','storeId':life.stores[1]},client_key='personal-login')
+    actor=life.service.resolve_actor(promoted.token)
+    assert actor.role=='manager' and actor.store_id==life.stores[0]
+    denied('forbidden',lambda:life.service.switch_store(promoted.token,life.stores[1]))
+    denied('forbidden',lambda:life.service.resolve_actor(promoted.token,store_id=life.stores[1]))
+
+
+def test_ambiguous_staff_assignments_fail_closed_even_with_old_sessions(life):
+    before=life.token(life.manager,life.stores[0])
+    life.membership(life.manager,life.stores[1],'manager')
+    denied('forbidden',lambda:life.service.resolve_actor(before))
+    denied('forbidden',lambda:life.service.login(None,'Manager One','original-password',client_key='ambiguous'))
+    life.service.set_membership(life.owner_token,user_id=life.manager,role='manager',active=False,store_id=life.stores[1])
+    assert life.service.resolve_actor(before).store_id==life.stores[0]
+
+
+def test_concurrent_second_store_assignments_cannot_give_staff_two_stores(life):
+    unassigned=life.user('One Store Only')
+    def assign(sid):
+        try:
+            life.service.set_membership(life.owner_token,user_id=unassigned,role='manager',store_id=sid)
+            return 'assigned'
+        except IdentityError as error:
+            return error.code
+    with ThreadPoolExecutor(2) as pool:
+        assert sorted(pool.map(assign,life.stores[:2]))==['assigned','conflict']
+    with life.connect() as c:
+        assert c.execute("SELECT count(*) FROM account_store_memberships WHERE user_id=%s AND state='active'",(unassigned,)).fetchone()[0]==1

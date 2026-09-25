@@ -28,7 +28,7 @@ def inventory(isolated_database):
                             (username,username,password_hash('inventory-password','test'))).fetchone()[0]
             users[username] = uid
             company = companies[1 if username=='foreign' else 0]
-            for sid in ([stores[2]] if username=='foreign' else stores[:2]):
+            for sid in ([stores[2]] if username=='foreign' else stores[:2] if username in ('owner','delegate') else stores[:1]):
                 c.execute('INSERT INTO account_store_memberships(user_id,store_id,business_id,role,capabilities) VALUES(%s,%s,%s,%s,%s)',(uid,sid,company,role,grants))
             if username in ('owner','foreign','delegate'):
                 c.execute('INSERT INTO business_memberships(user_id,business_id,role,capabilities) VALUES(%s,%s,%s,%s)',

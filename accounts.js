@@ -125,13 +125,13 @@
     if (member.userId === state.actor.userId) return false;
     if (state.actor.role === 'owner') return true;
     if ((member.businessState === 'active' && ['owner', 'admin'].includes(member.businessRole)) || member.role === 'admin') return false;
-    if (state.actor.role === 'manager') return member.role === 'crew';
+    if (state.actor.role === 'manager') return false;
     const effective = member.role === 'manager' ? [...managerDefaults, ...member.capabilities] : ['reports.submit', ...member.capabilities];
     return effective.every(can);
   }
   function showInvitation(result, username) {
-    $('#invitation-code').value = result.token;
-    $('#invitation-message').textContent = `For ${username}. Expires in ${Math.round(result.expiresIn / 3600)} hours. Give this code only to the intended account holder.`;
+    $('#invitation-code').value = `${window.location.origin}/activate.html#invitation=${encodeURIComponent(result.token)}`;
+    $('#invitation-message').textContent = `For ${username}. Expires in ${Math.round(result.expiresIn / 3600)} hours. Share this single-use link only with the intended account holder.`;
     $('#invitation-result').classList.remove('hidden');
     $('#invitation-code').focus();
   }
@@ -163,16 +163,17 @@
     $('#operations-link').classList.toggle('hidden', home(actor) === '/accounts.html');
     $('#inventory-link').classList.toggle('hidden', !can('inventory.view'));
     $('#store-select').innerHTML = state.stores.map((item) => `<option value="${item.storeId}" ${item.storeId === actor.storeId ? 'selected' : ''}>${esc(item.storeName)}</option>`).join('');
-    $('#store-form').classList.remove('hidden');
+    $('#store-form').classList.toggle('hidden', !['owner', 'admin'].includes(actor.role) || state.stores.length < 2);
     $('#switch-store').classList.toggle('hidden', state.stores.length < 2);
     $('#team-content').classList.toggle('hidden', !can('memberships.manage'));
     $('#refresh-team').classList.toggle('hidden', !can('memberships.manage'));
     $('#owner-section').classList.toggle('hidden', actor.role !== 'owner' || !can('memberships.manage'));
     $('#team-panel').textContent = can('memberships.manage') ? '' : 'Your current role does not include team administration. Ask your store manager if your access needs to change.';
     if (can('memberships.manage')) {
-      ['invite-role', 'existing-member-role'].forEach((id) => roleOptions($(`#${id}`)));
+      roleOptions($('#existing-member-role'));
+      $('#invite-role').innerHTML = '<option value="crew">Crew member</option>';
       roleOptions($('#member-role'), true);
-      permissions($('#invite-capabilities'), $('#invite-role').value);
+      $('#invite-capabilities').textContent = 'After activation, an administrator can change their role and permissions.';
       permissions($('#existing-member-capabilities'), $('#existing-member-role').value);
       permissions($('#business-capabilities'), 'admin');
       $('#business-capabilities').classList.toggle('hidden', $('#business-role').value === 'owner');
@@ -210,9 +211,9 @@
     event.preventDefault();
     action('#team-status', async () => {
       const username = $('#invite-username').value.trim();
-      const result = await request('invitations', { username, displayName: $('#invite-display-name').value.trim(), role: $('#invite-role').value, capabilities: selectedPermissions('#invite-capabilities'), storeId: state.actor.storeId });
+      const result = await request('invitations', { username, displayName: $('#invite-display-name').value.trim(), role: 'crew', capabilities: [], storeId: state.actor.storeId });
       $('#invite-form').reset();
-      permissions($('#invite-capabilities'), $('#invite-role').value);
+      $('#invite-capabilities').textContent = 'After activation, an administrator can change their role and permissions.';
       await loadTeam();
       showInvitation(result, username);
       message('#team-status', 'Invitation created. The person chooses their own password when activating.');
@@ -313,13 +314,7 @@
       message('#owner-status', suspended ? 'Account suspended.' : 'Account restored. They can sign in again.');
     });
   });
-  $('#cutover-button').addEventListener('click', () => {
-    if (!window.confirm('Disable shared crew sign-in for this store? Existing shared sessions will end immediately. Every crew member will need an activated individual account.')) return;
-    action('#owner-status', async () => {
-      await request('cutover', { storeId: state.actor.storeId, reason: 'Owner confirmed individual crew sign-in cutover' });
-      message('#owner-status', 'Shared crew sign-in is disabled for this store. Individual accounts continue to work.');
-    });
-  });
+
   async function refreshOnFocus() {
     if (busy || refreshing) return;
     refreshing = true;
