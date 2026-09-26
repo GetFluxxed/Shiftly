@@ -1,5 +1,7 @@
 # Shiftly inventory module specification
 
+Current delivery contract (2026-09-25): [native current inventory and reviewed counts](workstreams/inventory-counts.md). Its bounded first release takes precedence over the later receiving, camera and forecasting requirements below.
+
 Status: first catalog/shelf slice implemented, 2026-09-23. Delivery order is
 controlled by [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). This remains the
 broader specification; only the slice below is implemented. Quantities, camera

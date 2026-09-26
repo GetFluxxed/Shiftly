@@ -12,6 +12,12 @@ services [PR #9](https://github.com/GetFluxxed/Shiftly/pull/9). That integration
 588 passing tests and recovery rehearsals describe the starting backend/browser
 baseline. They do not establish native device readiness.
 
+**Inventory update — 2026-09-25:** The next approved native slice adds current
+inventory, server-saved whole-store counts, review/finalization and history.
+See [the inventory count contract](workstreams/inventory-counts.md). This includes
+migration 017 and reuses existing count-entry and count-approval permissions.
+Camera/scale automation, fully offline counting and forecasts remain later phases.
+
 ## Adopted architecture
 
 | Layer | Responsibility |

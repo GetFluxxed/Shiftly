@@ -6,6 +6,9 @@ import { Alert, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { InventoryScreen } from '../../src/screens/InventoryScreen';
 import { CatalogScreen, NewProductScreen, ProductScreen } from '../../src/inventory/CatalogScreens';
+import { StockScreen, StockDetailScreen } from '../../src/inventory/counts/StockScreens';
+import { CountsScreen, CountSessionScreen, CountReviewScreen, CountHistoryScreen } from '../../src/inventory/counts/CountScreens';
+import { CountEntryScreen } from '../../src/inventory/counts/CountEntryScreen';
 import { ShelvesScreen, ShelfScreen } from '../../src/inventory/ShelfScreens';
 import { createTransport } from '../../src/api/client';
 import { SessionController } from '../../src/session/controller';
@@ -34,7 +37,9 @@ function App() {
  const ctx=React.useMemo(()=>({go,params:route.params,setParams:()=>{}}),[go,route.params]);
  if(snapshot.status!=='ready') return <div>Workspace {snapshot.status}</div>;
  const Screen=({'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,
-   '/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen} as Record<string,React.ComponentType>)[route.path]!;
+   '/stock':StockScreen,'/stock/[productId]':StockDetailScreen,'/counts':CountsScreen,
+   '/counts/[countId]':CountSessionScreen,'/counts/[countId]/review':CountReviewScreen,'/counts/history':CountHistoryScreen,
+   '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen} as Record<string,React.ComponentType>)[route.path]!;
  return <SessionContext.Provider value={controller}><SafeAreaProvider><RouterContext.Provider value={ctx}>
    <Screen key={`${route.path}:${JSON.stringify(route.params)}:${snapshot.revision}`} />
  </RouterContext.Provider></SafeAreaProvider></SessionContext.Provider>;

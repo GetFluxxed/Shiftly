@@ -7,6 +7,7 @@ from backend.shiftly.api.compat import router as compat_router
 from backend.shiftly.api.accounts import router as accounts_router
 from backend.shiftly.api.mobile import router as mobile_router
 from backend.shiftly.api.inventory import router as inventory_router
+from backend.shiftly.api.counts import router as counts_router
 from backend.shiftly.core.dependencies import (
     AppContext,
     ConnectionFactory,
@@ -73,6 +74,7 @@ def create_app(
     app.include_router(accounts_router)
     app.include_router(mobile_router)
     app.include_router(inventory_router)
+    app.include_router(counts_router)
     app.include_router(compat_router)
     app.include_router(static_router)
     return app

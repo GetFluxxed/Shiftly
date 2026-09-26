@@ -1,6 +1,6 @@
 # Shiftly implementation plan
 
-Updated: 2026-09-20. Baseline inspected: `53fdd36` on `main`.
+Updated: 2026-09-25. Current implementation baseline: `f9a7c9d` (individual accounts). The original `53fdd36` baseline below is historical.
 
 **Verification update — 2026-09-21:** PRs #1–#7 are merged through `e01e84e`.
 Services, FastAPI compatibility, durable worker and migration commands are now
@@ -25,13 +25,13 @@ features that already exist. Product rules and worked inventory examples are in
 [ARCHITECTURE.md](ARCHITECTURE.md); executable work packages are in
 [TASKS.md](TASKS.md).
 
-**Current delivery — 2026-09-23:** Native accounts/reporting and account management
-are implemented in the active worktree. The [shared company catalog and first shelf](workstreams/inventory-foundation-and-shared-catalog.md)
-are also implemented: one company catalog reused across store listings and shelf
-placements, with additive migration 015 and native screens. This completes the
-bounded product/SKU storage and shelf-assignment slice; quantities, conversions
-and camera work follow. Historical F0/F1 instructions below are evidence,
-not a request to repeat completed work.
+**Current delivery — 2026-09-25:** Individual accounts, single-use invitations,
+store-scoped staff access, the shared company catalog, shelves, and standard
+container amounts are implemented through migration 016. The next approved
+module is native current inventory, saved whole-store counts, review/finalization,
+and immutable count history. See the [count implementation contract](workstreams/inventory-counts.md).
+This supersedes the older requirement to finish pars, nested locations, receiving,
+or camera processing before delivering usable stock counts.
 
 ## 1. Intended outcome
 
@@ -79,8 +79,8 @@ The inventory workspace will let a manager:
 | Decision | Direction |
 | --- | --- |
 | Application architecture | One modular application with a FastAPI API and separately supervised durable workers |
-| Existing functionality | Preserve current URLs, cookie behavior, data, and browser workflows during migration |
-| Inventory navigation | Manager window → Inventory; dedicated workspace with a return path to manager operations |
+| Existing functionality | Preserve data and current individual-account workflows; retired shared/public signup flows are intentionally unsupported |
+| Inventory navigation | Native Inventory tab → Current inventory / Count inventory / History, with catalog and shelves alongside |
 | First client | React Native + Expo phone/tablet app first; keep the existing browser application during migration, without a separate React web rewrite |
 | First stock entry method | Manual counts, receipts, and partial weights establish the trusted workflow before vision automation |
 | Camera results | Proposals that require review; photos cannot directly post stock changes |
@@ -139,14 +139,14 @@ staging cutover and rollback both succeed.
 
 1. Add manager navigation between **Operations** and **Inventory**, an explicit
    selected store, phone-friendly layouts, and persistent deep links.
-2. Require identifiable individual accounts for inventory actions. Move manager
-   authentication toward store + username + password through a documented
-   compatibility transition. Add membership lifecycle, revocation, and an audit
-   trail before permitting stock approvals.
+2. Completed: require individual username/password accounts with single-use crew
+   invitations and administrator-controlled access. Staff belong to one store;
+   owners/admins switch only within authorized scope. Public signup and shared
+   accounts are retired. Membership revocation and audit precede stock approvals.
 3. Define inventory view, count, approve, adjust, configure, and receive
    permissions. Initially grant these to authorized managers; additional stock
-   counters can be added with narrower permissions. Shared crew sessions receive
-   no inventory access by default.
+   counters can be added with narrower permissions. Crew accounts receive
+   only explicitly delegated inventory access.
 4. Implement item catalog, base units, pack conversions, required weight
    references for weighed items, supplier identifiers, and archive/version rules.
 5. Implement store → area → rack → shelf → bin locations, shelf assignments and
@@ -158,24 +158,40 @@ staging cutover and rollback both succeed.
 and shelves, and update pars; unauthorized users and other stores are excluded;
 historical records survive configuration edits.
 
-### Phase 3 — Running inventory and partial-weight counts
+### Phase 3 — Current inventory and reviewed counts (current implementation)
 
-1. Implement an append-only movement history for opening balances, receipts,
-   usage, waste, transfers, count adjustments, and reversals. Update its balance
-   projection in the same database transaction.
-2. Deliver the digital tracker, showing base quantity, package equivalents,
-   sealed/open breakdown where known, par gap, location, last physical count,
-   last change, and whether a displayed value is measured or estimated.
-3. Add count sessions with explicit scope, complete/partial coverage, draft
-   observations, review, version checks, atomic approval, and correction history.
-4. Add open-container weighing, tare deduction, unit conversion, multiple partial
-   containers, measurement timestamps, and versioned full-content weight profiles.
-5. Add manual receipt entry now; scanning remains a later acceleration of this
-   same receipt service. Add idempotency for retries and concurrent-write tests.
+1. **Current inventory:** native phone/tablet view of the last finalized quantity
+   per store product, alphabetical search, shelf filters, shelf breakdown, and
+   count date. Unknown balances remain unknown. New counts do not change this view.
+2. **Saved count sessions:** one open full-store count at a time, snapshotting
+   store products, shelf placements, previous balances and container references.
+   Start entries as uncounted; zero is explicit. Save each entry to the server and
+   resume it later. Count full containers plus a combined net partial in g/kg, or
+   enter a measured total. Include store products without a shelf assignment.
+3. **Review/finalization:** require every location entry, show previous/current
+   quantities and differences, and establish the first count as an opening
+   balance. Freeze submitted entries for review. Existing `counts.submit` and
+   `counts.approve` permissions separate counting from posting. Update stock and
+   append immutable posting history in one idempotent transaction; reject stale
+   edits, changed configuration and changed baselines.
+4. **History:** retain finalized counts, original quantities/units and reference
+   versions, people, business date and observation timestamps. Later catalog
+   edits never reinterpret history. Corrections use a new count.
+5. **Next stock phase:** receipts, waste, transfers and reasoned corrections extend
+   the same store/product stock records and history. Count differences are stock
+   changes, not inferred consumption. Add partial counts, concurrent counting
+   scopes and resilient offline queues only with explicit reconciliation.
+6. **Future analysis:** use frequent observations and stock events to derive
+   ingredient usage; evaluate forecasts before an LLM explains daily/weekly
+   patterns and recommends production. No automated stock changes by an LLM.
 
-**Exit gate:** the sealed-plus-partial worked example in [INVENTORY.md](INVENTORY.md)
-passes; repeat approval and repeated weighing do not add stock twice; concurrent
-receipts/counts require a safe reconciliation; balances can be rebuilt from history.
+**Exit gate:** two 6 kg containers plus a 1,250 g partial post 13.25 kg. Draft,
+missing, cancelled and review-only counts leave stock unchanged. Duplicate posting
+cannot double-count. History, scope isolation and existing inventory survive
+migration, restart and backup/restore. Native phone/tablet journeys work end to end.
+Final posting requires server confirmation. The first slice uses server-saved
+drafts and manual net weights; full offline counting, tare automation, photos,
+scale integrations, receiving and forecasting remain subsequent modules.
 
 ### Phase 4 — Phone camera and shelf-assisted counting
 

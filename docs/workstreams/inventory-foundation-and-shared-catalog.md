@@ -1,6 +1,7 @@
 # Inventory foundation and shared company catalog
 
-Updated: 2026-09-23. This is the current entry point for the implemented first inventory slice.
+Updated: 2026-09-25. This describes the implemented catalog and shelf foundation.
+The next approved slice is [native current inventory and reviewed counts](inventory-counts.md).
 It follows the [architecture audit](architecture-bloat-audit-2026-09-23.md) and
 supersedes older instructions to repeat F0/F1 or start a mobile-web client.
 
@@ -18,7 +19,8 @@ Migration 016 adds full-container amounts and alphabetical catalog pagination;
 migrations 001–015 remain unchanged. Catalog add/edit/archive/restore,
 shelf create/rename and product assignment/removal are available.
 
-Import jobs, stock quantities, store-listing deactivation, shelf deletion,
+Stock quantities and server-saved counts are implemented in the separate count
+module described above. Import jobs, store-listing deactivation, shelf deletion,
 area/rack/bin hierarchy and photo processing are not implemented. Hosted FastAPI
 cutover, worker/provider extraction, large-team query optimization and physical
 device acceptance remain separate work at their audit gates.

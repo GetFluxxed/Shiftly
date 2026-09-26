@@ -530,6 +530,11 @@ def rehearse():
         finally:
             stop_process(legacy)
 
+        from backend.shiftly.inventory.counts.rehearsal import seed_count, verify_count
+        account_token = manager_cookie.split('=', 1)[1]
+        stock_evidence = seed_count(lambda: psycopg.connect(source_dsn), account_token)
+        verify_count(lambda: psycopg.connect(source_dsn), account_token, stock_evidence)
+
         # Stop activity before comparing a consistent archive, including sessions.
         stop_process(worker)
         stop_process(api)
@@ -541,6 +546,7 @@ def rehearse():
         )
         if snapshot(restore_dsn) != before_restore:
             raise RuntimeError("Restored rows, sequences or foreign keys do not match the backup source.")
+        verify_count(lambda: psycopg.connect(restore_dsn), account_token, stock_evidence)
         restored_port = free_port()
         restored_api = start_process("api", restore_env, restored_port)
         try:
@@ -560,6 +566,7 @@ def rehearse():
             "API and independent worker", "SIGKILL and fenced lease recovery", "worker health",
             "database outage and reconnect", "legacy rollback with original sessions/reports",
             "archive restore: all rows, sequences and foreign keys", "restored API login and reports",
+            "restored exact stock, original partial weights and resumable count draft",
         ], "archiveBytes": archive_bytes, "tablesCompared": len(before_restore["rows"]),
             "sequencesCompared": len(before_restore["sequences"]),
             "foreignKeysCompared": len(before_restore["foreign_keys"])}))
