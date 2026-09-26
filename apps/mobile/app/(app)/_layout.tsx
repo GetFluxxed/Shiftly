@@ -40,5 +40,7 @@ export default function AppLayout() {
     <Tabs.Screen name="owner" options={{ href: null }} />
     <Tabs.Screen name="catalog" options={{ href: null }} />
     <Tabs.Screen name="shelves" options={{ href: null }} />
+    <Tabs.Screen name="counts" options={{ href: null }} />
+    <Tabs.Screen name="stock" options={{ href: null }} />
   </Tabs>;
 }

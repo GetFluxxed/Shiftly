@@ -36,5 +36,5 @@ def inventory(isolated_database):
     tokens = {name: accounts.login('foreign' if name=='foreign' else 'first', name, 'inventory-password', client_key=name).token for name in users}
     second = accounts.login('second','owner','inventory-password',client_key='second').token
     with TestClient(app) as client:
-        yield SimpleNamespace(service=service, accounts=accounts, client=client, tokens=tokens, second=second,
+        yield SimpleNamespace(counts=app.state.context.services.counts, service=service, accounts=accounts, client=client, tokens=tokens, second=second,
                               stores=stores, companies=companies, users=users, connect=connect)
