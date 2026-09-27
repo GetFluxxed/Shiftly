@@ -244,14 +244,23 @@ class AccountLifecycle:
     def _roster(connection, actor):
         rows = connection.execute(
             """SELECT u.id,u.username,u.display_name,u.state,m.role,m.state,m.capabilities,
-                      b.role,b.state,COALESCE(b.capabilities,ARRAY[]::TEXT[])
+                      b.role,b.state,COALESCE(b.capabilities,ARRAY[]::TEXT[]),sign_ins.last_sign_in_at
                FROM account_store_memberships m JOIN account_users u ON u.id=m.user_id
                LEFT JOIN business_memberships b ON b.user_id=u.id AND b.business_id=%s
-               WHERE m.store_id=%s ORDER BY u.username_key,u.id""", (actor.business_id,actor.store_id),
+               LEFT JOIN (
+                   SELECT CASE WHEN action='session.login' THEN actor_user_id ELSE subject_user_id END AS user_id,
+                          MAX(created_at) AS last_sign_in_at
+                   FROM account_audit WHERE store_id=%s AND action IN ('session.login','account.activated')
+                   GROUP BY 1
+               ) sign_ins ON sign_ins.user_id=u.id
+               WHERE m.store_id=%s
+               ORDER BY sign_ins.last_sign_in_at DESC NULLS LAST,u.username_key,u.id""",
+            (actor.business_id,actor.store_id,actor.store_id),
         ).fetchall()
         return {'storeId': actor.store_id, 'members': [dict(zip(
             ('userId','username','displayName','accountState','role','membershipState','capabilities',
-             'businessRole','businessState','businessCapabilities'), row)) for row in rows]}
+             'businessRole','businessState','businessCapabilities','lastSignInAt'),
+            (*row[:-1], row[-1].isoformat() if row[-1] else None))) for row in rows]}
 
     def set_membership(self, token, *, user_id, role, capabilities=(), active=True, store_id=None, reason=''):
         user_id, reason = self._id(user_id), self._reason(reason)

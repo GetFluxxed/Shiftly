@@ -40,7 +40,7 @@ def test_roster_preserves_local_role_and_exposes_selected_business_authority(ros
     assert rows[users['owner']]=={
         'userId':users['owner'],'username':'owner','displayName':'owner','accountState':'active',
         'role':'crew','membershipState':'active','capabilities':['counts.submit'],
-        'businessRole':'owner','businessState':'active','businessCapabilities':[],
+        'businessRole':'owner','businessState':'active','businessCapabilities':[], 'lastSignInAt':None,
     }
     delegated=rows[users['delegated']]
     assert delegated['role']=='crew' and delegated['businessRole']=='admin'
@@ -66,3 +66,34 @@ def test_roster_does_not_disclose_other_business_roles_or_unlisted_people(roster
     with pytest.raises(IdentityError) as denied:
         accounts.roster(token,store_id=foreign)
     assert denied.value.code=='forbidden'
+
+
+def test_recent_sign_ins_are_store_scoped_and_nulls_sort_last(roster_scope):
+    accounts,users,store,foreign,token=roster_scope
+    with db_connection() as connection:
+        for name,action,hour,sid in [
+            ('ordinary','session.login',3,store),('ordinary','session.login',1,store),
+            ('revoked','session.login',3,store),('delegated','session.login',2,store),
+            ('owner','account.activated',1,store),('foreign_owner','session.login',4,foreign),
+            ('private','session.login',5,store),('viewer','session.switch_store',6,store),
+        ]:
+            connection.execute(
+                "INSERT INTO account_audit(actor_user_id,subject_user_id,store_id,action,created_at) VALUES(%s,%s,%s,%s,%s)",
+                (None if action=='account.activated' else users[name], users[name] if action=='account.activated' else None,
+                 sid,action,f'2026-09-25 {hour:02d}:00:00+00'),
+            )
+    rows=accounts.roster(token)['members']
+    assert [row['username'] for row in rows]==['ordinary','revoked','delegated','owner','foreign_owner','viewer']
+    assert rows[0]['lastSignInAt']=='2026-09-25T03:00:00+00:00'
+    assert rows[3]['lastSignInAt']=='2026-09-25T01:00:00+00:00'
+    assert all(row['lastSignInAt'] is None for row in rows[4:])
+    managed=accounts.management(token)['members']
+    assert [(row['userId'],row['lastSignInAt']) for row in managed]==[(row['userId'],row['lastSignInAt']) for row in rows]
+
+
+def test_session_refresh_and_rotation_do_not_fabricate_sign_in_dates(roster_scope):
+    accounts,users,store,_,token=roster_scope
+    with db_connection() as connection:
+        accounts._issue_session(connection,users['ordinary'],store)
+        connection.execute('UPDATE account_sessions SET last_seen_at=NOW()')
+    assert all(member['lastSignInAt'] is None for member in accounts.roster(token)['members'])

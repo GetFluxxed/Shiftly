@@ -1,11 +1,12 @@
 import React from 'react';
 import { Redirect, Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useWindowDimensions } from 'react-native';
+import { Alert, useWindowDimensions } from 'react-native';
 import { useSession } from '@/src/session/SessionProvider';
 import { Button, Card, Loading, Notice, Screen } from '@/src/ui/components';
 import { Text } from '@/src/ui/Typography';
 import { colors } from '@/src/ui/theme';
+import { canViewStore } from '@/src/accounts/navigation';
 
 export default function AppLayout() {
   const { status, actor, message, retry, signOut, busy, revision } = useSession();
@@ -16,7 +17,10 @@ export default function AppLayout() {
     subtitle="Your workspace will return once we can confirm your account access.">
     <Card><Notice message={message || 'Your connection is unavailable.'} />
       <Button title="Try again" onPress={() => { void retry(); }} loading={busy} />
-      <Button title="Sign out" variant="quiet" onPress={() => { void signOut(); }} disabled={busy} />
+      <Button title="Sign Out" variant="quiet" onPress={() => Alert.alert('Sign out of this device?', undefined, [
+        { text: 'Cancel Sign Out', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: () => { void signOut(); } },
+      ])} disabled={busy} />
     </Card></Screen>;
   const canReport = actor.capabilities.some((item) => item === 'reports.submit' || item === 'reports.view');
   const hasInventory = actor.capabilities.includes('inventory.view');
@@ -30,12 +34,16 @@ export default function AppLayout() {
       tabBarStyle: { backgroundColor: colors.card, borderColor: colors.line },
       tabBarItemStyle: { minHeight: 54, borderRadius: 16, marginHorizontal: 3, marginTop: 5, marginBottom: 3 },
     }}>
-    <Tabs.Screen name="today" options={{ title: 'Today', tabBarIcon: ({ color, size }) => <Ionicons name="sunny-outline" color={color} size={size} /> }} />
+    <Tabs.Screen name="today" options={{ title: 'Today', href: '/today',
+      tabBarIcon: ({ color, size }) => <Ionicons name="sunny-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="reports" options={{ title: 'Reports', href: canReport ? '/reports' : null,
       tabBarIcon: ({ color, size }) => <Ionicons name="reader-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="inventory" options={{ title: 'Inventory', href: hasInventory ? '/inventory' : null,
       tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" color={color} size={size} /> }} />
-    <Tabs.Screen name="accounts" options={{ title: 'Account', tabBarIcon: ({ color, size }) => <Ionicons name="person-circle-outline" color={color} size={size} /> }} />
+    <Tabs.Screen name="store" options={{ title: 'Store', href: canViewStore(actor.role) ? '/store' : null,
+      tabBarIcon: ({ color, size }) => <Ionicons name="storefront-outline" color={color} size={size} /> }} />
+    <Tabs.Screen name="accounts" options={{ title: 'Account', href: '/accounts',
+      tabBarIcon: ({ color, size }) => <Ionicons name="person-circle-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="team" options={{ href: null }} />
     <Tabs.Screen name="owner" options={{ href: null }} />
     <Tabs.Screen name="catalog" options={{ href: null }} />

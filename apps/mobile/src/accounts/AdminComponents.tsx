@@ -10,6 +10,7 @@ import { Body, Button, Card, Field, Heading, Loading, Notice, Screen, layout } f
 import { colors, permissionLabels, roleLabels } from '@/src/ui/theme';
 import { useResource } from '@/src/ui/useResource';
 import type { Invitation, Management, RoleChoice } from './types';
+import { canViewStore } from './navigation';
 
 export type AdminContext = { data: Management; storeName: string; changed: (message: string) => Promise<void> };
 export function AdministrationScreen({ title, ownerOnly = false, children }: {
@@ -23,7 +24,8 @@ export function AdministrationScreen({ title, ownerOnly = false, children }: {
   const storeName = stores.find(store => store.storeId === actor?.storeId)?.storeName || 'Current store';
   const mismatch = resource.data && (resource.data.storeId !== actor?.storeId || (ownerOnly && !resource.data.isOwner));
   return <Screen title={title} eyebrow={ownerOnly ? 'Owner workspace' : 'Team & access'} subtitle={storeName}>
-    <Button title="Back" icon="arrow-back" variant="quiet" onPress={() => router.canGoBack() ? router.back() : router.replace('/accounts')} />
+    <Button title={canViewStore(actor?.role) ? 'Back to Store' : 'Back to Account'} icon="arrow-back" variant="quiet"
+      onPress={() => router.replace(canViewStore(actor?.role) ? '/store' : '/accounts')} />
     <Notice message={notice} kind="success" />
     {!allowed ? <Card><Heading>Access is limited</Heading><Body>Your current account does not have permission to manage this area.</Body></Card>
       : resource.loading ? <Loading label="Checking team access…" />
