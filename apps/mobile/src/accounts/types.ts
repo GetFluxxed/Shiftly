@@ -5,6 +5,7 @@ export interface Person {
 }
 export interface TeamMember extends Person {
   role: string; membershipState: string; capabilities: string[]; canEdit: boolean; canReissue: boolean;
+  lastSignInAt: string | null;
 }
 export interface BusinessMember extends Person {
   canDelegate: boolean; canRevokeBusiness: boolean; canTransfer: boolean; canSuspend: boolean;

@@ -1,38 +1,105 @@
 import { accountChangeUncertain } from './requests';
 import React, { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Notice, Pill } from '@/src/ui/components';
-import { roleLabels } from '@/src/ui/theme';
+import { Text } from '@/src/ui/Typography';
+import { ActionGrid, ActionTile } from '@/src/ui/ActionGrid';
+import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Notice, Pill, layout } from '@/src/ui/components';
+import { colors, friendlyDate, roleLabels } from '@/src/ui/theme';
 import { useSession } from '@/src/session/SessionProvider';
 import { useTask } from '@/src/ui/useTask';
 import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 import { AdministrationScreen, confirmChange, InvitationResult, Permissions, Reason, Roles, type AdminContext } from './AdminComponents';
 import { accountId, accountState, roleGrants, type Invitation, type TeamMember } from './types';
 
-export function TeamScreen() {
-  return <AdministrationScreen title="Your people.">{context => <TeamList {...context} />}</AdministrationScreen>;
+function memberName(member: TeamMember) {
+  return member.displayName || member.username;
 }
-function TeamList({ data, changed }: AdminContext) {
+
+export function TeamScreen() {
+  return <AdministrationScreen title="Team members.">{context => <TeamMemberSelector {...context} />}</AdministrationScreen>;
+}
+
+function TeamMemberSelector({ data, changed }: AdminContext) {
   const router = useRouter();
   const { actor } = useSession();
+  const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState('');
-  const members = data.members.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.toLowerCase()));
-  return <><Columns><Column><Card><Heading>Build your team</Heading><Body>Give each person their own sign-in and the access they need at this store.</Body>
-    <Button title="Invite a new person" icon="person-add-outline" disabled={!data.roles.some(role => role.role !== 'admin')} onPress={() => router.push('/team/invite')} />
-    <Button title="Add an existing account" variant="secondary" disabled={!data.roles.length || !['owner', 'admin'].includes(actor?.role || '')} onPress={() => router.push('/team/assign')} />
-  </Card></Column><Column><Card><Heading>Store access</Heading><Body>Changing a membership ends that person's current sessions at this store. Business owners retain access through their business role.</Body>
-    {data.isOwner ? <Button title="Open owner workspace" variant="secondary" icon="shield-checkmark-outline" onPress={() => router.push('/owner')} /> : null}
-  </Card></Column></Columns>
-  <Button title="Refresh team" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Team refreshed.'); }} />
-  <Field label="Find a team member" value={search} onChangeText={setSearch} autoCorrect={false} />
-  {!members.length ? <Card><EmptyState icon="people-outline" title={search ? 'No matching people' : 'Your team starts here'} description="Invite a new person or add an existing account to this store." /></Card> : null}
-  {members.map(member => <Card key={member.userId}><Heading>{member.displayName || member.username}</Heading>
-    <Body muted>@{member.username} · {member.businessRole === 'owner' && member.businessState === 'active' ? 'Business owner' : roleLabels[member.role]}</Body>
-    <Pill label={accountState(member, member.membershipState)} />
-    {member.canEdit ? <Button title={`Manage ${member.displayName || member.username}`} variant="secondary" onPress={() => router.push({ pathname: '/team/[userId]', params: { userId: member.userId } })} />
-      : <Body muted>View only with your current account.</Body>}
-  </Card>)}</>;
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const members = data.members;
+  const matching = members.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const selected = members.find(member => member.userId === selectedId) || null;
+  const select = (member: TeamMember) => {
+    setSelectedId(member.userId);
+    setExpanded(false);
+    setSearch('');
+  };
+
+  return <View style={layout.gap}>
+    {actor?.role === 'admin' ? <Button title="Build your team" icon="person-add-outline" variant="secondary"
+      onPress={() => router.push('/team/build')} /> : null}
+    <Button title="Refresh team" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Team refreshed.'); }} />
+    {!members.length ? <Card><EmptyState icon="people-outline" title="Your team starts here"
+      description="Build your team to invite a new person or add an existing account to this store." /></Card> : <>
+      <View style={styles.selector}>
+        <Body muted>Most recent sign-ins first.</Body>
+        <Pressable accessibilityRole="button" accessibilityLabel={selected ? `Selected team member: ${memberName(selected)}` : 'Choose a team member'}
+          accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)}
+          style={({ pressed }) => [styles.selectorButton, pressed && styles.pressed]}>
+          <View style={layout.flex}>
+            <Text style={styles.selectorLabel}>Team member</Text>
+            <Text style={styles.selectorValue}>{selected ? memberName(selected) : 'Choose a person'}</Text>
+          </View>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.primary} accessible={false} />
+        </Pressable>
+        {expanded ? <View style={styles.menu}>
+          <Field label="Find a team member" value={search} onChangeText={setSearch} autoCorrect={false} autoCapitalize="none" />
+          <ScrollView style={styles.memberList} contentContainerStyle={styles.memberListContent} nestedScrollEnabled
+            keyboardShouldPersistTaps="handled" accessibilityLabel="Team member choices">
+            {!matching.length ? <Body muted>No matching people.</Body> : matching.map(member =>
+              <Pressable key={member.userId} accessibilityRole="button" accessibilityLabel={`Choose ${memberName(member)}`}
+                onPress={() => select(member)} style={({ pressed }) => [styles.memberChoice, pressed && styles.pressed]}>
+                <View style={layout.flex}><Text style={styles.memberName}>{memberName(member)}</Text><Text style={styles.memberMeta}>@{member.username}</Text></View>
+                <Ionicons name="chevron-forward" size={18} color={colors.muted} accessible={false} />
+              </Pressable>)}
+          </ScrollView>
+        </View> : null}
+      </View>
+      {selected ? <Card>
+        <Heading>{memberName(selected)}</Heading>
+        <Body muted>@{selected.username} · {selected.businessRole === 'owner' && selected.businessState === 'active' ? 'Business owner' : roleLabels[selected.role]}</Body>
+        <View style={layout.wrap}><Pill label={accountState(selected, selected.membershipState)} /></View>
+        <Body muted>{selected.lastSignInAt ? `Last signed in here ${friendlyDate(selected.lastSignInAt)}` : 'No sign-in recorded here'}</Body>
+        {selected.canEdit ? <Button title={`Manage ${memberName(selected)}`} variant="secondary"
+          onPress={() => router.push({ pathname: '/team/[userId]', params: { userId: selected.userId } })} />
+          : <Body muted>View only with your current account.</Body>}
+      </Card> : <Notice message="Choose a team member to view their store access." />}
+    </>}
+  </View>;
 }
+
+export function BuildTeamScreen() {
+  return <AdministrationScreen title="Build your team.">{context => <BuildTeamActions {...context} />}</AdministrationScreen>;
+}
+
+function BuildTeamActions({ data }: AdminContext) {
+  const router = useRouter();
+  const { actor } = useSession();
+  const canInvite = data.roles.some(choice => choice.role === 'crew');
+  const canAssignRole = ['owner', 'admin'].includes(actor?.role || '');
+  const canAssignExisting = Boolean(data.roles.length && canAssignRole);
+  const assignmentRestriction = canAssignRole ? 'Account assignment permission required' : 'Administrator or owner only';
+  return <><ActionGrid>
+    <ActionTile title="Invite a New Person" label={canInvite ? 'Invite a new person' : 'Invite a new person. Invitation permission required.'}
+      icon="person-add-outline" disabled={!canInvite} onPress={() => router.push('/team/invite')}
+      footer={!canInvite ? <Text style={styles.tileFooter}>Invitation unavailable</Text> : undefined} />
+    <ActionTile title="Add an Existing Account" label={canAssignExisting ? 'Add an existing account' : `Add an existing account. ${assignmentRestriction}.`}
+      icon="person-add-outline" disabled={!canAssignExisting} onPress={() => router.push('/team/assign')}
+      footer={!canAssignExisting ? <Text style={styles.tileFooter}>{assignmentRestriction}</Text> : undefined} />
+  </ActionGrid></>;
+}
+
 export function InviteScreen() {
   return <AdministrationScreen title="Welcome someone new.">{context => <InviteForm {...context} />}</AdministrationScreen>;
 }
@@ -64,6 +131,7 @@ function InviteForm({ data, storeName }: AdminContext) {
     <Button title="Create invitation" loading={task.pending} disabled={!username.trim() || !choice} onPress={submit} />
   </Card></Column></Columns></>;
 }
+
 export function AssignScreen() {
   return <AdministrationScreen title="Connect an existing account.">{context => <MembershipForm {...context} />}</AdministrationScreen>;
 }
@@ -118,3 +186,18 @@ function MembershipForm({ data, storeName, changed, member }: AdminContext & { m
     {member?.membershipState === 'active' ? <Button title="Remove store access" variant="danger" disabled={task.pending || !choice} onPress={() => save(false)} /> : null}
   </Card></Column></Columns></>;
 }
+
+const styles = StyleSheet.create({
+  selector: { gap: 10 },
+  selectorButton: { minHeight: 64, borderWidth: 1, borderColor: colors.controlLine, borderRadius: 14, backgroundColor: colors.white,
+    paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  selectorLabel: { color: colors.muted, fontSize: 12, lineHeight: 17, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
+  selectorValue: { color: colors.ink, fontSize: 17, lineHeight: 24, fontWeight: '600' },
+  menu: { gap: 12, borderWidth: 1, borderColor: colors.line, borderRadius: 16, backgroundColor: colors.card, padding: 14 },
+  memberList: { maxHeight: 300 }, memberListContent: { gap: 6 },
+  memberChoice: { minHeight: 58, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  memberName: { color: colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  memberMeta: { color: colors.muted, fontSize: 13, lineHeight: 19 },
+  tileFooter: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 12, paddingBottom: 12 },
+  pressed: { backgroundColor: colors.blush },
+});

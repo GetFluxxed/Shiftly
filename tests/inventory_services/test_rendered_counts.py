@@ -36,7 +36,7 @@ def test_native_count_resume_partial_review_post_history(page,native_inventory):
     expect(page.get_by_text('Saved: 13.25 kg',exact=True)).to_be_visible()
     assert i.counts.stock(i.tokens['owner'])['items'][0]['quantity']=='18'
     page.reload()
-    page.get_by_role('button',name='Count inventory',exact=True).click()
+    page.get_by_role('button',name='Begin Count',exact=True).click()
     page.get_by_role('button',name='Resume count',exact=True).click()
     expect(page.get_by_text('Saved: 13.25 kg',exact=True)).to_be_visible()
     page.get_by_role('button',name='Review count',exact=True).click()
@@ -62,7 +62,7 @@ def test_native_crew_saves_zero_but_cannot_finalize(page,native_inventory):
     url,i=native_inventory;setup_stock(i)
     with i.connect() as db:db.execute("UPDATE account_store_memberships SET capabilities=ARRAY['inventory.view','counts.submit'] WHERE user_id=%s",(i.users['crew'],))
     page.set_viewport_size({'width':1024,'height':900});page.goto(url+'/?crew')
-    page.get_by_role('button',name='Count inventory',exact=True).click()
+    page.get_by_role('button',name='Begin Count',exact=True).click()
     page.get_by_role('button',name='Start store count',exact=True).click()
     page.get_by_role('button',name='Count White Quella · Shelf 1',exact=True).click()
     page.get_by_role('button',name='None remaining — save zero',exact=True).click()
@@ -80,7 +80,7 @@ def test_native_crew_saves_zero_but_cannot_finalize(page,native_inventory):
 
 def test_native_uncertain_save_can_recover_without_duplicate_observation(page,native_inventory):
     url,i=native_inventory;setup_stock(i);page.goto(url)
-    page.get_by_role('button',name='Count inventory',exact=True).click()
+    page.get_by_role('button',name='Begin Count',exact=True).click()
     page.get_by_role('button',name='Start store count',exact=True).click()
     page.get_by_role('button',name='Count White Quella · Shelf 1',exact=True).click()
     page.get_by_label('Full containers',exact=True).fill('1')
