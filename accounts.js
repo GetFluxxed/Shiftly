@@ -18,6 +18,7 @@
   let members = [];
   let busy = false;
   let refreshing = false;
+  let redirecting = false;
   let contextGeneration = 0;
   const home = (actor) => actor.role === 'production' ? '/production.html' : actor.capabilities.includes('reports.view') ? '/manager.html' : actor.capabilities.includes('reports.submit') ? '/crew.html' : '/accounts.html';
   const can = (permission) => Boolean(state?.actor.capabilities.includes(permission));
@@ -37,6 +38,12 @@
     document.querySelectorAll('form').forEach((form) => form.reset());
     $('#membership-editor').classList.add('hidden');
   }
+  // Nested auth failures and focus events must not interrupt an earlier redirect.
+  function redirectToSignIn() {
+    if (redirecting) return;
+    redirecting = true;
+    window.location.replace('/');
+  }
   function protectPrivateView(text, redirect = false) {
     contextGeneration += 1;
     clearPrivateForms();
@@ -54,7 +61,7 @@
     message('#account-status', text, true);
     document.querySelector('main').style.visibility = 'visible';
     $('#account-retry').classList.toggle('hidden', redirect);
-    if (redirect) window.location.replace('/');
+    if (redirect) redirectToSignIn();
   }
   async function request(path, fields) {
     const response = await fetch(`/api/accounts/${path}`, fields === undefined ? { cache: 'no-store' } : {
@@ -92,7 +99,7 @@
     return current;
   }
   async function action(selector, operation) {
-    if (busy) return;
+    if (busy || redirecting) return;
     busy = true;
     message(selector, '');
     document.querySelectorAll('button').forEach((button) => { button.disabled = true; });
@@ -288,16 +295,16 @@
     action('#password-status', async () => {
       await request('password', { currentPassword: $('#current-password').value, newPassword: $('#new-password').value });
       clearPrivateForms();
-      window.location.replace('/');
+      redirectToSignIn();
     });
   });
   $('#account-logout').addEventListener('click', async () => {
-    try { await request('logout', {}); clearPrivateForms(); window.location.replace('/'); }
+    try { await request('logout', {}); clearPrivateForms(); redirectToSignIn(); }
     catch (error) { message('#account-status', error.message, true); }
   });
   $('#logout-all').addEventListener('click', () => {
     if (!window.confirm('Log out of Shiftly on every device, including this one?')) return;
-    action('#account-status', async () => { await request('logout-all', {}); clearPrivateForms(); window.location.replace('/'); });
+    action('#account-status', async () => { await request('logout-all', {}); clearPrivateForms(); redirectToSignIn(); });
   });
   $('#business-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -312,7 +319,7 @@
   $('#ownership-form').addEventListener('submit', (event) => {
     event.preventDefault();
     if (!window.confirm('Transfer your ownership to this person? Your owner access will be removed and you will be signed out.')) return;
-    action('#owner-status', async () => { await request('transfer-ownership', { userId: Number($('#ownership-user').value), reason: 'Owner confirmed ownership transfer' }); clearPrivateForms(); window.location.replace('/'); });
+    action('#owner-status', async () => { await request('transfer-ownership', { userId: Number($('#ownership-user').value), reason: 'Owner confirmed ownership transfer' }); clearPrivateForms(); redirectToSignIn(); });
   });
   $('#suspension-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -326,7 +333,7 @@
   });
 
   async function refreshOnFocus() {
-    if (busy || refreshing) return;
+    if (busy || refreshing || redirecting) return;
     refreshing = true;
     try { await verifyContext(); document.querySelector('main').style.visibility = 'visible'; }
     catch (error) {

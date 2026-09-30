@@ -123,8 +123,18 @@ def test_store_change_between_review_and_confirm_never_posts(page):
 
 def test_view_only_account_sees_recipes_without_submission_controls(page):
     browser_contract(page, can_submit=False)
-    expect(page.get_by_text("Vanilla bean").first).to_be_visible()
+    # This flavor also exists in the hidden Today panel; inspect the recipe book.
+    book = page.locator("#recipes-view")
+    expect(book).to_be_visible()
+    expect(book.get_by_role("heading", name="Vanilla bean", exact=True)).to_be_visible()
+    recipe = book.get_by_role("button", name="Vanilla bean Makes 6 tubs per batch", exact=True)
+    recipe.click()
+    expect(recipe).to_have_attribute("aria-expanded", "true")
+    expect(book.get_by_text("2 kg Cream", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Today", exact=True)).to_be_hidden()
+    expect(page.get_by_role("checkbox", name="Add Vanilla bean")).to_be_hidden()
     expect(page.get_by_role("button", name="Review ingredient use")).to_be_hidden()
+    expect(page.get_by_role("button", name="Confirm production and deduct stock")).to_be_hidden()
 
 
 def test_definitive_conflict_unlocks_same_draft_for_correction(page):
