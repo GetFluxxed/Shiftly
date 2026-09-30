@@ -38,7 +38,7 @@ def native_accounts(mobile,accounts_bundle):
                 self.send_response(200);self.send_header('Content-Type','text/javascript');self.end_headers();self.wfile.write(accounts_bundle)
             else:
                 role=parse_qs(urlparse(self.path).query).get('as',['crew' if 'crew' in self.path else 'owner'])[0]
-                token=m.login(role) if path in ('/team/invite','/accounts','/store','/team','/team/access') else None
+                token=m.login(role) if path in ('/team/invite','/accounts','/store','/team','/team/access','/heads-up','/today') else None
                 html='<meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div>'
                 html+='<script>window.__testToken='+json.dumps(token)+'</script><script src="/app.js"></script>'
                 self.send_response(200);self.send_header('Content-Type','text/html');self.end_headers();self.wfile.write(html.encode())
@@ -68,7 +68,7 @@ def test_native_invitation_link_opens_bound_account_and_activates_once(page,nati
     page.get_by_label('New password',exact=True).fill('individual-password')
     page.get_by_label('Confirm new password',exact=True).fill('individual-password')
     page.get_by_role('button',name='Activate my account',exact=True).click()
-    expect(page.get_by_text(f'Signed in as new.native.person at store {m.stores[0]}',exact=True)).to_be_visible()
+    expect(page.get_by_text('New Native Person',exact=True)).to_be_visible()
     assert m.send('POST','/api/mobile/accounts/activate',json={'token':secret,'password':'another-password','role':'owner'}).status_code==400
 
 
@@ -79,7 +79,7 @@ def test_native_common_login_has_no_store_code_or_role_selector(page,native_acco
     page.get_by_label('Username',exact=True).fill('crew')
     page.get_by_label('Password',exact=True).fill(m.password)
     page.get_by_role('button',name='Sign in',exact=True).click()
-    expect(page.get_by_text(f'Signed in as crew at store {m.stores[0]}',exact=True)).to_be_visible()
+    expect(page.get_by_text('Mobile crew',exact=True)).to_be_visible()
 
 
 def test_native_manager_account_has_no_store_switch(page,native_accounts):

@@ -6,7 +6,7 @@
       if (!response.ok || !payload.authenticated) return window.location.replace('/');
       const capabilities = payload.actor.capabilities;
       if (!capabilities.includes('inventory.view')) return window.location.replace('/accounts.html');
-      const home = capabilities.includes('reports.view') ? '/manager.html' : capabilities.includes('reports.submit') ? '/crew.html' : '/accounts.html';
+      const home = payload.actor.role === 'production' ? '/production.html' : capabilities.includes('reports.view') ? '/manager.html' : capabilities.includes('reports.submit') ? '/crew.html' : capabilities.includes('production.view') ? '/production.html' : '/accounts.html';
       document.querySelectorAll('.inventory-home').forEach((link) => { link.href = home; });
       document.querySelector('#inventory-store').textContent = payload.stores.find((store) => store.storeId === payload.actor.storeId)?.storeName || 'Your store';
       document.querySelector('main').style.visibility = 'visible';

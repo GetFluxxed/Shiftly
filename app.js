@@ -28,9 +28,10 @@ function clearCrewPrivate() {
   generateButton.disabled = false;
 }
 function contextKey(payload) {
-  return payload.actor ? `${payload.actor.userId}:${payload.actor.storeId}:${payload.actor.capabilities.join(',')}` : `legacy:${payload.role}`;
+  return payload.actor ? `${payload.actor.userId}:${payload.actor.storeId}:${payload.actor.role}:${payload.actor.capabilities.join(',')}` : `legacy:${payload.role}`;
 }
 async function loadHeadsUp() {
+  if (!['manager', 'crew', 'production'].includes(crewContext?.actor?.role)) return;
   const generation = contextGeneration;
   try {
     const response = await fetch('/api/heads-up', { cache: 'no-store' });
@@ -52,6 +53,11 @@ async function refreshCrewContext() {
       if (!legacy.ok) throw new Error('Please sign in again.');
     }
     if (!payload.authenticated) throw new Error('Please sign in again.');
+    if (payload.actor?.role === 'production') {
+      clearCrewPrivate();
+      window.location.replace('/production.html');
+      throw new Error('Shift reporting is not available with Production access.');
+    }
     if (payload.actor && !payload.actor.capabilities.includes('reports.submit')) {
       clearCrewPrivate();
       window.location.replace('/accounts.html');
@@ -61,6 +67,7 @@ async function refreshCrewContext() {
     if (changed) { clearCrewPrivate(); showToast('Your store or account changed. The previous draft was cleared.'); }
     crewContext = payload;
     const capabilities = payload.actor?.capabilities || [];
+    $('.heads-up-card').classList.toggle('hidden', !['manager', 'crew', 'production'].includes(payload.actor?.role));
     $('#management-link').classList.toggle('hidden', payload.actor ? !capabilities.includes('reports.view') : payload.role !== 'manager');
     $('#crew-account-link').classList.toggle('hidden', !payload.actor);
     $('#crew-inventory-link').classList.toggle('hidden', !capabilities.includes('inventory.view'));

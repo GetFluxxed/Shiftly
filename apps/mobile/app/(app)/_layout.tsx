@@ -7,9 +7,12 @@ import { Button, Card, Loading, Notice, Screen } from '@/src/ui/components';
 import { Text } from '@/src/ui/Typography';
 import { colors } from '@/src/ui/theme';
 import { canViewStore } from '@/src/accounts/navigation';
+import { useWorkspace } from '@/src/restoration/WorkspaceProvider';
+import { workspaceScope } from '@/src/restoration/policy';
 
 export default function AppLayout() {
-  const { status, actor, message, retry, signOut, busy, revision } = useSession();
+  const { status, actor, message, retry, signOut, busy, revision, stores } = useSession();
+  const workspace = useWorkspace();
   const { width, fontScale } = useWindowDimensions();
   if (status === 'loading') return <Loading />;
   if (status === 'signedOut') return <Redirect href="/sign-in" />;
@@ -22,8 +25,10 @@ export default function AppLayout() {
         { text: 'Sign Out', style: 'destructive', onPress: () => { void signOut(); } },
       ])} disabled={busy} />
     </Card></Screen>;
+  if (workspace.controller && (!workspace.ready || workspace.scope !== workspaceScope(actor, stores))) return <Loading label="Restoring your workspace…" />;
   const canReport = actor.capabilities.some((item) => item === 'reports.submit' || item === 'reports.view');
   const hasInventory = actor.capabilities.includes('inventory.view');
+  const hasProduction = actor.capabilities.includes('production.view');
   return <Tabs key={`${revision}:${actor.userId}:${actor.storeId}:${actor.capabilities.join(',')}`}
     screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.paper },
       tabBarActiveTintColor: colors.primary, tabBarInactiveTintColor: colors.muted,
@@ -40,6 +45,8 @@ export default function AppLayout() {
       tabBarIcon: ({ color, size }) => <Ionicons name="reader-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="inventory" options={{ title: 'Inventory', href: hasInventory ? '/inventory' : null,
       tabBarIcon: ({ color, size }) => <Ionicons name="cube-outline" color={color} size={size} /> }} />
+    <Tabs.Screen name="production" options={{ title: 'Production', href: hasProduction && actor.role === 'production' ? '/production' : null,
+      tabBarIcon: ({ color, size }) => <Ionicons name="restaurant-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="store" options={{ title: 'Store', href: canViewStore(actor.role) ? '/store' : null,
       tabBarIcon: ({ color, size }) => <Ionicons name="storefront-outline" color={color} size={size} /> }} />
     <Tabs.Screen name="accounts" options={{ title: 'Account', href: '/accounts',
@@ -50,5 +57,6 @@ export default function AppLayout() {
     <Tabs.Screen name="shelves" options={{ href: null }} />
     <Tabs.Screen name="counts" options={{ href: null }} />
     <Tabs.Screen name="stock" options={{ href: null }} />
+    <Tabs.Screen name="heads-up" options={{ href: null }} />
   </Tabs>;
 }

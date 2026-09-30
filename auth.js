@@ -4,7 +4,7 @@ const error = document.querySelector("#auth-error");
 function workspaceFor(payload) {
   if (payload.actor) {
     const capabilities = payload.actor.capabilities || [];
-    return capabilities.includes("reports.view") ? "/manager.html" : capabilities.includes("reports.submit") ? "/crew.html" : "/accounts.html";
+    return payload.actor.role === "production" ? "/production.html" : capabilities.includes("reports.view") ? "/manager.html" : capabilities.includes("reports.submit") ? "/crew.html" : capabilities.includes("production.view") ? "/production.html" : "/accounts.html";
   }
   return payload.role === "manager" ? "/manager.html" : "/crew.html";
 }

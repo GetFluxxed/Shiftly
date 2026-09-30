@@ -15,7 +15,7 @@ export interface CountLine extends SnapshotProduct {
   version: number; observedAt: string | null; observedBy: string | null;
 }
 export interface Comparison extends SnapshotProduct { previousQuantity: string | null; quantity: string | null; difference: string | null; locations: number; missing: number }
-export interface StockItem extends SnapshotProduct { quantity: string | null; active: boolean; countId: string | null; countedOn: string | null; updatedAt: string | null }
+export interface StockItem extends SnapshotProduct { quantity: string | null; active: boolean; countId: string | null; countedOn: string | null; updatedAt: string | null; lastCountedAt?: string | null; lastMovement?: string | null; stockVersion?: number | null }
 export interface StockDetail extends StockItem { locations: Page<CountLine> }
 export interface CountStatus { storeId: number; openCount: Count | null; lastCount: Count | null }
 
@@ -56,7 +56,10 @@ function comparison(value: unknown): Comparison {
   return value as unknown as Comparison;
 }
 function stock(value: unknown): StockItem {
-  product(value); verify(quantity(value.quantity) && typeof value.active === 'boolean' && nullableId(value.countId) && optionalTime(value.countedOn) && optionalTime(value.updatedAt));
+  product(value); verify(quantity(value.quantity) && typeof value.active === 'boolean' && nullableId(value.countId) && optionalTime(value.countedOn) && optionalTime(value.updatedAt)
+    && (value.lastCountedAt === undefined || optionalTime(value.lastCountedAt))
+    && (value.lastMovement === undefined || value.lastMovement === null || ['opening', 'count', 'production', 'reversal'].includes(String(value.lastMovement)))
+    && (value.stockVersion === undefined || value.stockVersion === null || integer(value.stockVersion, 1)));
   return value as unknown as StockItem;
 }
 function page<T>(value: unknown, parse: (item: unknown) => T): Page<T> {

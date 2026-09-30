@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ..quantities import decimal_text
+from ..movements import MovementRepository
 from ..validation import encode_product_cursor
 
 PAGE_SIZE = 40
@@ -54,7 +55,9 @@ def comparison(row):
 def stock_item(row):
     return {**product_snapshot(row), 'quantity': decimal(row['quantity']), 'active': row['active'],
             'countId': str(row['count_id']) if row['count_id'] else None,
-            'countedOn': timestamp(row['counted_on']), 'updatedAt': timestamp(row['updated_at'])}
+            'countedOn': timestamp(row['counted_on']), 'updatedAt': timestamp(row['updated_at']),
+            'lastCountedAt': timestamp(row['last_counted_at']), 'lastMovement': row['last_movement_kind'],
+            'stockVersion': row['stock_version']}
 
 
 class CountRepository:
@@ -108,8 +111,8 @@ class CountRepository:
         products = {row['product_id']:row for row in scope}
         for product in products.values():
             connection.execute('''INSERT INTO inventory_count_products(business_id,store_id,count_id,product_id,name,sku,base_unit,
-                  container_amount,product_version,previous_quantity,previous_count_id)
-                SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,b.quantity,b.count_id
+                  container_amount,product_version,previous_quantity,previous_count_id,previous_stock_version)
+                SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,b.quantity,b.count_id,b.version
                 FROM (SELECT 1) seed LEFT JOIN inventory_stock_balances b
                   ON b.business_id=%s AND b.store_id=%s AND b.product_id=%s''',
                 (actor.business_id,actor.store_id,count_id,product['product_id'],product['name'],product['sku'],product['base_unit'],
@@ -159,13 +162,13 @@ class CountRepository:
         return paged(result,comparison)
 
     def totals(self, connection, actor, count_id):
-        return rows(connection, '''SELECT p.product_id,p.base_unit,p.previous_quantity,p.previous_count_id,
+        return rows(connection, '''SELECT p.product_id,p.base_unit,p.previous_quantity,p.previous_count_id,p.previous_stock_version,
                    sum(l.quantity) AS quantity,count(*) FILTER(WHERE l.quantity IS NULL) AS missing,
-                   b.quantity AS current_quantity,b.count_id AS current_count_id
+                   b.quantity AS current_quantity,b.count_id AS current_count_id,b.version AS current_stock_version
             FROM inventory_count_products p JOIN inventory_count_lines l ON l.count_id=p.count_id AND l.product_id=p.product_id
             LEFT JOIN inventory_stock_balances b ON b.store_id=p.store_id AND b.product_id=p.product_id
             WHERE p.business_id=%s AND p.store_id=%s AND p.count_id=%s
-            GROUP BY p.count_id,p.product_id,b.quantity,b.count_id''', (actor.business_id,actor.store_id,count_id))
+            GROUP BY p.count_id,p.product_id,b.quantity,b.count_id,b.version''', (actor.business_id,actor.store_id,count_id))
 
     def transition(self, connection, actor, count_id, state):
         if state == 'review':
@@ -179,10 +182,8 @@ class CountRepository:
         for row in totals:
             connection.execute('''INSERT INTO inventory_stock_postings(business_id,store_id,count_id,product_id,quantity_before,quantity_after,posted_by)
                 VALUES(%s,%s,%s,%s,%s,%s,%s)''', (actor.business_id,actor.store_id,count['id'],row['product_id'],row['previous_quantity'],row['quantity'],actor.user_id))
-            connection.execute('''INSERT INTO inventory_stock_balances(business_id,store_id,product_id,count_id,quantity,base_unit,counted_on)
-                VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(business_id,store_id,product_id)
-                DO UPDATE SET count_id=EXCLUDED.count_id,quantity=EXCLUDED.quantity,base_unit=EXCLUDED.base_unit,counted_on=EXCLUDED.counted_on,updated_at=NOW()''',
-                (actor.business_id,actor.store_id,row['product_id'],count['id'],row['quantity'],row['base_unit'],count['business_date']))
+            MovementRepository().apply(connection,actor,product_id=row['product_id'],base_unit=row['base_unit'],
+                quantity_after=row['quantity'],kind='count',source_id=count['id'],count_id=count['id'],counted_on=count['business_date'])
         self.transition(connection,actor,count['id'],'posted')
 
     def history(self, connection, actor, after):
@@ -195,9 +196,11 @@ class CountRepository:
     def stock(self, connection, actor, query='', after=None, shelf='', product_id=None):
         name, identifier = after or (None,None)
         result = rows(connection, '''SELECT p.id AS product_id,p.name,p.sku,COALESCE(b.base_unit,p.base_unit) AS base_unit,p.container_amount,
-                   sp.active AND p.active AS active,b.quantity,b.count_id,b.counted_on,b.updated_at,p.name_sort AS sort_name
+                   sp.active AND p.active AS active,b.quantity,b.count_id,b.counted_on,b.updated_at,p.name_sort AS sort_name,
+                   b.last_counted_at,b.version AS stock_version,m.kind AS last_movement_kind
             FROM inventory_store_products sp JOIN inventory_products p ON p.business_id=sp.business_id AND p.id=sp.product_id
             LEFT JOIN inventory_stock_balances b ON b.business_id=sp.business_id AND b.store_id=sp.store_id AND b.product_id=sp.product_id
+            LEFT JOIN inventory_stock_movements m ON m.id=b.last_movement_id
             WHERE sp.business_id=%s AND sp.store_id=%s AND ((sp.active AND p.active) OR b.product_id IS NOT NULL)
               AND (%s::uuid IS NULL OR p.id=%s)
               AND (strpos(lower(p.name),lower(%s))>0 OR strpos(lower(p.sku),lower(%s))>0)

@@ -1,5 +1,5 @@
 import { Text } from '@/src/ui/Typography';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
@@ -7,7 +7,8 @@ import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Loadin
 import { colors, friendlyDate } from '@/src/ui/theme';
 import { useResource } from '@/src/ui/useResource';
 import { useTask } from '@/src/ui/useTask';
-import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
+import { ApiError } from '@/src/api/client';
+import { useRememberedState, useWorkspaceCheckpoint } from '@/src/restoration/WorkspaceProvider';
 
 type Report = {
   id: string; employee: string; shift: string; notes: string; date: string;
@@ -20,7 +21,7 @@ export function ReportsScreen() {
   const { actor, stores } = useSession();
   const canRead = Boolean(actor?.capabilities.includes('reports.view'));
   const canSubmit = Boolean(actor?.capabilities.includes('reports.submit'));
-  const [writing, setWriting] = useState(!canRead);
+  const [writing, setWriting] = useRememberedState('reports.writing', !canRead);
   const store = stores.find((item) => item.storeId === actor?.storeId);
   if (!canRead && !canSubmit) return <Screen title="Shift reports"><Notice message="Your account does not have reporting access for this store." /></Screen>;
   return <Screen title={writing ? 'Leave a good handoff.' : 'Every shift, in the loop.'} eyebrow="Shift reports"
@@ -36,14 +37,34 @@ export function ReportsScreen() {
 function ReportComposer() {
   const { actor, request, busy } = useSession();
   const task = useTask();
-  const [shift, setShift] = useState<(typeof shiftOptions)[number]>('closing');
-  const [notes, setNotes] = useState('');
+  const checkpoint = useWorkspaceCheckpoint();
+  const [draft, setDraft, resetDraft] = useRememberedState('reports.composer', {
+    shift: 'closing' as (typeof shiftOptions)[number], notes: '', pending: false,
+  });
+  const { shift, notes } = draft;
   const [receipt, setReceipt] = useState<{ date: string; status: string } | null>(null);
-  useSensitiveForm(() => setNotes(''));
-  const send = () => { void task.run(() => request<{ date: string; status: string }>('/reports', {
-    uncertainMessage: "We couldn't confirm your report. It may have been saved. Check with your manager before sending it again.",
-    method: 'POST', body: { employee: actor?.displayName || actor?.username || '', shift, notes },
-  }), (result) => { setNotes(''); setReceipt(result); }); };
+  const uncertain = 'Submission could not be confirmed. Check the inbox or with your manager before sending again.';
+  const send = () => { void task.run(async () => {
+    setDraft(value => ({ ...value, pending: true }));
+    if (!await checkpoint()) {
+      setDraft(value => ({ ...value, pending: false }));
+      throw new Error('Your draft could not be saved on this device. Please try again before sending.');
+    }
+    try {
+      const result = await request<{ date: string; status: string }>('/reports', {
+        uncertainMessage: uncertain, method: 'POST',
+        body: { employee: actor?.displayName || actor?.username || '', shift, notes },
+      });
+      resetDraft();
+      return result;
+    } catch (failure) {
+      if (failure instanceof ApiError && (failure.status === 400 || failure.status === 422)) {
+        setDraft(value => ({ ...value, pending: false }));
+      }
+      throw failure;
+    }
+  }, setReceipt); };
+  const discard = () => { resetDraft(); setReceipt(null); task.setError(null); };
   return <Columns><Column><Card>
     {receipt ? <>
       <EmptyState icon="checkmark-circle-outline" title="Your handoff is in." description="Your report was saved. The briefing will appear in your team's report inbox when processing is complete." />
@@ -56,16 +77,22 @@ function ReportComposer() {
       <View style={layout.wrap} accessibilityRole="radiogroup" accessibilityLabel="Shift">
         {shiftOptions.map((option) => <Pressable key={option} accessibilityRole="radio"
           accessibilityState={{ checked: shift === option }} accessibilityLabel={`${option} shift`}
-          onPress={() => setShift(option)} style={({ pressed }) => [styles.shift,
+          disabled={task.pending} onPress={() => setDraft(value => ({ ...value, shift: option }))} style={({ pressed }) => [styles.shift,
             shift === option && styles.shiftSelected, pressed && { opacity: 0.7 }]}>
           <Text style={[styles.shiftText, shift === option && { color: colors.white }]}>{option}</Text>
         </Pressable>)}
       </View>
-      <Field label="Shift notes" value={notes} onChangeText={setNotes} multiline maxLength={2000}
+      <Field label="Shift notes" value={notes} onChangeText={value => setDraft(current => ({ ...current, notes: value }))} multiline maxLength={2000} editable={!task.pending}
         placeholder="What went well? What needs attention? What's next?" hint={`${notes.length} / 2,000 characters`} />
+      {draft.pending ? <Notice message={uncertain} kind="error" /> : null}
       <Notice message={task.error} kind="error" />
-      <Button title="Send shift report" icon="arrow-forward" onPress={send} loading={task.pending || busy} disabled={!notes.trim()} />
-      <Body muted>Sent reports are saved to this store. Unsent notes are cleared when you leave this screen, change stores, or put the app in the background.</Body>
+      {draft.pending ? <Button title="I checked — keep editing" variant="secondary" disabled={task.pending} onPress={() => {
+        setDraft(value => ({ ...value, pending: false })); task.setError(null);
+      }} /> : null}
+      <Button title="Send shift report" icon="arrow-forward" onPress={send} loading={task.pending || busy}
+        disabled={!notes.trim() || draft.pending} />
+      <Button title="Discard draft" variant="quiet" disabled={task.pending || (!notes && shift === 'closing' && !draft.pending)} onPress={discard} />
+      <Body muted>This draft is saved securely on this device until you send or discard it.</Body>
     </>}
   </Card></Column><Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
     <Heading>A useful note goes a long way.</Heading>
@@ -79,10 +106,14 @@ function ReportInbox() {
   const resource = useResource<{ reports: Report[] }>('/reports');
   const { width, fontScale } = useWindowDimensions();
   const wide = width >= 900 && fontScale < 1.5;
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useRememberedState<string | null>('reports.selected', null);
   const scrollToTop = useScrollToTop();
-  useEffect(() => { if (!wide) scrollToTop(); }, [selected, wide, scrollToTop]);
-  const [limit, setLimit] = useState(30);
+  const previousSelection = useRef(selected);
+  useEffect(() => {
+    if (!wide && previousSelection.current !== selected) scrollToTop();
+    previousSelection.current = selected;
+  }, [selected, wide, scrollToTop]);
+  const [limit, setLimit] = useRememberedState('reports.limit', 30);
   const reports = resource.data?.reports || [];
   const report = reports.find((item) => item.id === selected);
   return <View style={layout.gap}>

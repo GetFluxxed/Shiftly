@@ -27,8 +27,10 @@ export function StoreScreen() {
         icon="person-add-outline" disabled={!canManageMemberships} onPress={() => router.push('/team/build')} />
       <ActionTile title="View Team Members" label={canManageMemberships ? 'View team members' : 'View team members. Team management permission required.'}
         icon="people-outline" disabled={!canManageMemberships} onPress={() => router.push('/team')} />
-      <ActionTile title="Store Access" label="Store Access: view store access policy" icon="key-outline"
-        onPress={() => router.push('/team/access')} />
+      {actor?.role === 'manager' ? <ActionTile title="Heads Up" label="Create or edit the store Heads Up message" icon="megaphone-outline"
+        onPress={() => router.push('/heads-up')} />
+        : <ActionTile title="Store Access" label="Store Access: view store access policy" icon="key-outline"
+          onPress={() => router.push('/team/access')} />}
       <ActionTile title="Owner Workspace" label={isOwner ? 'Open owner workspace' : 'Owner workspace. Owner only.'}
         icon="shield-checkmark-outline" disabled={!isOwner} onPress={() => router.push('/owner')}
         footer={!isOwner ? <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 12, paddingBottom: 12 }}>Owner only</Text> : undefined} />

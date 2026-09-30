@@ -1,6 +1,15 @@
 """Existing store queries behind an explicit connection factory."""
 
 from backend.shiftly.identity.primitives import hash_store_code
+from backend.shiftly.identity.contracts import IdentityError
+
+
+def require_heads_up(actor, *, writing=False):
+    allowed = {"manager"} if writing else {"manager", "crew", "production"}
+    if actor.role not in allowed:
+        message = "Only store managers can update Heads Up." if writing else "Heads Up is available to store managers, crew and production."
+        raise IdentityError("forbidden", message, reason="permission_denied")
+
 
 
 class StoresRepository:
@@ -24,8 +33,14 @@ class StoresRepository:
                 row = cursor.fetchone()
         return row if row else None
 
-    def heads_up(self, store_id):
+    def heads_up(self, store_id, *, actor_token=None, accounts=None):
         with self.connect() as connection:
+            if actor_token is not None:
+                if accounts is None:
+                    raise ValueError("Named reads require account authorization.")
+                actor = accounts.require_selected_store(actor_token, None, connection=connection, expected_store_id=store_id)
+                require_heads_up(actor)
+                store_id = actor.store_id
             with connection.cursor() as cursor:
                 cursor.execute("SELECT message, updated_at FROM store_heads_up WHERE store_id = %s", (store_id,))
                 row = cursor.fetchone()
@@ -55,12 +70,17 @@ class StoresRepository:
             if actor_token is not None:
                 if accounts is None:
                     raise ValueError("Named changes require account authorization.")
-                actor = accounts.require(actor_token, "reports.manage", connection=connection, store_id=store_id)
+                actor = accounts.require_selected_store(actor_token, "reports.manage", connection=connection, expected_store_id=store_id)
+                require_heads_up(actor, writing=True)
+                store_id = actor.store_id
                 accounts._audit(connection, actor, "heads_up.changed", store_id=store_id, business_id=actor.business_id)
             elif legacy_credentials is not None:
                 from backend.shiftly.identity.repository import IdentityRepository
                 IdentityRepository.authorize_legacy(connection, store_id, manager_required=True, **legacy_credentials)
-            connection.execute("DELETE FROM store_heads_up WHERE store_id = %s", (store_id,))
-            connection.execute("INSERT INTO store_heads_up (store_id, message, updated_at) VALUES (%s, %s, NOW())", (store_id, message))
+            row = connection.execute(
+                """INSERT INTO store_heads_up (store_id, message, updated_at) VALUES (%s, %s, NOW())
+                   ON CONFLICT (store_id) DO UPDATE SET message=EXCLUDED.message, updated_at=EXCLUDED.updated_at
+                   RETURNING message, updated_at""", (store_id, message),
+            ).fetchone()
             connection.commit()
-        return self.heads_up(store_id)
+        return {"message": row[0], "updatedAt": row[1].isoformat()}

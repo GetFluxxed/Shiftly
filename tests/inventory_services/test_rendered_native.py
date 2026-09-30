@@ -5,6 +5,7 @@ This does not establish iPhone/Android device acceptance.
 """
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -71,14 +72,24 @@ def test_rendered_owner_creates_product_and_shelf_then_reopens_placement(page,na
     page.get_by_role('button',name='Create shelf',exact=True).click()
     page.get_by_role('button',name='Assign White Quella',exact=True).click()
     expect(page.get_by_role('button',name='Remove White Quella from shelf',exact=True)).to_be_visible()
+    page.get_by_label('Shelf name',exact=True).fill('Discard this shelf edit')
+    page.get_by_role('button',name='Cancel',exact=True).click()
+    expect(page.get_by_label('Shelf name',exact=True)).to_have_value('Back freezer top')
+    page.get_by_label('Shelf name',exact=True).fill('Back freezer middle')
+    page.get_by_role('button',name='Save',exact=True).click()
+    expect(page.get_by_role('heading',name='Back freezer middle',exact=True)).to_be_visible()
+    page.get_by_role('button',name='Back to Open Shelves',exact=True).click()
+    page.get_by_role('button',name='Open Back freezer middle',exact=True).click()
+    expect(page.get_by_role('button',name='Remove White Quella from shelf',exact=True)).to_be_visible()
+
     if os.environ.get('INVENTORY_SCREENSHOT_DIR'):
         page.screenshot(path=str(Path(os.environ['INVENTORY_SCREENSHOT_DIR'])/'shelf-phone.png'),full_page=True)
+    page.evaluate('window.__workspaceTest.flush()')
     page.reload()
-    page.get_by_role('button',name='Open shelves',exact=True).click()
-    page.get_by_role('button',name='Open Back freezer top',exact=True).click()
     expect(page.get_by_role('button',name='Remove White Quella from shelf',exact=True)).to_be_visible()
     page.evaluate('(id)=>window.__inventoryTest.switchStore(id)',i.stores[1])
     expect(page.get_by_role('alert').filter(has_text='not available in your current workspace')).to_be_visible()
+    page.get_by_role('button',name='Back to Open Shelves',exact=True).click()
     page.get_by_role('button',name='Back to inventory',exact=True).click()
     page.get_by_role('button',name='Open company catalog',exact=True).click()
     expect(page.get_by_role('heading',name='White Quella',exact=True)).to_be_visible()
@@ -99,8 +110,8 @@ def test_rendered_duplicate_and_stale_edits_preserve_form_then_archive_restore(p
     page.get_by_role('button',name='Create product',exact=True).click()
     expect(page.get_by_role('alert')).to_contain_text('already in use')
     expect(page.get_by_label('Product name',exact=True)).to_have_value('My draft')
-    page.get_by_role('button',name='Back to catalog',exact=True).click()
-    page.get_by_role('button',name='View product',exact=True).click()
+    page.get_by_role('button',name='Cancel and discard draft',exact=True).click()
+    page.get_by_role('button',name='View product: Milk',exact=True).click()
     expect(page.get_by_label('Product name',exact=True)).to_have_value('Milk')
     i.service.edit_product(i.tokens['owner'],p['id'],{'requestId':'22222222-2222-4222-8222-222222222222','expectedStoreId':i.stores[0],'name':'New Milk','version':1,'sku':'002'})
     page.get_by_label('Product name',exact=True).fill('Unsaved edit')
@@ -146,10 +157,16 @@ def test_rendered_existing_product_size_and_alphabetical_search(page, native_inv
     headings = page.get_by_role('heading').all_text_contents()
     names = [name for name in headings if name in ('White Quella', 'almond paste', 'Banana topping')]
     assert names == ['almond paste', 'Banana topping', 'White Quella']
+    if os.environ.get('INVENTORY_SCREENSHOT_DIR'):
+        for width in (320, 390, 1024):
+            page.set_viewport_size({'width': width, 'height': 900})
+            page.screenshot(path=str(Path(os.environ['INVENTORY_SCREENSHOT_DIR'])/f'catalog-compact-{width}.png'), full_page=True)
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.set_viewport_size({'width': 390, 'height': 844})
     page.get_by_label('Find a product or SKU', exact=True).fill('white')
     page.get_by_role('button', name='Search catalog', exact=True).click()
     expect(page.get_by_role('heading', name='almond paste', exact=True)).to_have_count(0)
-    page.get_by_role('button', name='View product', exact=True).click()
+    page.get_by_role('button', name='View product: White Quella', exact=True).click()
     amount = page.get_by_label('Full container amount (kg)', exact=True)
     expect(amount).to_have_value('')
     amount.fill('6')
@@ -159,3 +176,11 @@ def test_rendered_existing_product_size_and_alphabetical_search(page, native_inv
     saved = i.service.product(i.tokens['owner'], products[0]['id'])
     assert saved['containerAmount'] == '6' and saved['sku'] == products[0]['sku']
     assert saved['baseUnit'] == 'kg' and saved['version'] == 2
+    page.get_by_role('button', name='Back to inventory', exact=True).click()
+    page.get_by_role('button', name='Open shelves', exact=True).click()
+    page.get_by_label('New shelf name', exact=True).fill('Alphabetical picker')
+    page.get_by_role('button', name='Create shelf', exact=True).click()
+    expect(page.get_by_role('button', name='Assign White Quella', exact=True)).to_be_visible()
+    choices = page.get_by_role('button', name=re.compile('^Assign '))
+    assert [item.get_attribute('aria-label') for item in choices.all()] == [
+        'Assign almond paste', 'Assign Banana topping', 'Assign White Quella']

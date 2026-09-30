@@ -12,6 +12,7 @@ import { useTask } from '@/src/ui/useTask';
 import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 import { AdministrationScreen, confirmChange, InvitationResult, Permissions, Reason, Roles, type AdminContext } from './AdminComponents';
 import { accountId, accountState, roleGrants, type Invitation, type TeamMember } from './types';
+import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 
 function memberName(member: TeamMember) {
   return member.displayName || member.username;
@@ -24,9 +25,9 @@ export function TeamScreen() {
 function TeamMemberSelector({ data, changed }: AdminContext) {
   const router = useRouter();
   const { actor } = useSession();
-  const [expanded, setExpanded] = useState(false);
-  const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useRememberedState('team.selector.expanded', false);
+  const [search, setSearch] = useRememberedState('team.selector.search', '');
+  const [selectedId, setSelectedId] = useRememberedState<number | null>('team.selector.selected', null);
   const members = data.members;
   const matching = members.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.trim().toLowerCase()));
   const selected = members.find(member => member.userId === selectedId) || null;
@@ -37,7 +38,7 @@ function TeamMemberSelector({ data, changed }: AdminContext) {
   };
 
   return <View style={layout.gap}>
-    {actor?.role === 'admin' ? <Button title="Build your team" icon="person-add-outline" variant="secondary"
+    {actor?.capabilities.includes('memberships.manage') ? <Button title="Build your team" icon="person-add-outline" variant="secondary"
       onPress={() => router.push('/team/build')} /> : null}
     <Button title="Refresh team" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Team refreshed.'); }} />
     {!members.length ? <Card><EmptyState icon="people-outline" title="Your team starts here"
@@ -127,7 +128,7 @@ function InviteForm({ data, storeName }: AdminContext) {
     <Field label="Display name" value={name} onChangeText={setName} maxLength={120} editable={!task.pending} />
     <Reason value={reason} onChange={setReason} disabled={task.pending} />
   </Card></Column><Column><Card><Heading>Crew first</Heading>
-    <Body>Every invitation creates an individual crew account at this store. After activation, an administrator can promote them to manager or change their permissions.</Body>
+    <Body>Every invitation creates an individual crew account at this store. After activation, an authorized administrator or owner can assign Production access or change their permissions.</Body>
     <Button title="Create invitation" loading={task.pending} disabled={!username.trim() || !choice} onPress={submit} />
   </Card></Column></Columns></>;
 }
@@ -168,7 +169,7 @@ function MembershipForm({ data, storeName, changed, member }: AdminContext & { m
   return <><Notice message={task.error} kind="error" /><Columns><Column><Card>
     <Heading>{member?.displayName || 'An account they already use'}</Heading>
     {member ? <><Body muted>@{member.username} · Account ID {member.userId}</Body><Pill label={accountState(member, member.membershipState)} /></>
-      : <><Body>Ask the person for their Account ID, shown on their Account screen. Their password stays the same. Crew and managers can belong to one store. An administrator must remove their previous store membership before a transfer.</Body>
+      : <><Body>Ask the person for their Account ID, shown on their Account screen. Their password stays the same. Crew, Production, and managers can belong to one store. An administrator must remove their previous store membership before a transfer.</Body>
         <Field label="Account ID" value={user} onChangeText={setUser} keyboardType="number-pad" maxLength={16} editable={!task.pending} />
         {data.isOwner && data.directory.filter(person => person.userId !== actor?.userId && person.accountState === 'active' && !data.members.some(item => item.userId === person.userId)).map(person =>
           <Button key={person.userId} title={`Choose ${person.displayName} (@${person.username})`} variant="secondary" disabled={task.pending} onPress={() => setUser(String(person.userId))} />)}

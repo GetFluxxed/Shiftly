@@ -1,10 +1,16 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { Body, Button, Card, Field, Heading, Loading, Notice, Pill } from '@/src/ui/components';
+import { Body, Button, Card, Heading, Loading, Notice, Pill } from '@/src/ui/components';
 import { useSession } from '@/src/session/SessionProvider';
+import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 import { MutationIdentity } from '../api';
-import { useInventory, useInventoryResource, LoadError, Pages } from '../shared';
+import { useInventory, useInventoryResource, InventorySearch, LoadError, Pages } from '../shared';
 import { countsApi, type Count } from './api';
+
+export type CountReturnTo = string | string[] | undefined;
+export function returnsToStock(returnTo: CountReturnTo) { return returnTo === 'stock'; }
+export function countRouteParams(returnTo: CountReturnTo) { return returnsToStock(returnTo) ? { returnTo: 'stock' as const } : {}; }
+export function countBackTo(returnTo: CountReturnTo): '/inventory' | '/stock' { return returnsToStock(returnTo) ? '/stock' : '/inventory'; }
 
 export function useCounts() {
   const session = useSession(); const { request } = session;
@@ -18,21 +24,19 @@ export function CountHeading({ item }: { item: Count }) {
     {item.configurationChanged ? <Notice message="Products or shelves changed during this count. An approver must cancel it and start a fresh count before stock can be updated." kind="error" /> : null}
   </Card>;
 }
-export function Search({ onSearch, label = 'Find a product or SKU' }: { onSearch: (value: string) => void; label?: string }) {
-  const [value, setValue] = useState('');
-  return <><Field label={label} value={value} onChangeText={setValue} maxLength={160} autoCorrect={false} />
-    <Button title="Search inventory" variant="secondary" onPress={() => onSearch(value.trim())} /></>;
+export function Search({ onSearch, persistenceKey, label = 'Find a product or SKU' }: { onSearch: (value: string) => void; persistenceKey: string; label?: string }) {
+  const [value, setValue] = useRememberedState(`${persistenceKey}.input`, '');
+  return <InventorySearch label={label} value={value} onChange={setValue} submitLabel="Search inventory" onSubmit={() => onSearch(value.trim())} />;
 }
-export function ShelfFilter({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const { api } = useInventory(); const [open, setOpen] = useState(false), [cursor, setCursor] = useState('');
-  const [label, setLabel] = useState('All shelves');
+export function ShelfFilter({ value, onChange, persistenceKey }: { value: string; onChange: (value: string) => void; persistenceKey: string }) {
+  const { api } = useInventory(); const [open, setOpen] = useState(false), [cursor, setCursor] = useRememberedState(`${persistenceKey}.cursor`, '');
   const resource = useInventoryResource(useCallback(() => api.shelves(cursor), [api, cursor]), open);
-  const choose = (id: string, name: string) => { onChange(id); setLabel(name); setOpen(false); };
-  return <><Button title={`Shelf filter: ${value ? label : 'All shelves'}`} variant="quiet" onPress={() => setOpen(!open)} />
-    {open ? <Card><Heading>Choose a shelf</Heading><Button title="All shelves" variant="secondary" onPress={() => choose('', 'All shelves')} />
-      <Button title="Unassigned products" variant="secondary" onPress={() => choose('unassigned', 'Unassigned')} />
+  const choose = (id: string) => { onChange(id); setOpen(false); };
+  return <><Button title={`Shelf filter: ${value ? value === 'unassigned' ? 'Unassigned products' : 'Selected shelf' : 'All shelves'}`} variant="quiet" onPress={() => setOpen(!open)} />
+    {open ? <Card><Heading>Choose a shelf</Heading><Button title="All shelves" variant="secondary" onPress={() => choose('')} />
+      <Button title="Unassigned products" variant="secondary" onPress={() => choose('unassigned')} />
       {resource.loading ? <Loading label="Loading shelves…" /> : resource.error || !resource.data ? <LoadError {...resource} /> : <>
-        {resource.data.items.map(s => <Button key={s.id} title={s.name} variant="secondary" onPress={() => choose(s.id, s.name)} />)}
+        {resource.data.items.map(s => <Button key={s.id} title={s.name} variant="secondary" onPress={() => choose(s.id)} />)}
         <Pages next={resource.data.nextCursor} cursor={cursor} setCursor={setCursor} />
       </>}
     </Card> : null}</>;

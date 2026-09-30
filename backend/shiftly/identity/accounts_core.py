@@ -152,7 +152,7 @@ class AccountCore:
                     raise IdentityError("forbidden", "Store membership is unavailable.", reason="access_changed")
         else:
             raise IdentityError("forbidden", "No active membership for this store.", reason="access_changed")
-        if role in {"crew", "manager"} and connection.execute(
+        if role in {"crew", "production", "manager"} and connection.execute(
             "SELECT 1 FROM account_store_memberships WHERE user_id=%s AND state='active' AND store_id<>%s",
             (uid, sid),
         ).fetchone():
@@ -312,9 +312,10 @@ class AccountCore:
             (hash_token(token), user_id, store_id, actor.credential_version, self.session_ttl),
         )
         store_name = connection.execute("SELECT name FROM stores WHERE id=%s", (store_id,)).fetchone()[0]
-        response = {"authenticated": True, "role": "crew" if actor.role == "crew" else "manager",
+        compatibility_role = "crew" if actor.role in {"crew", "production"} else "manager"
+        response = {"authenticated": True, "role": compatibility_role,
                     "actor": actor.as_dict(), "storeName": store_name}
-        if actor.role != "crew":
+        if compatibility_role == "manager":
             response["managerName"] = actor.display_name
         if actor.legacy_manager_id:
             connection.execute("UPDATE manager_users SET last_sign_in_at=NOW() WHERE id=%s", (actor.legacy_manager_id,))

@@ -566,7 +566,7 @@ def rehearse():
             "API and independent worker", "SIGKILL and fenced lease recovery", "worker health",
             "database outage and reconnect", "legacy rollback with original sessions/reports",
             "archive restore: all rows, sequences and foreign keys", "restored API login and reports",
-            "restored exact stock, original partial weights and resumable count draft",
+            "restored stock movements, recipe revisions, production/reversal logs, original weights and resumable count",
         ], "archiveBytes": archive_bytes, "tablesCompared": len(before_restore["rows"]),
             "sequencesCompared": len(before_restore["sequences"]),
             "foreignKeysCompared": len(before_restore["foreign_keys"])}))

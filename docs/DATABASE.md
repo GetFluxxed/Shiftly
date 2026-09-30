@@ -147,3 +147,20 @@ Retain migrations 001–016 unchanged. Coordinate new migration numbers across
 worktrees and use the existing serialized runtime migration command. Test upgrade,
 repeat migration, compatible rollback and forward recovery against disposable
 PostgreSQL and staging copies.
+
+## Counts, stock movements and production — 2026-09-29
+
+Migration 017 implements reviewed physical counts and immutable count postings.
+Migration 018 adds `inventory_stock_movements`, backfills those postings in count
+lineage order, adds a per-product balance version and latest movement reference,
+and adds count baseline versions. Balance `count_id` still means the last physical
+count; `last_movement_id` identifies the latest stock change. Opening quantities
+remain distinct from changes against a known prior quantity.
+
+Migration 019 adds revisioned/sealed recipes, exact ingredient snapshots, store
+production logs, ingredients, reversals and request replay records. Confirmation
+posts all recipe deductions plus 1% in one authorized transaction. Migration 020
+adds the Production role and scoped capabilities; invitations remain baseline crew.
+Use new migrations rather than modifying an already installed migration. Back up
+before upgrade; the release rehearsal now restores recipe revisions, production
+logs/reversals, stock movements, counts and resumable drafts.

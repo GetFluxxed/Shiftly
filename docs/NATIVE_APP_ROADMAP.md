@@ -41,7 +41,9 @@ remain intact. Native requests must reject conflicting credentials instead of
 choosing a more powerful identity.
 
 Use Expo SecureStore for the token (iOS Keychain and Android protected storage),
-with transient account/report data in memory. Passwords and invitation/recovery
+with fetched account/report data in memory. The approved workspace restoration
+contract below also permits encrypted local input drafts, separately from server
+records. Passwords and invitation/recovery
 codes must not enter URLs, logs, analytics, or ordinary persistent app storage.
 Public Expo configuration may contain an API origin, never backend/database/AI
 secrets. Release traffic requires HTTPS.
@@ -157,8 +159,9 @@ thresholds before assistance is enabled beyond the pilot.
 
 ### 5. Offline resilience and release readiness
 
-Introduce explicit saved drafts and an offline outbox only after server
-idempotency and conflict/version checks exist for the affected commands. Recheck
+Local UI/draft restoration is now implemented under the contract below. Introduce
+an offline outbox only after server idempotency and conflict/version checks exist
+for the affected commands. Recheck
 identity, selected store and permissions on reconnect before replaying. Keep
 pending work clearly distinct from accepted server records; clear or isolate
 private drafts after account changes. Do not silently resubmit an ambiguous report
@@ -177,6 +180,58 @@ camera permissions and constrained connectivity. Review and distribution are
 separate from committing the native foundation; no production backend cutover or
 store publication is implied by this phase's code changes.
 
+## Heads Up store announcements — 2026-09-29
+
+The manager Store hub replaces Store Access with Heads Up. Managers can create
+or edit the store's current announcement in a native screen and return directly
+to Store. Crew and managers see the read-only announcement above Your Workspace on
+Today, with an accessible refresh icon in its top-right corner. Editing is
+available from Store. Today shortcuts use the same two-column action tiles as
+Inventory and Store: reports, inventory, team management and account, subject
+to existing access. Crew can also open the read-only announcement route. Owners
+and administrators do not see or fetch Heads Up,
+including when opening its native route directly. Owners retain Store Access.
+
+This is the same single, store-scoped message used by the browser. Native
+`GET /api/mobile/heads-up` and `POST /api/mobile/heads-up` reuse the store service
+and existing table. The shared service enforces manager/crew reads and
+manager-only writes for individual accounts through both browser transports and
+native bearer sessions. Report permissions alone cannot give owners or
+administrators access. No schema migration or new account capability is needed.
+This is an in-app announcement, not an operating-system push notification.
+
+Native writes require the current `expectedStoreId`; the transaction rechecks
+the session, selected store and manager role, then saves the message and account
+audit together. Messages accept at most 1,000 characters and use the existing
+whitespace normalization. A store still has one current message; this release
+does not add an announcement feed, history, scheduling or concurrent-edit
+versioning. Browser and native changes become visible on refresh or re-entry.
+
+The editor exposes loading, empty, error, saving and unsaved-change states.
+Cancelled drafts are discarded. The subsequent workspace restoration revision
+retains unfinished edits across navigation/backgrounding against the latest
+message baseline. Failed saves preserve the current form; an uncertain save asks the manager to refresh before retrying and is never
+automatically replayed. Existing session invalidation hides private content after
+an account, role or store change.
+
+Locally verified: native TypeScript checking and 79 unit checks; iOS and Android
+exports; seven focused API/policy cases (including both browser transports),
+nine existing announcement/report regressions, six rendered Heads Up journeys
+and thirteen existing rendered account journeys. Rendered review covered a
+390-pixel phone and 1024-pixel tablet, manager create/edit/cancel and return to
+Store, read-only crew Today, owner/admin direct-route denial with no announcement
+request, and failed-save draft preservation/cleanup. Three initial rendered
+failures were outdated test selectors; the corrected journeys passed without
+application changes. Tests used isolated schemas in a disposable database.
+
+The subsequent Today layout revision passed native type checking, the 79 native
+unit checks, and all six rendered Heads Up journeys. Phone/tablet review confirmed
+the read-only notice, icon refresh, workspace order and matching shortcut grid.
+
+The existing local demo API was restarted without seeding or migrating its data;
+Expo serves the updated iPhone bundle. Physical-device acceptance, CI verification,
+commit/push and deployment have not been performed for this change.
+
 ## Main constraints
 
 - Native delivery changes the first client priority, not the dependency order of
@@ -194,3 +249,75 @@ Run instructions are in [apps/mobile/README.md](../apps/mobile/README.md). Frame
 references: [React application guidance](https://react.dev/learn/creating-a-react-app),
 [Expo project setup](https://docs.expo.dev/get-started/create-a-project/) and
 [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/).
+
+## Workspace restoration — 2026-09-29
+
+The app now checkpoints approved navigation, display preferences and input drafts
+locally. Minimizing still locks private screens and invalidates pending responses;
+foregrounding revalidates the server account before loading the last screen and
+its input state. A process restart follows the same gate. Explicit launch links
+keep their own destination and access-denied/activation behavior.
+
+| Area | Restored | Deliberately transient |
+| --- | --- | --- |
+| All signed-in screens | Last allowed route, safe record IDs, contextual return destination, scroll offset | API responses, request tasks, server errors, confirmation dialogs |
+| Catalog and shelves | Searches, filters, page cursor, product/new-shelf/shelf-name drafts, assignment picker | Automatic create, assign, remove or archive actions |
+| Current inventory and counts | Searches, shelf selection, count date, unsaved full/partial measurements and units | Stock changes and count submission/finalization |
+| Reports | Inbox/composer choice, selected report ID, list length, shift and unsent notes | Fetched report bodies and briefings |
+| Heads Up | Unfinished manager message against the last fetched message baseline | Automatic publication |
+| Team, Owner and Account | Team selector/search, owner search, permissions/store panel | Passwords, invitation/recovery codes, role/grant/reason edits, ownership transfer and sign-out confirmations |
+
+Product and shelf edit drafts match the latest server version. Count-entry drafts
+match the saved line version, count state and captured measurement configuration;
+another line's edit does not discard them. A changed baseline uses current server
+values. Save/Submit is still explicit; Cancel/Discard removes the local draft.
+Report sends checkpoint an unconfirmed marker before the request. A lost response
+or interrupted send remains blocked from resubmission until the person checks
+the inbox/manager and explicitly acknowledges it. No request is replayed.
+
+Checkpoint storage uses the existing Expo SecureStore, scoped to API origin and
+verified user/business/store/role/capabilities/authorized stores. Sign-out and
+changed account/store/access clear the workspace. No read is exposed while locked.
+Storage has a schema version, a seven-day expiry and bounded size/entry count.
+Small Unicode-safe chunks and a commit-last manifest prevent incomplete writes
+from replacing a usable checkpoint; an error is visible in the app. Local storage
+is a recovery convenience, not the authoritative inventory or report database.
+
+The checkpoint is updated shortly after input and flushed on backgrounding; an OS
+termination can interrupt the last in-flight write. Restoring uses the last complete
+checkpoint and still requires valid sign-in and a connection to verify access.
+This implements screen/draft continuity, not offline access, an offline outbox,
+server autosave, background processing or cross-device draft synchronization.
+
+Local verification passed: TypeScript checking, 97 native unit tests, and 36
+rendered inventory/account/report/Heads Up journeys against disposable PostgreSQL.
+The rendered checks include warm/cold recovery, scroll after content reload, stale
+record drafts, exact partial units, scope changes, secret exclusion, lost report
+responses and a store change while checkpointing. iOS and Android exports passed;
+the local Expo bundle was checked for restoration code. No schema or backend
+change was needed. Physical-device app-switcher, force-close, keyboard and scroll
+acceptance remains separate; no hosted deployment is claimed.
+
+
+## Production workspace — 2026-09-29
+
+The native recipe/production slice is implemented and locally verified. Managers
+and owners open Production from Today; staff assigned the separate Production
+role receive its own bottom tab, with no Reports or Store access. Recipe setup
+uses the shelf-style compact ingredient cards and add/remove controls. Daily
+flavors support repeated batches, a stock-use review and explicit confirmation.
+Each ingredient deduction is the recipe amount × batches × 1.01.
+
+Restoration now also includes recipe drafts, daily flavor/batch selections,
+production list searches/cursors and safe recipe/log destinations. Pending recipe
+and production writes retain their original request identity; uncertain results
+freeze the payload until recovery or exact retry. Account/store/access changes
+clear private state. Production history remains server-authoritative.
+
+Type checking, 103 native tests, four rendered production journeys and iOS/Android
+exports passed. The database-backed service, account and browser checks and backup
+recovery are recorded in the [production contract](workstreams/production-and-assisted-inventory.md).
+The local demo schema and API were refreshed after a verified backup without
+changing existing data. Physical-device acceptance and CI remain separate.
+Camera suggestions, hardware scale capture and Forecast are planned next slices;
+this milestone does not enable them.

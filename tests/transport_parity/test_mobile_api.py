@@ -262,7 +262,7 @@ def test_native_management_choices_are_server_scoped_and_roster_contract_unchang
     owner = m.login()
     data = m.send('GET', '/api/mobile/accounts/management', token=owner).json()
     assert data['storeId'] == m.stores[0] and data['isOwner'] is True
-    assert [role['role'] for role in data['roles']] == ['crew', 'manager', 'admin']
+    assert [role['role'] for role in data['roles']] == ['crew', 'production', 'manager', 'admin']
     assert 'catalog.manage' in data['businessCapabilities']
     assert {person['userId'] for person in data['directory']} == set(m.users.values())
     assert next(person for person in data['directory'] if person['userId'] == m.users['owner'])['canTransfer'] is False

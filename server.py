@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import psycopg
 
 from backend.shiftly.reports import ReportSubmission
+from backend.shiftly.api.legacy_production import handle as production_route
 from backend.shiftly.identity import IdentityError
 from auth import is_manager, session_store_id, request_principal
 from config import load_settings
@@ -144,6 +145,10 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if production_route(self, method="GET", connect=db_connection,
+                            accounts=make_identity_service(admin_key=ADMIN_SIGNUP_KEY).accounts,
+                            token=named_account_token(self), parse_body=parse_json):
+            return
         if account_route(self, method="GET", identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY), secure_cookies=SECURE_COOKIES):
             return
         if path == "/api/health":
@@ -175,8 +180,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 actor = principal.actor if principal and principal.named else None
                 self.send_json(200, {
                     "authenticated": bool(actor),
-                    "role": ("crew" if actor.role == "crew" else "manager") if actor else None,
-                    "managerName": actor.display_name if actor and actor.role != "crew" else None,
+                    "role": ("crew" if actor.role in {"crew", "production"} else "manager") if actor else None,
+                    "managerName": actor.display_name if actor and actor.role not in {"crew", "production"} else None,
                     "actor": actor.as_dict() if actor else None,
                 })
                 return
@@ -205,12 +210,18 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 self.send_json(503, {"error": str(error)})
             return
         if path == "/api/heads-up":
-            manager_id = is_manager(self)
-            store_id = session_store_id(self, manager_id) if manager_id else is_crew(self)
+            principal = request_principal(self)
+            store_id = principal.store_id if principal and principal.named else None
             if not store_id:
                 self.send_json(401, {"error": "Sign-in required."})
                 return
-            self.send_json(200, heads_up(store_id))
+            try:
+                self.send_json(200, heads_up(store_id, actor_token=named_account_token(self),
+                                             accounts=make_identity_service().accounts))
+            except IdentityError as error:
+                self.send_json(401 if error.code == "unauthenticated" else 403, {"error": str(error)})
+            except (psycopg.Error, RuntimeError):
+                self.send_json(503, {"error": "Service is temporarily unavailable."})
             return
         if path == "/api/managers":
             manager_id = is_manager(self)
@@ -247,11 +258,13 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             file_path = ROOT / "crew.html"
-        elif path in {"/accounts.html", "/inventory.html"}:
+        elif path in {"/accounts.html", "/inventory.html", "/production.html"}:
             principal = request_principal(self)
             allowed = bool(principal and principal.named)
             if path == "/inventory.html":
                 allowed = allowed and "inventory.view" in principal.actor.capabilities
+            if path == "/production.html":
+                allowed = allowed and "production.view" in principal.actor.capabilities
             if not allowed:
                 self.send_response(302)
                 self.send_header("Location", "/")
@@ -276,6 +289,8 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 "/styles.css": ROOT / "styles.css",
                 "/accounts.js": ROOT / "accounts.js",
                 "/inventory.js": ROOT / "inventory.js",
+                "/production.js": ROOT / "production.js",
+                "/production.css": ROOT / "production.css",
                 "/activate.html": ROOT / "activate.html",
                 "/activate.js": ROOT / "activate.js",
             }
@@ -296,6 +311,10 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if production_route(self, method="POST", connect=db_connection,
+                            accounts=make_identity_service(admin_key=ADMIN_SIGNUP_KEY).accounts,
+                            token=named_account_token(self), parse_body=parse_json):
+            return
         if account_route(self, method="POST", identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY), secure_cookies=SECURE_COOKIES):
             return
         if path == "/api/auth/login":

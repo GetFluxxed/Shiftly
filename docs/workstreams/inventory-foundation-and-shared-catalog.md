@@ -268,3 +268,45 @@ The iPhone demo database and running services were not used for the prerequisite
 tests. These historical results cover the cleanup only; the later product-storage
 verification above covers migration 015 and the inventory screens. No production
 deployment or real-device shelf acceptance is claimed.
+
+
+## Compact native inventory lists — 2026-09-29
+
+Repeated inventory records now share a compact card and list layout. Catalog,
+current stock, shelves, shelf assignments and product pickers, count entries,
+comparisons, shelf breakdowns and count history use smaller headings, tighter
+spacing and tap-to-open cards. SKUs remain visible in catalog and assignment
+pickers; stock, shelf contents and count screens show product names without SKU
+metadata. SKU search and stored identifiers are unchanged. Shelf removal stays
+an independent, clearly labeled action. Navigation and search controls have
+accessible names and at least 44-point touch targets; names and exact quantities
+wrap rather than truncate.
+
+Lists use one column on phones and two columns when their actual container is at
+least 720 points wide. Larger text uses one column. Measuring the container keeps
+nested shelf/picker lists from turning into cramped columns on tablets. Inventory
+page headings and the catalog/stock/search controls are also more compact; editing
+fields and stock calculations continue through the existing screens and services.
+Filtering, A–Z ordering, pagination, role checks and count posting are unchanged.
+The catalog and assignment picker use the same server-ordered A–Z pages.
+
+Shelf name actions are now Save and Cancel; Cancel reloads the saved shelf name.
+Shelf details return to Open Shelves. Counts opened from Current Inventory retain
+that destination through start, resume, entry saves, review and history. Counts
+opened from the main inventory screen still return there. Product stock details
+also return to Current Inventory. Return destinations are restricted to known
+screens; arbitrary route values are not accepted.
+
+Local verification: TypeScript checking and 79 native tests passed. Seven
+rendered product/shelf/count journeys and the alphabetical pagination regression
+passed against a disposable database. The rendered journeys also verify shelf
+Save/Cancel, return routes, hidden stock/count SKUs and assignment picker order.
+Visual review covered 320- and 390-pixel phones and a 1024-pixel tablet,
+including catalog search, exact 18 kg → 13.25 kg counts, crew zero-count entry,
+failed-save recovery, and archived product restoration. These renderer checks do
+not establish physical-device acceptance. No database migration or backend change
+was needed for this layout revision.
+
+The subsequent [workspace restoration revision](../NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
+retains approved catalog/shelf input, filters and page position on this device.
+Save/Cancel remain explicit; record-version changes invalidate old edit drafts.
