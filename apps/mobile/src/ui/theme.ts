@@ -21,10 +21,13 @@ export const permissionLabels: Record<string, string> = {
   'receipts.draft': 'Prepare deliveries', 'receipts.post': 'Post deliveries',
   'configuration.manage': 'Manage store setup', 'catalog.propose': 'Suggest product changes',
   'catalog.manage': 'Manage shared products',
+  'production.view': 'View production plans', 'production.submit': 'Submit production work',
+  'production.manage': 'Manage production', 'recipes.manage': 'Manage recipes',
+  'forecasts.view': 'View forecasts',
 };
 
 export const roleLabels: Record<string, string> = {
-  owner: 'Business owner', admin: 'Administrator', manager: 'Store manager', crew: 'Crew member',
+  owner: 'Business owner', admin: 'Administrator', manager: 'Store manager', production: 'Production', crew: 'Crew member',
 };
 
 export function friendlyDate(value: string): string {

@@ -32,7 +32,7 @@ class AccountAdministration:
             actor = self._lifecycle_actor(connection, token)
             roster = self._roster(connection, actor)
             roles = []
-            for role in ('crew', 'manager', 'admin'):
+            for role in ('crew', 'production', 'manager', 'admin'):
                 try:
                     self._check_store_grant(actor, role, ())
                 except IdentityError:

@@ -7,16 +7,19 @@
     'receipts.draft': 'Prepare deliveries', 'receipts.post': 'Post deliveries', 'stock.adjust': 'Adjust stock',
     'configuration.manage': 'Manage store setup', 'catalog.propose': 'Suggest product changes', 'catalog.manage': 'Manage shared products',
     'memberships.manage': 'Manage team access',
+    'production.view': 'View production plans', 'production.submit': 'Submit production work',
+    'production.manage': 'Manage production', 'recipes.manage': 'Manage recipes', 'forecasts.view': 'View forecasts',
   };
-  const roleLabels = { owner: 'Business owner', admin: 'Delegated admin', manager: 'Store manager', crew: 'Crew member' };
+  const roleLabels = { owner: 'Business owner', admin: 'Delegated admin', manager: 'Store manager', production: 'Production', crew: 'Crew member' };
   const crewOptions = ['inventory.view', 'counts.submit', 'receipts.draft', 'catalog.propose'];
-  const managerDefaults = ['reports.submit', 'reports.view', 'reports.manage', 'inventory.view', 'counts.submit', 'counts.approve', 'receipts.draft', 'receipts.post', 'stock.adjust', 'configuration.manage', 'catalog.propose'];
+  const productionDefaults = [...crewOptions, 'production.view', 'production.submit'];
+  const managerDefaults = ['reports.submit', 'reports.view', 'reports.manage', 'inventory.view', 'counts.submit', 'counts.approve', 'receipts.draft', 'receipts.post', 'stock.adjust', 'configuration.manage', 'catalog.propose', 'production.view', 'production.submit', 'production.manage', 'recipes.manage', 'forecasts.view'];
   let state = null;
   let members = [];
   let busy = false;
   let refreshing = false;
   let contextGeneration = 0;
-  const home = (actor) => actor.capabilities.includes('reports.view') ? '/manager.html' : actor.capabilities.includes('reports.submit') ? '/crew.html' : '/accounts.html';
+  const home = (actor) => actor.role === 'production' ? '/production.html' : actor.capabilities.includes('reports.view') ? '/manager.html' : actor.capabilities.includes('reports.submit') ? '/crew.html' : '/accounts.html';
   const can = (permission) => Boolean(state?.actor.capabilities.includes(permission));
   const message = (selector, text, failure = false) => {
     const element = $(selector);
@@ -109,15 +112,16 @@
   function roleOptions(select, includeAdmin = false) {
     const previous = select.value;
     const options = ['crew'];
+    if (productionDefaults.every(can)) options.push('production');
     if (state.actor.role === 'owner' || (state.actor.role === 'admin' && managerDefaults.every(can))) options.push('manager');
     if (includeAdmin && state.actor.role === 'owner') options.push('admin');
     select.innerHTML = options.map((role) => `<option value="${role}">${roleLabels[role]}</option>`).join('');
     if (options.includes(previous)) select.value = previous;
   }
   function permissions(container, role, selected = []) {
-    let options = role === 'crew' ? crewOptions : role === 'manager' ? ['memberships.manage'] : Object.keys(labels);
+    let options = role === 'crew' ? crewOptions : role === 'production' ? [] : role === 'manager' ? ['memberships.manage'] : Object.keys(labels);
     options = options.filter(can);
-    container.innerHTML = `${role === 'crew' ? '<p class="account-help">Shift reporting is included. Choose any additional access:</p>' : role === 'manager' ? '<p class="account-help">Store managers have reporting and stock-operation permissions. Shared product editing requires a separate business delegation.</p>' : '<p class="account-help">Choose the permissions to delegate:</p>'}<fieldset><legend class="field-label">Permissions</legend>${options.map((capability) => `<label class="check-option"><input type="checkbox" value="${capability}" ${selected.includes(capability) ? 'checked' : ''} /> ${labels[capability]}</label>`).join('') || '<p class="account-help">No additional permissions are available for this role.</p>'}</fieldset>`;
+    container.innerHTML = `${role === 'crew' ? '<p class="account-help">Shift reporting is included. Choose any additional access:</p>' : role === 'production' ? '<p class="account-help">Production includes crew-level inventory work and production planning, without report access.</p>' : role === 'manager' ? '<p class="account-help">Store managers have reporting, inventory, and production permissions. Shared product editing requires a separate business delegation.</p>' : '<p class="account-help">Choose the permissions to delegate:</p>'}<fieldset><legend class="field-label">Permissions</legend>${options.map((capability) => `<label class="check-option"><input type="checkbox" value="${capability}" ${selected.includes(capability) ? 'checked' : ''} /> ${labels[capability]}</label>`).join('') || '<p class="account-help">No additional permissions are available for this role.</p>'}</fieldset>`;
   }
   const selectedPermissions = (id) => [...document.querySelectorAll(`${id} input:checked`)].map((input) => input.value);
   const memberLabel = (member) => `${member.displayName || member.username} (@${member.username})`;
@@ -125,8 +129,8 @@
     if (member.userId === state.actor.userId) return false;
     if (state.actor.role === 'owner') return true;
     if ((member.businessState === 'active' && ['owner', 'admin'].includes(member.businessRole)) || member.role === 'admin') return false;
-    if (state.actor.role === 'manager') return false;
-    const effective = member.role === 'manager' ? [...managerDefaults, ...member.capabilities] : ['reports.submit', ...member.capabilities];
+    if (state.actor.role === 'manager' && !['crew', 'production'].includes(member.role)) return false;
+    const effective = member.role === 'manager' ? [...managerDefaults, ...member.capabilities] : member.role === 'production' ? productionDefaults : ['reports.submit', ...member.capabilities];
     return effective.every(can);
   }
   function showInvitation(result, username) {
@@ -162,6 +166,12 @@
     $('#operations-link').href = home(actor);
     $('#operations-link').classList.toggle('hidden', home(actor) === '/accounts.html');
     $('#inventory-link').classList.toggle('hidden', !can('inventory.view'));
+    let productionLink = $('#production-link');
+    if (!productionLink) {
+      productionLink = document.createElement('a'); productionLink.id = 'production-link'; productionLink.href = '/production.html'; productionLink.textContent = 'Production';
+      $('#inventory-link').after(productionLink);
+    }
+    productionLink.classList.toggle('hidden', !can('production.view'));
     $('#store-select').innerHTML = state.stores.map((item) => `<option value="${item.storeId}" ${item.storeId === actor.storeId ? 'selected' : ''}>${esc(item.storeName)}</option>`).join('');
     $('#store-form').classList.toggle('hidden', !['owner', 'admin'].includes(actor.role) || state.stores.length < 2);
     $('#switch-store').classList.toggle('hidden', state.stores.length < 2);

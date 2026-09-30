@@ -35,7 +35,7 @@ async function refreshManagerContext() {
       return false;
     }
     if (!payload.actor && payload.role !== "manager") throw new Error("Manager sign-in is required.");
-    const signature = (value) => value.actor ? `${value.actor.userId}:${value.actor.storeId}:${value.actor.capabilities.join(',')}` : `legacy:${value.role}`;
+    const signature = (value) => value.actor ? `${value.actor.userId}:${value.actor.storeId}:${value.actor.role}:${value.actor.capabilities.join(',')}` : `legacy:${value.role}`;
     const changed = managerContext && signature(managerContext) !== signature(payload);
     const initial = !managerContext;
     if (changed) clearManagerPrivate();
@@ -44,7 +44,8 @@ async function refreshManagerContext() {
     const capabilities = payload.actor?.capabilities || [];
     $("#manager-account-link").classList.toggle("hidden", !payload.actor);
     $("#manager-inventory-link").classList.toggle("hidden", !capabilities.includes("inventory.view"));
-    $("#heads-up-update").classList.toggle("hidden", Boolean(payload.actor) && !capabilities.includes("reports.manage"));
+    $(".heads-up-quadrant").classList.toggle("hidden", payload.actor?.role !== "manager");
+    $("#heads-up-update").classList.toggle("hidden", payload.actor?.role !== "manager");
     $("#add-manager").classList.toggle("hidden", Boolean(payload.actor) && !capabilities.includes("memberships.manage"));
     $("#add-manager").textContent = payload.actor ? "Manage team" : "Add New";
     document.querySelector('.brand').href = payload.actor && !capabilities.includes("reports.submit") ? "/accounts.html" : "/crew.html";
@@ -91,6 +92,7 @@ function applyManagerIdentity(payload) {
 }
 
 function loadHeadsUp() {
+  if (managerContext?.actor?.role !== "manager") return;
   const generation = managerGeneration;
   fetch("/api/heads-up")
     .then((response) => response.json())

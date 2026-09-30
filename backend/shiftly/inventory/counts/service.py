@@ -6,6 +6,7 @@ from uuid import uuid4
 import psycopg
 from backend.shiftly.identity.contracts import IdentityError
 from ..repository import InventoryRepository
+from ..movements import MovementRepository
 from .. import validation as valid
 from . import validation as measured
 from .repository import CountRepository, MAX_LINES, observation
@@ -46,6 +47,7 @@ class CountService:
         try:
             with self.connect() as connection:
                 actor = self.actor(connection,token,capability,fields.get('expectedStoreId'),writing=True)
+                MovementRepository.lock_store(connection,actor)
                 replay = self.audit.replay(connection,actor,request_id)
                 if replay:
                     if replay[0] != fingerprint:
@@ -139,7 +141,7 @@ class CountService:
             conflict('Count every location before submitting. Confirm zero for items with none remaining.')
         for row in totals:
             measured.bounded_total(row['quantity'])
-            if (row['previous_quantity'],row['previous_count_id']) != (row['current_quantity'],row['current_count_id']):
+            if (row['previous_quantity'],row['previous_count_id'],row['previous_stock_version']) != (row['current_quantity'],row['current_count_id'],row['current_stock_version']):
                 conflict('Posted inventory changed since this count began. Cancel it and count against the latest inventory.')
         return totals
 

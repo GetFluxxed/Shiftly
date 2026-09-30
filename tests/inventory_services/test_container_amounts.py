@@ -119,7 +119,7 @@ def test_upgrade_015_preserves_products_without_inventing_container_sizes(empty_
             c.execute('INSERT INTO inventory_products(id,business_id,sku,name,base_unit,version) VALUES(%s,%s,%s,%s,%s,3)',
                       (product_id, business, product_id, 'Existing '+unit, unit))
             c.execute('INSERT INTO inventory_product_skus(business_id,product_id,sku) VALUES(%s,%s,%s)', (business, product_id, product_id))
-    assert migrate(connect) == ['016_product_container_amounts.sql', '017_inventory_counts.sql']
+    assert migrate(connect) == ['016_product_container_amounts.sql', '017_inventory_counts.sql', '018_inventory_movements.sql', '019_production.sql', '020_production_accounts.sql']
     assert migrate(connect) == []
     with connect() as c:
         rows = c.execute('SELECT base_unit,version,container_amount FROM inventory_products ORDER BY base_unit').fetchall()

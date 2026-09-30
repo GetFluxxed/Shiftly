@@ -8,6 +8,7 @@ from backend.shiftly.api.accounts import router as accounts_router
 from backend.shiftly.api.mobile import router as mobile_router
 from backend.shiftly.api.inventory import router as inventory_router
 from backend.shiftly.api.counts import router as counts_router
+from backend.shiftly.api.production import router as production_router, browser_router as production_browser_router
 from backend.shiftly.core.dependencies import (
     AppContext,
     ConnectionFactory,
@@ -75,6 +76,8 @@ def create_app(
     app.include_router(mobile_router)
     app.include_router(inventory_router)
     app.include_router(counts_router)
+    app.include_router(production_router)
+    app.include_router(production_browser_router)
     app.include_router(compat_router)
     app.include_router(static_router)
     return app
@@ -93,6 +96,8 @@ def _default_page_access_provider(request, page):
         return False
     if page == "accounts.html":
         return principal.named
+    if page == "production.html":
+        return principal.named and "production.view" in principal.actor.capabilities
     if page == "inventory.html":
         return principal.named and "inventory.view" in principal.actor.capabilities
     if page == "manager.html":

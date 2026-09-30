@@ -16,10 +16,14 @@ class StoresService:
     def manager_accounts(self, store_id):
         return self.repository.manager_accounts(store_id)
 
-    def heads_up(self, store_id):
+    def heads_up(self, store_id, *, actor_token=None, accounts=None):
+        if actor_token is not None:
+            return self.repository.heads_up(store_id, actor_token=actor_token, accounts=accounts)
         return self.repository.heads_up(store_id)
 
     def save_heads_up(self, store_id, message, *, actor_token=None, accounts=None, legacy_credentials=None):
+        if not isinstance(message, str) or len(message) > 1000:
+            raise ValueError("Heads Up must be text of at most 1,000 characters.")
         if actor_token is not None or legacy_credentials is not None:
             return self.repository.save_heads_up(store_id, clean(message, 1000), actor_token=actor_token, accounts=accounts,
                                                   legacy_credentials=legacy_credentials)

@@ -123,6 +123,7 @@ def test_revoking_inviter_authority_blocks_pending_activation(life):
 
 def test_manager_allowed_crew_grants_cannot_promote_or_modify_manager(life):
     denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',capabilities=['counts.submit','inventory.view']))
+    denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='production'))
     denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='crew',capabilities=['counts.approve']))
     denied('forbidden',lambda:life.service.set_membership(life.manager_token,user_id=life.crew,role='manager'))
     other=life.user('Second Manager')

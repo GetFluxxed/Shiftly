@@ -8,6 +8,7 @@ from backend.shiftly.identity import AdmissionControl, IdentityRepository, Ident
 from backend.shiftly.reports import ReportSubmission, ReportsRepository, ReportsService, WeeklyOverviewService
 from backend.shiftly.inventory import InventoryService
 from backend.shiftly.inventory.counts import CountService
+from backend.shiftly.production import ProductionService
 from backend.shiftly.stores import StoresRepository, StoresService
 from .prompts import QUALITY_PROMPT, WEEKLY_PROMPT
 
@@ -23,6 +24,7 @@ class Services:
     accounts: object = None
     inventory: InventoryService | None = None
     counts: CountService | None = None
+    production: ProductionService | None = None
 
 
 def build_services(*, settings, connection_factory, provider, weekly_connection_factory=None,
@@ -54,4 +56,5 @@ def build_services(*, settings, connection_factory, provider, weekly_connection_
                                     model=settings.openai_model, prompt=WEEKLY_PROMPT,
                                     max_reports=50, max_input_chars=20_000)
     return Services(identity, stores, reports, submission, weekly, admission, identity.accounts,
-                    InventoryService(connection_factory, identity.accounts), CountService(connection_factory, identity.accounts))
+                    InventoryService(connection_factory, identity.accounts), CountService(connection_factory, identity.accounts),
+                    ProductionService(connection_factory, identity.accounts))

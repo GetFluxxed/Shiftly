@@ -21,8 +21,8 @@ def store_for_code(store_code):
     return _stores().store_for_code(store_code)
 
 
-def heads_up(store_id):
-    return _stores().heads_up(store_id)
+def heads_up(store_id, *, actor_token=None, accounts=None):
+    return _stores().heads_up(store_id, actor_token=actor_token, accounts=accounts)
 
 
 def manager_accounts(store_id):

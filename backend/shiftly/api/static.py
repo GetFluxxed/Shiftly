@@ -19,6 +19,8 @@ PUBLIC_ASSETS = {
     "/activate.js": ROOT / "activate.js",
     "/activate.html": ROOT / "activate.html",
     "/inventory.js": ROOT / "inventory.js",
+    "/production.js": ROOT / "production.js",
+    "/production.css": ROOT / "production.css",
     "/styles.css": ROOT / "styles.css",
 }
 PROTECTED_PAGES = {
@@ -26,6 +28,7 @@ PROTECTED_PAGES = {
     "/manager.html": "manager.html",
     "/accounts.html": "accounts.html",
     "/inventory.html": "inventory.html",
+    "/production.html": "production.html",
 }
 
 
@@ -52,6 +55,8 @@ def _protected_page(request: Request, path: str, context: AppContext):
 @router.get("/activate.js", include_in_schema=False)
 @router.get("/activate.html", include_in_schema=False)
 @router.get("/inventory.js", include_in_schema=False)
+@router.get("/production.js", include_in_schema=False)
+@router.get("/production.css", include_in_schema=False)
 @router.get("/styles.css", include_in_schema=False)
 def public_asset(request: Request, context: Annotated[AppContext, Depends(get_app_context)]):
     return _file_response(PUBLIC_ASSETS[request.url.path])
@@ -61,5 +66,6 @@ def public_asset(request: Request, context: Annotated[AppContext, Depends(get_ap
 @router.get("/manager.html", include_in_schema=False)
 @router.get("/accounts.html", include_in_schema=False)
 @router.get("/inventory.html", include_in_schema=False)
+@router.get("/production.html", include_in_schema=False)
 def protected_page(request: Request, context: Annotated[AppContext, Depends(get_app_context)]):
     return _protected_page(request, PROTECTED_PAGES[request.url.path], context)

@@ -7,6 +7,7 @@ import { useTask } from '@/src/ui/useTask';
 import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 import { AdministrationScreen, Choice, confirmChange, Permissions, Reason, type AdminContext } from './AdminComponents';
 import { accountId, accountState, type BusinessMember } from './types';
+import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 
 export function OwnerScreen() {
   return <AdministrationScreen title="A view of your business." ownerOnly>{context => <OwnerList {...context} />}</AdministrationScreen>;
@@ -14,7 +15,7 @@ export function OwnerScreen() {
 function OwnerList({ data, changed }: AdminContext) {
   const router = useRouter();
   const { actor } = useSession();
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useRememberedState('owner.people.search', '');
   const people = data.directory.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.toLowerCase()));
   return <><Columns><Column><Card><Heading>People & authority</Heading>
     <Body>Appoint administrators or additional owners, review account status, and transfer ownership. These controls apply to the business behind your selected store.</Body>

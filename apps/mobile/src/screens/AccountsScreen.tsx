@@ -10,14 +10,18 @@ import { Body, Button, Card, Field, Heading, Notice, Screen, layout } from '@/sr
 import { colors, fonts, permissionLabels, roleLabels } from '@/src/ui/theme';
 import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 import { useTask } from '@/src/ui/useTask';
+import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 
 type Panel = 'store' | 'permissions' | 'security' | 'signOut' | null;
+type RememberedPanel = Extract<Panel, 'store' | 'permissions'> | null;
 
 export function AccountsScreen() {
   const router = useRouter();
   const { actor, stores, switchStore, changePassword, signOut, busy } = useSession();
   const task = useTask();
-  const [panel, setPanel] = useState<Panel>(null);
+  const [rememberedPanel, setRememberedPanel] = useRememberedState<RememberedPanel>('account.panel', null);
+  const [sensitivePanel, setSensitivePanel] = useState<Extract<Panel, 'security' | 'signOut'> | null>(null);
+  const panel: Panel = sensitivePanel || rememberedPanel;
   const [changingPassword, setChangingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -44,12 +48,16 @@ export function AccountsScreen() {
     if (panel === 'security' && nextPanel !== 'security') clearPasswordForm();
     task.setError(null);
     setNotice(null);
-    setPanel(nextPanel);
+    if (nextPanel === 'store' || nextPanel === 'permissions') {
+      setSensitivePanel(null); setRememberedPanel(nextPanel);
+    } else {
+      setRememberedPanel(null); setSensitivePanel(nextPanel);
+    }
   };
   const closePanel = () => {
     if (panel === 'security') clearPasswordForm();
     task.setError(null);
-    setPanel(null);
+    setSensitivePanel(null); setRememberedPanel(null);
   };
   const chooseStore = (storeId: number, storeName: string) => {
     if (!canSwitchStore || storeId === actor?.storeId) return;

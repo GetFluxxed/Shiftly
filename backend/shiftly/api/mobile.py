@@ -132,11 +132,31 @@ async def submit_report(request: Request, context: AppContext = Depends(get_app_
 @router.get("/heads-up")
 async def heads_up(request: Request, context: AppContext = Depends(get_app_context)):
     try:
-        actor = await require_actor(context, native_token(request))
-        if not ({"reports.view", "reports.submit"} & actor.capabilities):
-            raise IdentityError("forbidden", "Report access is required.", reason="permission_denied")
-        return await call(context.services.stores.heads_up, actor.store_id)
+        token = native_token(request)
+        actor = await require_actor(context, token)
+        return await call(context.services.stores.heads_up, actor.store_id,
+                          actor_token=token, accounts=context.services.accounts)
     except IdentityError as error:
         return error_response(error)
+    except (psycopg.Error, RuntimeError):
+        return unavailable()
+
+
+@router.post("/heads-up")
+async def save_heads_up(request: Request, context: AppContext = Depends(get_app_context)):
+    try:
+        token = native_token(request)
+        actor = await require_actor(context, token, capability="reports.manage")
+        same_origin(request)
+        fields = await bounded_json(request, max_body=10_000, invalid_message="Invalid Heads Up request.")
+        selected_store(fields, actor)
+        return await call(context.services.stores.save_heads_up, actor.store_id, fields.get("message"),
+                          actor_token=token, accounts=context.services.accounts)
+    except IdentityError as error:
+        return error_response(error)
+    except (RequestBodyError, ValueError) as error:
+        return JSONResponse(status_code=400, content={"error": str(error), "errorCode": "validation_failed"})
+    except (TypeError, UnicodeError):
+        return JSONResponse(status_code=400, content={"error": "Invalid Heads Up request.", "errorCode": "validation_failed"})
     except (psycopg.Error, RuntimeError):
         return unavailable()

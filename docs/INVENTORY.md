@@ -1,11 +1,10 @@
 # Shiftly inventory module specification
 
-Current delivery contract (2026-09-25): [native current inventory and reviewed counts](workstreams/inventory-counts.md). Its bounded first release takes precedence over the later receiving, camera and forecasting requirements below.
-
-Status: first catalog/shelf slice implemented, 2026-09-23. Delivery order is
-controlled by [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). This remains the
-broader specification; only the slice below is implemented. Quantities, camera
-processing and sales integrations remain future work.
+Current delivery contract (2026-09-29): [native current inventory and reviewed
+counts](workstreams/inventory-counts.md) is implemented through migration 017.
+[Production and assisted inventory](workstreams/production-and-assisted-inventory.md)
+now defines the next four slices and supersedes conflicting older sequencing.
+The broader specification below includes future capabilities, not deployed features.
 
 ## Current first slice — 2026-09-23
 
@@ -13,8 +12,8 @@ Implemented directly in React Native: a shared company catalog with
 add/edit/archive/restore, named shelves in a selected store and product/SKU
 assignment/removal. Reuse identical
 company products across stores without duplicating their identities. Follow the
-[inventory foundation and shared company catalog](workstreams/inventory-foundation-and-shared-catalog.md); stock quantities, camera processing and the broader specification below
-remain later work. Migrations 015–016, the independent inventory service/router, and
+[inventory foundation and shared company catalog](workstreams/inventory-foundation-and-shared-catalog.md); stock quantities and reviewed counts now follow the count contract; camera processing
+and other unimplemented requirements remain later work. Migrations 015–016, the independent inventory service/router, and
 native catalog/shelf screens implement this slice. Store-listing deactivation,
 shelf deletion and area/rack/bin hierarchy are not yet exposed.
 
@@ -50,7 +49,7 @@ shelf assignments. Existing products can add/edit this reference with version
 checks. An unknown size stays blank. New litre/millilitre products are disabled.
 The catalog and shelf's catalog picker are alphabetized before pagination/search.
 
-Actual partial measurements remain a later count/scale integration. Store each
+Manual partial measurements are implemented in counts. Automated scale capture remains a later integration. Store each
 future observation's original amount/unit, net value after known tare, product
 ID and configuration version; normalize grams/kilograms exactly into that same
 SKU's base unit. A 1,250 g net partial contributes 1.25 kg alongside full 6 kg

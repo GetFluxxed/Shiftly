@@ -10,10 +10,14 @@ import { StockScreen, StockDetailScreen } from '../../src/inventory/counts/Stock
 import { CountsScreen, CountSessionScreen, CountReviewScreen, CountHistoryScreen } from '../../src/inventory/counts/CountScreens';
 import { CountEntryScreen } from '../../src/inventory/counts/CountEntryScreen';
 import { ShelvesScreen, ShelfScreen } from '../../src/inventory/ShelfScreens';
+import { NewRecipeScreen, RecipeScreen, RecipesScreen } from '../../src/production/RecipeScreens';
+import { ProductionLogScreen, ProductionLogsScreen, ProductionReviewScreen, ProductionRunScreen, ProductionScreen } from '../../src/production/ProductionScreens';
 import { createTransport } from '../../src/api/client';
 import { SessionController } from '../../src/session/controller';
 import { SessionContext } from './session';
-import { RouterContext } from './router';
+import { RouterContext, destination } from './router';
+import { WorkspaceProvider, WorkspaceNavigation } from '../../src/restoration/WorkspaceProvider';
+import { WorkspaceGate, workspaceStorage } from './workspace';
 
 declare global { interface Window { __testToken: string; __inventoryTest: SessionController } }
 // Android focus/blur events have no browser implementation. State changes and
@@ -28,20 +32,21 @@ window.__inventoryTest=controller;
 Alert.alert=(_title,message,buttons)=>{ if(window.confirm(message)) buttons?.at(-1)?.onPress?.(); };
 function App() {
  const snapshot=React.useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
- const [route,setRoute]=React.useState({path:'/inventory',params:{} as Record<string,string>});
+ const [route,setRoute]=React.useState(() => destination(location.pathname === '/' ? '/today' : location.pathname));
  React.useEffect(()=>{void controller.restore();},[]);
  const go=React.useCallback((value:unknown)=>{
-   if(typeof value==='string') setRoute({path:value,params:{}});
-   else {const r=value as {pathname:string;params:Record<string,string>};setRoute({path:r.pathname,params:r.params});}
+   setRoute(destination(value));
  },[]);
- const ctx=React.useMemo(()=>({go,params:route.params,setParams:()=>{}}),[go,route.params]);
- if(snapshot.status!=='ready') return <div>Workspace {snapshot.status}</div>;
- const Screen=({'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,
+ const ctx=React.useMemo(()=>({go,path:route.path,params:route.params,setParams:()=>{}}),[go,route]);
+ const Screen=({'/today':InventoryScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,
    '/stock':StockScreen,'/stock/[productId]':StockDetailScreen,'/counts':CountsScreen,
    '/counts/[countId]':CountSessionScreen,'/counts/[countId]/review':CountReviewScreen,'/counts/history':CountHistoryScreen,
-   '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen} as Record<string,React.ComponentType>)[route.path]!;
- return <SessionContext.Provider value={controller}><SafeAreaProvider><RouterContext.Provider value={ctx}>
-   <Screen key={`${route.path}:${JSON.stringify(route.params)}:${snapshot.revision}`} />
- </RouterContext.Provider></SafeAreaProvider></SessionContext.Provider>;
+   '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen,
+   '/production':ProductionScreen,'/production/run':ProductionRunScreen,'/production/review':ProductionReviewScreen,
+   '/production/recipes':RecipesScreen,'/production/recipes/new':NewRecipeScreen,'/production/recipes/[recipeId]':RecipeScreen,
+   '/production/logs':ProductionLogsScreen,'/production/logs/[logId]':ProductionLogScreen} as Record<string,React.ComponentType>)[route.path]!;
+ return <SessionContext.Provider value={controller}><WorkspaceProvider session={controller} storage={workspaceStorage}><SafeAreaProvider><RouterContext.Provider value={ctx}>
+   <WorkspaceNavigation session={controller}/><WorkspaceGate session={controller}><Screen key={`${route.path}:${JSON.stringify(route.params)}:${snapshot.revision}`} /></WorkspaceGate>
+ </RouterContext.Provider></SafeAreaProvider></WorkspaceProvider></SessionContext.Provider>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

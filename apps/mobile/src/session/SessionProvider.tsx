@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import { apiOrigin, createTransport, ApiError, type Transport } from '../api/client';
 import { secureCredentials } from './credentials';
 import { SessionController } from './controller';
+import { WorkspaceProvider, WorkspaceNavigation } from '../restoration/WorkspaceProvider';
+import { secureWorkspaceStorage } from '../restoration/secureStorage';
 
 function buildController() {
   try {
@@ -16,6 +18,10 @@ function buildController() {
 const Context = createContext<SessionController | null>(null);
 export function SessionProvider({ children }: PropsWithChildren) {
   const [controller] = useState(buildController);
+  const [workspaceStorage] = useState(() => {
+    try { return secureWorkspaceStorage(apiOrigin(process.env.EXPO_PUBLIC_API_URL, __DEV__)); }
+    catch { return { read: async () => null, write: async () => { throw new Error('Workspace storage is unavailable.'); }, remove: async () => undefined }; }
+  });
   useEffect(() => {
     void controller.restore();
     const listener = AppState.addEventListener('change', state => {
@@ -30,7 +36,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }, 60_000);
     return () => { listener.remove(); blur.remove(); focus.remove(); clearInterval(verification); controller.lock(); };
   }, [controller]);
-  return <Context.Provider value={controller}>{children}</Context.Provider>;
+  return <Context.Provider value={controller}><WorkspaceProvider session={controller} storage={workspaceStorage}>
+    <WorkspaceNavigation session={controller} />{children}
+  </WorkspaceProvider></Context.Provider>;
 }
 export function useSession() {
   const controller = useContext(Context);

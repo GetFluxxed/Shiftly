@@ -10,8 +10,9 @@ count observations and stock posting.
   Count history and count detail. No browser redirect.
 - One open whole-store count per store. Authorized counters share that count;
   optimistic versions prevent one edit silently overwriting another. Individual
-  entries have an explicit Save action and server confirmation. Only saved entries
-  survive navigation/restart; clear unsaved warnings accompany form changes.
+  entries have an explicit Save action and server confirmation. Local unsaved drafts
+  now survive navigation/restart through workspace restoration; they do not become
+  shared count observations until explicitly saved.
 - Snapshot every active store product with each active shelf placement, or one
   Unassigned location when no shelf is assigned. Count only the physical amount at
   that location; totals add locations for the same product. A new catalog product
@@ -28,11 +29,14 @@ count observations and stock posting.
 - Count date identifies the store's business day, chosen explicitly by the user;
   preserve server UTC start/observation/review/posting times separately. First use
   assumes counting at a stable stock cutoff (normally after service). During-service
-  reconciliation with receipts/usage follows when stock movements are implemented.
+  reconciliation during active service is still deferred. Production now posts
+  movements; an older open count must be cancelled and restarted if its captured
+  stock versions changed.
 - Draft → review → posted. Review freezes entries. An approver can return a count
   to draft, cancel it, or finalize it. All lines must be counted before review and
   posting. Counts with no store products cannot be created.
-- Current inventory uses committed stock only, labelled Last counted inventory.
+- Current inventory uses committed stock only. Last physical count/date is shown
+  separately from subsequent production deductions/corrections and stock updates.
   Uncounted/new products show Not counted, not zero. Preserve balances for archived
   products and visibly identify them; archiving does not remove physical stock.
 - Previous quantity is nullable: the first count establishes an opening balance,
@@ -109,5 +113,29 @@ Use Inventory → View current inventory or Count inventory. Owner/manager accou
 can count and approve within their authorized store. A crew account needs explicit
 inventory.view and counts.submit grants; approval remains separate. The demo starts
 without invented opening balances: finalize the first real count to populate stock.
-Save each entry before leaving. Review shows product totals across locations and
+Save each entry to submit it to the server. The local workspace checkpoint can
+recover unsaved entry input on the same device; it does not count as a saved
+observation or update stock. Review shows product totals across locations and
 changes since the previous finalized count; an approver then finalizes the update.
+
+
+The 2026-09-29 [compact native inventory lists](inventory-foundation-and-shared-catalog.md#compact-native-inventory-lists--2026-09-29)
+revision also covers current stock, shelf breakdowns, count entries, comparisons
+and count history. Product SKUs are hidden in these displays while remaining
+searchable. Count flows entered from Current Inventory retain that return
+destination through entry saves, review and history. These are presentation and
+navigation changes; the count contract above remains in force.
+
+The [workspace restoration contract](../NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
+now covers local count input and navigation continuity. Newer server line versions
+or changed count state/configuration invalidate the corresponding unsaved draft.
+
+## Production integration — 2026-09-29
+
+Migration 018 introduces immutable stock movements and adds balance versions and
+latest-movement references. Existing count postings and last physical count links
+remain intact. Historical movement order follows each product's previous-count
+chain, including tied timestamps. Snapshots include `previous_stock_version`; a
+consumption/reversal pair cannot fool a stale count by returning to the same
+quantity. Count posting and production use the same store lock and transactionally
+maintained balance. See [the production contract](production-and-assisted-inventory.md).

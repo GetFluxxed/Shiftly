@@ -1,6 +1,6 @@
 # Shiftly implementation plan
 
-Updated: 2026-09-25. Current implementation baseline: `f9a7c9d` (individual accounts). The original `53fdd36` baseline below is historical.
+Updated: 2026-09-29. Current inventory baseline is implemented through migration 017. Earlier commit references below are historical.
 
 **Verification update — 2026-09-21:** PRs #1–#7 are merged through `e01e84e`.
 Services, FastAPI compatibility, durable worker and migration commands are now
@@ -25,13 +25,21 @@ features that already exist. Product rules and worked inventory examples are in
 [ARCHITECTURE.md](ARCHITECTURE.md); executable work packages are in
 [TASKS.md](TASKS.md).
 
-**Current delivery — 2026-09-25:** Individual accounts, single-use invitations,
-store-scoped staff access, the shared company catalog, shelves, and standard
-container amounts are implemented through migration 016. The next approved
-module is native current inventory, saved whole-store counts, review/finalization,
-and immutable count history. See the [count implementation contract](workstreams/inventory-counts.md).
-This supersedes the older requirement to finish pars, nested locations, receiving,
-or camera processing before delivering usable stock counts.
+**Current delivery — 2026-09-29:** Individual accounts, the shared catalog,
+shelves, container references, native current inventory, reviewed whole-store
+counts and immutable count history are implemented through migration 017.
+Native workspace/draft restoration is implemented locally; device acceptance
+and publishing remain separate. See the [count contract](workstreams/inventory-counts.md).
+
+**Next delivery order:** (1) Production accounts, revisioned recipes and confirmed
+batch deductions; (2) reviewed shelf-camera proposals; (3) scale-assisted inventory
+counts after hardware selection; (4) manager/owner daily/weekly Forecast tab.
+The [production and assisted-inventory contract](workstreams/production-and-assisted-inventory.md)
+defines the accepted rules and gates, including recipe usage **plus 1% per
+ingredient**, compact shelf-style ingredient controls, and no Reports/Store access
+for Production. This order supersedes the older numbered sequence below where it
+places camera/sales work before production. The hardware adapter is explicitly
+deferred. All four phases reuse the same store-scoped stock history.
 
 ## 1. Intended outcome
 

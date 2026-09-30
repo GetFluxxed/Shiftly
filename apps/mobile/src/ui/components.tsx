@@ -7,31 +7,40 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors, fonts } from './theme';
+import { useWorkspace } from '../restoration/WorkspaceProvider';
+import { useScrollRestoration } from '../restoration/useScrollRestoration';
 
 const ScrollContext = createContext<() => void>(() => undefined);
 export function useScrollToTop() { return useContext(ScrollContext); }
 
-export function Screen({ children, title, eyebrow, subtitle, trailing }: PropsWithChildren<{
-  title: string; eyebrow?: string; subtitle?: string; trailing?: React.ReactNode;
+export function Screen({ children, title, eyebrow, subtitle, trailing, compact = false }: PropsWithChildren<{
+  title: string; eyebrow?: string; subtitle?: string; trailing?: React.ReactNode; compact?: boolean;
 }>) {
   const { width } = useWindowDimensions();
   const scroll = useRef<ScrollView>(null);
-  const toTop = useCallback(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, []);
+  const position = useScrollRestoration(title, scroll);
+  const { toTop: ignoredToTop, ...scrollPosition } = position;
+  const positionRef = useRef(position); positionRef.current = position;
+  const toTop = useCallback(() => positionRef.current.toTop(), []);
+  const workspace = useWorkspace();
   return <SafeAreaView edges={['top', 'left', 'right']} style={styles.safe}>
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView ref={scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+      <ScrollView testID="workspace-scroll" ref={scroll} {...scrollPosition} scrollEventThrottle={150} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         contentContainerStyle={[styles.scroll, { paddingHorizontal: width >= 768 ? 36 : 22 }]}>
-        <View style={styles.container}>
-          <View style={styles.header}>
+        <View style={[styles.container, compact && styles.compactContainer]}>
+          <View style={[styles.header, compact && styles.compactHeader]}>
             <View style={styles.flex}>
               <View accessible={false} style={styles.headerAccent} />
               {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-              <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+              <Text accessibilityRole="header" style={[styles.title, compact && styles.compactTitle]}>{title}</Text>
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
             {trailing}
           </View>
-          <ScrollContext.Provider value={toTop}>{children}</ScrollContext.Provider>
+          <ScrollContext.Provider value={toTop}>
+            {workspace.ready && workspace.message ? <Notice message={workspace.message} kind="error" /> : null}
+            {children}
+          </ScrollContext.Provider>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -132,6 +141,8 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.paper }, flex: { flex: 1, minWidth: 0 },
   scroll: { paddingTop: 22, paddingBottom: 36, flexGrow: 1 },
   container: { width: '100%', maxWidth: 1160, alignSelf: 'center', gap: 22 },
+  compactContainer: { gap: 14 }, compactHeader: { paddingVertical: 0 },
+  compactTitle: { fontSize: 30, lineHeight: 34 },
   headerAccent: { width: 44, height: 4, borderRadius: 2, backgroundColor: colors.accent, marginBottom: 18 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12 },
   eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase', color: colors.primary, marginBottom: 10 },

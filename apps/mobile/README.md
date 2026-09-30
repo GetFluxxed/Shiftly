@@ -9,7 +9,7 @@ release acceptance.
 ## Current slice
 
 Individual sign-in, activation/recovery, store selection, account/password and
-sign-out controls, crew report entry and Head's Up, manager report reading,
+sign-out controls, crew report entry, manager/crew Heads Up viewing, manager announcement editing and report reading,
 native Team screens for invitations/reissue, existing-account assignment and
 store permissions/removal/restoration, plus an Owner workspace for business
 delegation, suspension/restoration, ownership transfer and shared-crew cutover.
@@ -129,8 +129,9 @@ browser/transport suite alongside native adapter checks.
 The app authenticates through `/api/mobile/accounts/*`. Login, activation and
 store switching return an opaque `sessionToken` plus `expiresIn` (seconds). The
 current session lifetime is eight hours; this foundation has no refresh token,
-so expiry requires sign-in again. Store only the
-session token in Expo SecureStore and send it as a bearer token. No JWT, browser
+so expiry requires sign-in again. Store the session token in Expo SecureStore
+and send it as a bearer token. Approved UI checkpoints use separate encrypted
+SecureStore keys; see workspace restoration below. No JWT, browser
 cookie sharing or second identity store is introduced. The server rejects mixed
 browser/native credentials and validates the session and current permissions on
 protected requests.
@@ -205,3 +206,55 @@ while fonts load or if loading fails. Fonts are not fetched from a third-party
 font service while the app runs. Layout review used the real screen components
 in a temporary browser renderer at 390-pixel phone and 1024-pixel tablet widths;
 this is not a substitute for final native device accessibility/keyboard checks.
+
+## Workspace restoration
+
+Minimize and reopen the app to return to your last screen after access is checked.
+Restarting restores the last complete local checkpoint, including searches, page
+position and unfinished inventory, report and Heads Up input. Counts still need
+Save and final approval; restoring a draft does not change running inventory.
+Use Cancel/Discard to remove a draft. Successful saves remove it automatically.
+
+Drafts stay on this device, expire after seven days, and clear on sign-out or a
+changed user/store/access context. Passwords, invitation codes and pending account
+permission edits are never restored. A changed product, shelf, count line or
+message baseline loads the current server version instead of the stale draft.
+Interrupted report sends require checking the inbox/manager before another send.
+
+Checkpoint failure is shown on screen. Force-closing can interrupt the newest
+write; server-saved data remains authoritative. This is not offline submission.
+See the [restoration contract](../../docs/NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
+for scope, storage boundaries and verification. Pilot acceptance should cover
+minimize/return and force-close/relaunch on both supported device platforms.
+
+
+## Recipes and production
+
+Managers and owners open **Today → Open Production → New Recipe**. The editor opens
+as a sheet on phones and a centered window on tablets. Enter a flavor name,
+choose **4.5 kg** or **6 kg** for its yield, and add optional instructions, then
+find ingredients in the company catalog. The compact cards match shelves: **+** adds an ingredient, **−** removes
+it, and each ingredient has an amount and unit. Mass ingredients accept g/kg;
+recipes retain the original entry and convert to the catalog base unit exactly.
+**Save Recipe** creates a recipe revision without changing inventory. **Cancel**
+closes the editor and discards unsaved changes. Saved recipes show a clean summary;
+**Edit Recipe** opens their fields. Selecting a yield does not rescale ingredient
+amounts. Earlier yields stay unchanged until explicitly edited.
+
+Production staff have a separate Production tab and no Reports or Store tab.
+An authorized administrator/owner assigns this role after normal crew invitation
+activation. Managers cannot change a crew member to Production themselves.
+
+In **Today's production**, check flavors and use the batch counters. Review shows
+recipe quantities plus a 1% allowance for each ingredient. Only explicit confirmation
+deducts stock, and missing/insufficient inventory blocks the entire submission.
+Production history retains the recipes used at the time. Managers/owners can
+reverse a log with a reason unless a later physical count supersedes it.
+
+Recipe and daily production drafts use the existing private workspace restoration.
+If a save result is uncertain, inputs stay locked: check the original log or retry
+the exact saved submission. This prevents duplicate deductions after a lost
+connection. This is not offline stock posting.
+
+See the [production and assisted inventory contract](../../docs/workstreams/production-and-assisted-inventory.md)
+for implementation evidence and the later camera, scale and Forecast phases.

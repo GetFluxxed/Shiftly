@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
-/** Passwords, recovery codes and unsent notes never survive leaving a view. */
+/** Passwords, recovery codes and account-security edits never survive leaving a view. */
 export function useSensitiveForm(clear: () => void) {
   const latest = useRef(clear);
   latest.current = clear;

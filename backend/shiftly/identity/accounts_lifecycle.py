@@ -294,7 +294,7 @@ class AccountLifecycle:
                 (user_id, actor.business_id),
             ).fetchone():
                 raise IdentityError('conflict', 'An active business administrator delegation is required first.', reason="state_conflict")
-            if active and role in {'crew', 'manager'} and not connection.execute(
+            if active and role in {'crew', 'production', 'manager'} and not connection.execute(
                 "SELECT 1 FROM business_memberships WHERE user_id=%s AND business_id=%s AND role='owner' AND state='active'",
                 (user_id, actor.business_id),
             ).fetchone() and connection.execute(

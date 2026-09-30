@@ -47,9 +47,10 @@ async def auth_status(request: Request, context: AppContext = Depends(get_app_co
         resolved = await _optional_principal(context, request)
         if named_account_token(request) is not None:
             actor = resolved.actor if resolved and resolved.named else None
+            compatibility_role = "crew" if actor and actor.role in {"crew", "production"} else "manager"
             return {"authenticated": bool(actor),
-                    "role": ("crew" if actor.role == "crew" else "manager") if actor else None,
-                    "managerName": actor.display_name if actor and actor.role != "crew" else None,
+                    "role": compatibility_role if actor else None,
+                    "managerName": actor.display_name if actor and compatibility_role == "manager" else None,
                     "actor": actor.as_dict() if actor else None}
         return {"authenticated": bool(resolved),
                 "role": "manager" if resolved and resolved.can_manage else "crew" if resolved else None,
@@ -154,9 +155,13 @@ async def submit_report(request: Request, context: AppContext = Depends(get_app_
 async def get_heads_up(request: Request, context: AppContext = Depends(get_app_context)):
     try:
         resolved = await _optional_principal(context, request)
-        if not resolved or (resolved.named and not resolved.can_manage and "reports.submit" not in resolved.actor.capabilities):
+        if not resolved or (resolved.named and not resolved.can_manage
+                            and not ({"reports.submit", "production.view"} & resolved.actor.capabilities)):
             return _error("Sign-in required.", 401)
-        return await _service_call(context.services.stores.heads_up, resolved.store_id)
+        return await _service_call(context.services.stores.heads_up, resolved.store_id,
+                                   actor_token=named_account_token(request), accounts=context.services.accounts)
+    except IdentityError as error:
+        return _identity_error(error)
     except psycopg.Error:
         return _error("Service is temporarily unavailable.", 503)
 

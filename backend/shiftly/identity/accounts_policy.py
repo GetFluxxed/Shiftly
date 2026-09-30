@@ -6,8 +6,12 @@ from .contracts import IdentityError
 CREW_CAPABILITIES = frozenset({
     "reports.submit", "inventory.view", "counts.submit", "receipts.draft", "catalog.propose",
 })
+PRODUCTION_CAPABILITIES = (CREW_CAPABILITIES - {"reports.submit"}) | frozenset({
+    "production.view", "production.submit",
+})
 MANAGER_CAPABILITIES = CREW_CAPABILITIES | frozenset({
     "reports.view", "reports.manage", "counts.approve", "receipts.post", "stock.adjust", "configuration.manage",
+    "production.view", "production.submit", "production.manage", "recipes.manage", "forecasts.view",
 })
 MANAGER_GRANTABLE = MANAGER_CAPABILITIES | {"memberships.manage"}
 ALL_CAPABILITIES = MANAGER_GRANTABLE | {"catalog.manage"}
@@ -48,6 +52,10 @@ def capabilities_for(role, grants=(), *, mapped=True):
         if not grants <= MANAGER_GRANTABLE:
             raise IdentityError("forbidden", "Managers cannot manage the shared catalog.", reason="permission_denied")
         capabilities = MANAGER_CAPABILITIES | grants
+    elif role == "production":
+        if not grants <= PRODUCTION_CAPABILITIES:
+            raise IdentityError("forbidden", "Production accounts cannot receive reporting or management permissions.", reason="permission_denied")
+        capabilities = PRODUCTION_CAPABILITIES | grants
     elif role == "crew":
         if not grants <= CREW_CAPABILITIES:
             raise IdentityError("forbidden", "Crew cannot receive approval or posting permissions.", reason="permission_denied")
@@ -63,10 +71,10 @@ def assert_grant(actor, role, grants=(), *, business_id=None):
         raise IdentityError("forbidden", "Team management permission is required.", reason="permission_denied")
     if business_id is not None and actor.business_id != business_id:
         raise IdentityError("forbidden", "Business scope does not match.", reason="permission_denied")
-    if role not in {"manager", "crew", "admin"}:
+    if role not in {"manager", "production", "crew", "admin"}:
         raise IdentityError("invalid", "Invalid store role.")
     if actor.role == "manager" and role != "crew":
-        raise IdentityError("forbidden", "Managers can manage crew only.", reason="permission_denied")
+        raise IdentityError("forbidden", "Managers can invite baseline crew only. Ask an administrator to assign Production access.", reason="permission_denied")
     if actor.role == "admin" and role == "admin":
         raise IdentityError("forbidden", "Only an owner appoints administrators.", reason="permission_denied")
     if actor.role not in {"owner", "admin", "manager"}:
