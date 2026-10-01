@@ -25,21 +25,31 @@ features that already exist. Product rules and worked inventory examples are in
 [ARCHITECTURE.md](ARCHITECTURE.md); executable work packages are in
 [TASKS.md](TASKS.md).
 
-**Current delivery — 2026-09-29:** Individual accounts, the shared catalog,
+**Current delivery — 2026-09-30:** Individual accounts, the shared catalog,
 shelves, container references, native current inventory, reviewed whole-store
-counts and immutable count history are implemented through migration 017.
-Native workspace/draft restoration is implemented locally; device acceptance
-and publishing remain separate. See the [count contract](workstreams/inventory-counts.md).
+counts, workspace restoration, Production accounts, versioned recipes and
+confirmed recipe-plus-1% stock deductions are implemented through migration 020.
+The production checkpoint passed CI; physical-device and hosted release acceptance
+remain separate. See the [count contract](workstreams/inventory-counts.md) and
+[production contract](workstreams/production-and-assisted-inventory.md).
 
-**Next delivery order:** (1) Production accounts, revisioned recipes and confirmed
-batch deductions; (2) reviewed shelf-camera proposals; (3) scale-assisted inventory
-counts after hardware selection; (4) manager/owner daily/weekly Forecast tab.
-The [production and assisted-inventory contract](workstreams/production-and-assisted-inventory.md)
-defines the accepted rules and gates, including recipe usage **plus 1% per
-ingredient**, compact shelf-style ingredient controls, and no Reports/Store access
-for Production. This order supersedes the older numbered sequence below where it
-places camera/sales work before production. The hardware adapter is explicitly
-deferred. All four phases reuse the same store-scoped stock history.
+**Current slice:** Expo Go barcode scanning to look up or explicitly create and
+name company catalog products. Build out the ingredient catalog before enabling
+shelf-photo counting. This scan flow changes catalog identity only; it does not
+receive stock, assign shelves or call an AI provider. It reuses existing product
+permissions, SKU aliases and creation transactions without a migration.
+
+**Next inventory prerequisite:** preserve current products and counts while adding
+explicit package sizes/barcode mappings and a count breakdown for sealed cases,
+loose full packages and net partial weight. Supplier shipment labels need a stable
+product mapping; the scanner-format fixes do not implement that packaging model.
+
+**Following delivery order:** (1) reviewed shelf-camera proposals after ingredient
+and packaging setup; (2) scale-assisted inventory counts after hardware selection;
+(3) a manager/owner daily/weekly Forecast tab. The
+[production and assisted-inventory contract](workstreams/production-and-assisted-inventory.md)
+defines the rules and gates. Camera counting, hardware integration and forecasting
+remain later phases, all using the same store-scoped stock history.
 
 ## 1. Intended outcome
 

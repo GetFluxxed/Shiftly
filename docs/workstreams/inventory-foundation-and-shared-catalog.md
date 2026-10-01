@@ -1,6 +1,6 @@
 # Inventory foundation and shared company catalog
 
-Updated: 2026-09-25. This describes the implemented catalog and shelf foundation.
+Updated: 2026-09-30. This describes the implemented catalog and shelf foundation.
 The next approved slice is [native current inventory and reviewed counts](inventory-counts.md).
 It follows the [architecture audit](architecture-bloat-audit-2026-09-23.md) and
 supersedes older instructions to repeat F0/F1 or start a mobile-web client.
@@ -72,7 +72,9 @@ an opening stock balance or claim that an item is physically present.
   letter/digit; product names allow 1–160 characters. Shelf names allow 1–120.
 - Reserve former SKUs as aliases for the same product when identifiers change;
   prevent reuse for another product in the same company. Supplier codes and
-  barcodes are separate identifiers and can be added without changing product IDs.
+  barcodes can be separate identifiers without changing product IDs. The approved
+  scan-to-catalog entry flow uses a package barcode as the initial SKU and reserves
+  equivalent UPC-A/EAN-13 forms. It does not add supplier/pack-level mappings.
 - The product form requires name, SKU, and an explicit base unit (`each`, `g`,
   `kg`). Stored legacy volume units remain readable. The base unit cannot be changed after creation. A material
   change of product/pack meaning creates a new product or reviewed configuration
@@ -86,10 +88,12 @@ an opening stock balance or claim that an item is physically present.
 - Lists are bounded and searchable from their first implementation. Do not fetch
   every company's products or use the account-management projection as a catalog.
 
-These are the implemented defaults for this slice; no real catalog
-has been imported. CSV import, pack conversions, barcode scanning, count sheets,
-stock movements, photo training/recognition, and reusable shelf templates follow
-separately. They are not prerequisites for the first usable shelf.
+These are the foundation defaults. Reviewed counts and stock movements now have
+separate contracts, and native barcode-assisted catalog entry is implemented in
+[the assisted-inventory workstream](production-and-assisted-inventory.md#catalog-barcode-scanning--2026-09-30).
+CSV import, broader pack conversions, supplier barcode mappings, photo recognition
+and reusable shelf templates remain separate phases. Barcode catalog entry does
+not create an opening balance or receive stock.
 
 ## Implemented module boundaries
 
@@ -310,3 +314,44 @@ was needed for this layout revision.
 The subsequent [workspace restoration revision](../NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
 retains approved catalog/shelf input, filters and page position on this device.
 Save/Cancel remain explicit; record-version changes invalidate old edit drafts.
+
+
+## Smooth shelf assignment and compact picker — 2026-09-30
+
+Shelf placement writes now keep the native shelf contents and catalog picker
+mounted while reading the updated shelf. The former clear-and-reload path and
+version-keyed remount caused the visible refresh after each assignment/removal.
+An opt-in in-place resource refresh fixes that boundary; other resource callers
+retain their existing clear-on-load behavior. Entry, changed loaders, failed reads,
+navigation and session invalidation still discard private data, and callbacks from
+an obsolete loader cannot replace the current page.
+
+The picker appears before assigned products on phones and alongside them on wide
+screens. Its rows show only name, full-container amount/unit (or Size not set), and
+an add/checkmark icon with a minimum 48-point target. SKU metadata and repeated
+container explanations are omitted here, superseding the assignment-picker detail
+in the earlier compact-list entry. Catalog SKU display/search and A–Z ordering,
+bounded pagination, quantities, permissions and server placement writes are unchanged.
+Assigned rows stay present while their icon changes, so the next target does not
+move. The empty assigned-products message is compact to avoid shrinking the page
+when the first assigned item arrives.
+
+A single task serializes shelf writes through the authoritative read of the next
+shelf version; pagination and further changes pause until it completes. The search,
+picker page and shelf-name draft survive assignment-only version changes. Name
+drafts use the saved name as their baseline, so a newly saved name invalidates an
+old draft without treating placement changes as name changes. Successful off-page
+assignment confirmations are local, version-bound UI state and never override a
+newer server version. Preexisting off-page membership still follows the paged shelf
+API; this change does not introduce a company-wide placement cache.
+
+Verification: mobile TypeScript checking and the 105-test native suite passed.
+Four focused rendered shelf tests cover delayed responses, mounted/scroll
+continuity, search/page/name-draft preservation, add/remove persistence without
+stock changes, failed writes/reads, session locking, newer concurrent placement
+changes, keyboard use and compact responsive rows. Existing rendered catalog/shelf
+journeys also passed. Layouts were checked at 320, 390, 768, 1024 and 1440 pixels,
+and phone/tablet captures were visually reviewed. The existing Expo server served
+the updated iOS bundle. Browser-rendered checks use an icon adapter and do not
+establish physical iPhone acceptance. No migration, backend change, commit, push or
+deployment was part of this shelf UI revision.

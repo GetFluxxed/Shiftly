@@ -11,23 +11,28 @@ export function useResource<T>(path: string, enabled = true) {
 /** Typed feature loaders share the same focus and stale-response protection. */
 export function useLoaderResource<T>(load: () => Promise<T>, enabled = true) {
   const active = useRef(false);
+  const currentLoad = useRef(load); currentLoad.current = load;
   const generation = useRef(0);
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
-  const refresh = useCallback(async () => {
-    if (!enabled || !active.current) return;
+  const refresh = useCallback(async ({ preserveData = false }: { preserveData?: boolean } = {}) => {
+    if (!enabled || !active.current || currentLoad.current !== load) return;
     const current = ++generation.current;
-    setLoading(true); setError(null); setData(null);
+    setLoading(true); setError(null);
+    // Only an explicit same-view refresh retains content. Entry, changed loader,
+    // navigation and failed reads still discard private data.
+    if (!preserveData) setData(null);
     try {
       const result = await load();
-      if (active.current && generation.current === current) setData(result);
+      if (active.current && currentLoad.current === load && generation.current === current) setData(result);
     } catch (failure) {
-      if (active.current && generation.current === current) {
+      if (active.current && currentLoad.current === load && generation.current === current) {
+        setData(null);
         setError(failure instanceof Error ? failure.message : 'Unable to connect. Please try again.');
       }
     } finally {
-      if (active.current && generation.current === current) setLoading(false);
+      if (active.current && currentLoad.current === load && generation.current === current) setLoading(false);
     }
   }, [enabled, load]);
   useFocusEffect(useCallback(() => {

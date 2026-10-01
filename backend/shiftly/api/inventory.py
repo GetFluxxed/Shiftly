@@ -35,6 +35,12 @@ async def products(request: Request, context: AppContext = Depends(get_app_conte
                           query=request.query_params.get('q', ''), after=request.query_params.get('after'), state=request.query_params.get('state', 'active'))
 
 
+@router.get('/products/lookup')
+async def lookup_product(request: Request, context: AppContext = Depends(get_app_context)):
+    return await dispatch(request, context, context.services.inventory.lookup_product,
+                          sku=request.query_params.get('sku'), barcode_type=request.query_params.get('barcodeType'))
+
+
 @router.api_route('/products/{product_id}', methods=['GET', 'POST'])
 async def product(product_id: str, request: Request, context: AppContext = Depends(get_app_context)):
     service = context.services.inventory

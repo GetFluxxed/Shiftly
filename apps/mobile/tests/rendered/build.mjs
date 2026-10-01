@@ -10,5 +10,7 @@ await build({entryPoints:[path.join(root,process.argv[3]||'tests/rendered/entry.
   plugins:[{name:'native-test-boundaries',setup(b){
     b.onResolve({filter:/SessionProvider$/},()=>({path:path.join(root,'tests/rendered/session.tsx')}));
     b.onResolve({filter:/^expo-router$/},()=>({path:path.join(root,'tests/rendered/router.tsx')}));
+    if(process.argv[4]==='--native-barcode') b.onResolve({filter:/^\.\/BarcodeCamera$/},()=>({path:path.join(root,'src/inventory/BarcodeCamera.tsx')}));
+    b.onResolve({filter:/^expo-camera$/},()=>({path:path.join(root,'tests/rendered/camera-module.tsx')}));
     b.onResolve({filter:/^@expo\/vector-icons\/Ionicons$/},()=>({path:path.join(root,'tests/rendered/icons.tsx')}));
   }}]});

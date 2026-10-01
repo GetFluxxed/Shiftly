@@ -10,7 +10,7 @@ export interface Shelf { id: string; name: string; storeId: number; version: num
 export interface Page<T> { items: T[]; nextCursor: string | null }
 export interface ShelfDetail extends Shelf { products: Page<Product> }
 export type Request = <T>(path: string, options?: RequestOptions) => Promise<T>;
-export type ProductInput = { name: string; sku: string; baseUnit: StockUnit; containerAmount?: string | null };
+export type ProductInput = { name: string; sku: string; baseUnit: StockUnit; containerAmount?: string | null; barcodeType?: string };
 const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function validId(id: unknown): id is string { return typeof id === 'string' && idPattern.test(id); }
 function verify(condition: unknown): asserts condition {
@@ -65,6 +65,13 @@ export function inventoryApi(request: Request) {
   return {
     products: async (query = '', state = 'active', after = '') => page(await request('/inventory/products', { query: { q: query, state, ...(after ? { after } : {}) } }), product, catalogCursor),
     product: async (id: string) => product(await request(`/inventory/products/${pathId(id)}`)),
+    lookupProduct: async (sku: string, barcodeType?: string): Promise<{ sku: string; product: Product | null }> => {
+      const value = await request<unknown>('/inventory/products/lookup', { query: { sku, ...(barcodeType ? { barcodeType } : {}) } });
+      record(value);
+      verify(typeof value.sku === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/.test(value.sku));
+      // Only an explicit null is a verified missing product. Errors never open creation.
+      return { sku: value.sku, product: value.product === null ? null : product(value.product) };
+    },
     createProduct: async (fields: ProductInput, identity: MutationIdentity) => product(await write('/inventory/products', fields, identity)),
     editProduct: async (item: Product, name: string, sku: string, identity: MutationIdentity, containerAmount = item.containerAmount) => product(await write(`/inventory/products/${pathId(item.id)}`, { name, sku, containerAmount, version: item.version }, identity)),
     productState: async (item: Product, active: boolean, identity: MutationIdentity) => product(await write(`/inventory/products/${pathId(item.id)}/state`, { active, version: item.version }, identity)),

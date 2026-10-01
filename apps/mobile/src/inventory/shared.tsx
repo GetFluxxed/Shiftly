@@ -16,7 +16,7 @@ export function useInventory() {
     canConfigure: !!session.actor?.capabilities.includes('configuration.manage') };
 }
 const inventoryBackLabels = {
-  '/inventory': 'Back to inventory', '/stock': 'Back to current inventory', '/shelves': 'Back to Open Shelves',
+  '/inventory': 'Back to inventory', '/catalog': 'Back to catalog', '/stock': 'Back to current inventory', '/shelves': 'Back to Open Shelves',
 } as const;
 export function InventoryPage({ title, children, backTo = '/inventory' }: React.PropsWithChildren<{
   title: string; backTo?: keyof typeof inventoryBackLabels;
@@ -33,9 +33,9 @@ export { useLoaderResource as useInventoryResource } from '@/src/ui/useResource'
 export function LoadError({ error, refresh }: { error: string | null; refresh: () => Promise<void> }) {
   return <Card><Notice message={error || 'This record is unavailable.'} kind="error" /><Button title="Reload" onPress={() => { void refresh(); }} /></Card>;
 }
-export function Pages({ next, setCursor, cursor }: { next: string | null; cursor: string; setCursor: (value: string) => void }) {
-  return <>{next ? <Button title="Next page" variant="secondary" onPress={() => setCursor(next)} /> : null}
-    {cursor ? <Button title="Back to first page" variant="quiet" onPress={() => setCursor('')} /> : null}</>;
+export function Pages({ next, setCursor, cursor, disabled = false }: { next: string | null; cursor: string; setCursor: (value: string) => void; disabled?: boolean }) {
+  return <>{next ? <Button title="Next page" variant="secondary" disabled={disabled} onPress={() => setCursor(next)} /> : null}
+    {cursor ? <Button title="Back to first page" variant="quiet" disabled={disabled} onPress={() => setCursor('')} /> : null}</>;
 }
 
 export function InventorySearch({ label, value, onChange, onSubmit, submitLabel, disabled = false }: {

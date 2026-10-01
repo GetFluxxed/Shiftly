@@ -7,7 +7,18 @@
     "platforms": ["ios", "android"],
     "userInterfaceStyle": "light",
     "ios": {"supportsTablet": true},
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Shiftly to scan product barcodes with your camera.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ]
+    ],
     "experiments": {"typedRoutes": true}
   }
 }
