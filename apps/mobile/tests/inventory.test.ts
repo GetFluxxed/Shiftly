@@ -65,3 +65,30 @@ test('unknown legacy container sizes stay unknown and malformed amounts are reje
     await assert.rejects(invalid.product(product.id),ApiError);
   }
 });
+
+test('barcode lookup preserves text and explicitly distinguishes missing from invalid replies', async () => {
+  let sent: RequestOptions | undefined;
+  const api = inventoryApi(async <T>(path: string, options?: RequestOptions) => {
+    assert.equal(path, '/inventory/products/lookup'); sent = options;
+    return { sku: '0036000291452', product: null } as T;
+  });
+  assert.deepEqual(await api.lookupProduct('036000291452', 'upc_a'), { sku: '0036000291452', product: null });
+  assert.deepEqual(sent?.query, { sku: '036000291452', barcodeType: 'upc_a' });
+  for (const reply of [{ sku: '0001' }, { sku: '0001', product: false }, { sku: '../bad?code', product: null }, { sku: '0001', product: { ...product, version: 0 } }]) {
+    const invalid = inventoryApi(async <T>() => reply as T);
+    await assert.rejects(invalid.lookupProduct('0001'), ApiError);
+  }
+  const found = inventoryApi(async <T>() => ({ sku: '0001', product: { ...product, active: false } }) as T);
+  assert.equal((await found.lookupProduct('0001')).product?.active, false);
+});
+
+test('barcode creation sends the scanned format and keeps identical retries on one request ID', async () => {
+  const calls: RequestOptions[] = [];
+  const api = inventoryApi(async <T>(_path: string, options?: RequestOptions) => { calls.push(options!); return product as T; });
+  const identity = new MutationIdentity();
+  const input = { name: 'Milk', sku: '0036000291452', barcodeType: 'ean13', baseUnit: 'kg' as const, containerAmount: '6' };
+  await api.createProduct(input, identity); await api.createProduct(input, identity);
+  assert.equal(calls[0]?.body?.barcodeType, 'ean13');
+  assert.equal(calls[0]?.body?.sku, '0036000291452');
+  assert.equal(calls[0]?.body?.requestId, calls[1]?.body?.requestId);
+});

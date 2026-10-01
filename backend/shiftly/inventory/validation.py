@@ -44,6 +44,12 @@ def product_fields(fields, *, creating=False):
         if fields.get('baseUnit') not in UNITS:
             invalid('Choose an explicit base unit.')
         data['baseUnit'] = fields['baseUnit']
+        if 'barcodeType' in fields:
+            from .barcodes import identity
+            data['sku'], data['barcodeAliases'] = identity(sku, fields['barcodeType'])
+            data['barcodeType'] = fields['barcodeType']
+    elif 'barcodeType' in fields:
+        invalid('Barcode type can only be supplied when creating a product from a scan.')
     elif 'baseUnit' in fields:
         invalid('The base unit cannot be edited. Create a new product for a different stock unit.')
     if 'containerAmount' in fields:

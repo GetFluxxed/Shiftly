@@ -78,6 +78,184 @@ mapping and future receiving workflow to avoid creating duplicate stock.
 User recipes/yields are not seeded until supplied. No invented recipes become
 company data. Library setup remains available inside the app.
 
+## Catalog barcode scanning — 2026-09-30
+
+The user brought barcode-assisted catalog entry forward so ingredient setup can
+finish before shelf-photo counting. This is catalog identity capture, not a stock
+receipt, physical count or AI inference. No provider calls, stored images or
+schema migration are required.
+
+The native route is **Inventory → Catalog → Scan product**. Expo Camera is included
+in Expo Go; the SDK-compatible dependency is installed through Expo. Open camera,
+scan one printed barcode, then review the company catalog result. Manual code entry
+remains available when camera permission is denied or a label cannot be read.
+A missing product opens the shared product form with its SKU filled and locked;
+enter its name, base unit and optional full-container amount, then explicitly create
+it. **Scan next product** continues the workflow. Catalog changes still require
+`catalog.manage`; inventory viewers can look up codes but cannot create products.
+
+`GET /api/mobile/inventory/products/lookup` performs bounded exact alias lookup
+within the authenticated company, including old SKUs and archived products. Only
+a successful response with an explicit missing result opens creation. It does not
+infer absence from a network failure, fuzzy search or first-page results. An
+archived match must be deliberately restored through existing product controls.
+
+UPC-A and its leading-zero EAN-13 representation resolve to one canonical 13-digit
+SKU; creation atomically reserves both strings in the existing SKU alias table.
+All other zeros remain text. EAN-8, UPC-E, ITF-14, Code 128, Code 39, Code 93 and Codabar
+follow the existing bounded SKU character rules; UPC-E is exact-only with no
+expansion into other formats. Ambiguous existing UPC/EAN aliases block the action
+for review. Concurrent saves cannot create a second product with the same reserved
+code. Manual catalog creation keeps its existing SKU semantics. Supplier barcode
+mapping to a different internal SKU/pack size remains a separate receiving phase.
+
+The camera mounts only in the scanner, stops on background/navigation/error, and
+suppresses repeated frames after the first accepted code. Permission is requested
+on explicit user action, with settings/manual-entry alternatives after denial.
+No microphone is requested and no photos are saved or uploaded. The code and new
+product fields use existing account/store-scoped draft restoration; camera preview
+state is not restored automatically. A lost create response can be checked by code
+before retrying; the unique alias reservation also protects delayed/concurrent saves.
+
+Physical iPhone/Android scanning, permission prompts, background return and torch
+behavior remain device acceptance checks. Browser-rendered journeys exercise the
+catalog workflow with manual entry; mocked camera events cover lifecycle boundaries
+without claiming hardware verification. Shelf camera counting remains deferred
+until the ingredient catalog is filled out.
+
+Local verification completed: mobile TypeScript and 105 behavior tests; both
+native platform exports; barcode identity/authorization/concurrency service checks
+and the existing non-rendered inventory service suite; nine rendered catalog,
+scanner and shelf journeys; and six mocked-native camera permission/lifecycle
+journeys. Phone/tablet layouts were checked at 320, 390, 1024 and 1440 pixels.
+A follow-up compact-form journey passed after visual refinement. These are local
+results; this new slice has not been committed or verified by CI. Navigation blur
+uses the existing focus cleanup; the camera harness separately exercises background
+and unmount cleanup rather than a real native navigator. Physical camera/device
+acceptance remains outstanding.
+
+## Real-label barcode compatibility — 2026-09-30
+
+The supplied iPhone failures exposed two concrete library/server mismatches. In
+the installed `expo-camera` 57.0.6, `ios/Current/BarcodeScannerUtils.swift` removes
+one leading zero from EAN-13 data while leaving its type as `ean13`. The backend
+previously required 13 digits for that type. Its normalization boundary now accepts
+exactly 12 digits only with a valid UPC check digit, restores the equivalent
+leading-zero EAN-13, and looks up/reserves both strings. It does not pad arbitrary
+lengths, weaken checksums, merge products or change manually entered SKU semantics.
+
+The iOS ZXing path in `ios/barcode-scanning/ExpoCameraZXingProvider.swift` can emit
+AVFoundation raw type names. The backend now explicitly accepts verified native
+aliases, including `org.iso.Code39`, alongside the existing Expo short names.
+Code 93 is enabled, with its actual Apple identifier `com.intermec.Code93`.
+Observed Vision EAN-13 and Code 39 names are also supported. Guessed/fuzzy names,
+QR codes and generic Interleaved 2 of 5 remain outside this contract; arbitrary
+shipping numbers are not treated as validated GTIN-14 identifiers.
+
+Independent local Apple Vision decoding confirmed these supplied retail labels:
+
+| Printed code | Equivalent canonical catalog barcode |
+| --- | --- |
+| `085900233161` (peanut butter UPC) | `0085900233161` |
+| `072965103249` (PNuttles UPC) | `0072965103249` |
+| `0851085002553` (powder label) | `0851085002553` |
+| `0817304018828` (powder label) | `0817304018828` |
+| `652729105650` (Eagle Foods UPC) | `0652729105650` |
+
+The milk supplier sticker decoded as Code 39 `6749118517`. Its stability across
+deliveries is not established; the printed vendor item number is different.
+The sugar screenshot did not decode reliably. Neither shipping sticker was
+automatically saved as a catalog product. Request a close, straight-on source
+label for the sugar and prefer manufacturer barcodes or explicitly chosen stable
+internal SKUs when shipment identifiers vary. Missing package weights and case
+contents are not inferred from barcodes or photos.
+
+Native scanner controls now include bounded zoom in/out for small print, clearer
+focus guidance, and Code 93 scanning. Zoom has no misleading optical multiplier;
+the native device determines its effective magnification. Lookup failures retain
+the received code and offer Scan again as well as Change code and Reload. The
+existing camera lifecycle, one-result guard, permissions and manual fallback remain.
+
+Local verification: TypeScript and 105 mobile tests passed; 57 focused service/API,
+catalog and mocked-native camera tests passed against disposable PostgreSQL.
+Coverage includes all five retail codes, the exact milk payload, native aliases,
+checksum/length failures, lookup/create/replay, duplicate prevention, role/company
+scope, archived aliases, preservation of shelf/count state, zoom bounds, repeated
+frames, retry and manual recovery. Phone/tablet rendered captures were reviewed;
+their camera and icon adapters do not establish physical-device behavior.
+
+The running LAN demo API was refreshed and Expo served the updated iOS bundle.
+Before/after full-row fingerprints match for all 20 products, 24 shelf assignments,
+3 stock balances and 3 count-history records. No migration, stock adjustment,
+catalog import, commit, push or hosted deployment was performed. Retrying the
+physical labels on the iPhone, especially sugar and very small print, remains the
+device acceptance step.
+
+### Repeat scans and named catalog confirmation — 2026-09-30
+
+An existing scan now says **[product name] is already in the catalog**, with View
+product and Scan next product actions. It does not open the creation form. Archived
+matches name the item and explain restoration. A concurrent duplicate discovered
+while saving uses the same existing-product message instead of implying a new item
+was created. A successful new save explicitly says the product was added.
+
+The user identified Low-Heat Non-Fat Dry Milk, then confirmed the saved code
+`6749118517` and said the report may have been a mistake. No milk-specific
+recognition failure was reproduced. A new rendered journey drives actual native
+scanner callbacks through catalog screens and the real API: create the milk, scan
+again with both Expo and Apple Code 39 type names, verify the named result and the
+absence of a creation form, and retain exactly one product without stock writes.
+
+Read-only investigation separately found saved 14-digit identifiers that would
+not match equivalent shorter retail scans. Valid EAN-8/UPC-A/EAN-13/ITF-14 values
+now include equivalent zero-padded forms in their bounded alias lookup/reservation.
+This follows [GS1's 14-digit representation rules](https://support.gs1.org/support/solutions/articles/43000734355-what-is-the-required-format-of-gtin-in-gs1-edi-standards-)
+and [ITF-14 encoding guidance](https://support.gs1.org/support/solutions/articles/43000734528-what-type-of-gtin-can-be-encoded-in-itf-14-).
+Only all-zero prefixes may be removed; nonzero case indicators remain distinct.
+Canonical SKU responses, strict length/checksum validation, exact manual/internal
+SKUs and UPC-E behavior stay intact. Ambiguous existing aliases require resolution;
+the lookup never picks one arbitrarily. Existing products/aliases are not rewritten.
+
+Verification: TypeScript and 105 mobile tests passed, as did 58 focused barcode,
+catalog and native-camera-to-API journeys on disposable PostgreSQL. These include
+same-code repeats, four existing padded-code examples, duplicate races, company
+scope, archived items, manual recovery and unchanged stock. The named milk result
+was visually reviewed in the phone renderer. The live local API was refreshed and
+Expo served the updated iOS bundle. Existing 33 product rows and 41 alias rows
+retained their fingerprints; an additional product was added during the session.
+Shelf assignments, balances and count-history fingerprints were unchanged. No
+migration, inventory adjustment, commit, push or hosted deployment was performed.
+Physical-device acceptance remains separate from these simulated camera journeys.
+
+### Publication review — 2026-10-01
+
+Pre-publication review added explicit Android AppState blur/focus handling to the
+scanner. A system overlay such as the notification drawer can emit blur without a
+background state change. Blur now synchronously invalidates scan callbacks and
+unmounts the preview; focus leaves it paused until deliberate resume. Listeners are
+removed on cleanup. TypeScript checking and all ten focused rendered camera
+permission/lifecycle tests passed after this change, including a same-tick stale
+frame during blur. Physical Android acceptance remains separate. The checkpoint
+includes the catalog scanner and compact, continuous shelf-assignment work; local
+network settings and live inventory are not part of the Git change.
+
+### Next prerequisite: packaging and mixed counts (not implemented)
+
+Before shelf-photo counting, extend the existing stable ingredient/product identity
+with explicitly defined package options and barcode mappings. One ingredient can
+then have several manufacturer codes and full weights without separate unrelated
+stock totals. Preserve current product IDs, shelf links, recipe references, balances
+and history; any future schema change must be additive and rehearsed with an
+existing-data backup. Existing count snapshots must retain their original sizes.
+
+The intended count breakdown is sealed cases, loose full packages, and net partial
+weight. Use exact, versioned conversions into the product's base unit; splitting a
+case does not create stock or count the same contents twice. For standalone tubs,
+the current full-container-plus-partial workflow remains appropriate. Powders and
+distributed bulk need confirmed bag/case sizes and contents. Barcode-free items
+retain stable internal SKUs. Do not silently equate different products or infer
+case composition. Receiving, transfers and forecasts remain separate workflows.
+
 ## Slice 2 — Shelf camera proposals
 
 Select the count and shelf, capture a photo, and receive suggested catalog matches

@@ -25,7 +25,7 @@ export function savedRoute(path: string, params: Record<string, unknown>, actor:
       || new RegExp(`^/production/(recipes|logs)/${uuid}$`).test(path)) allowed = can('production.view');
   if (path === '/production/recipes/new') allowed = can('production.view') && can('recipes.manage');
   if (path === '/production/run' || path === '/production/review') allowed = can('production.view') && can('production.submit');
-  if (/^\/(inventory|catalog|shelves|stock|counts)$/.test(path) || path === '/counts/history'
+  if (/^\/(inventory|catalog|shelves|stock|counts)$/.test(path) || path === '/counts/history' || path === '/catalog/scan'
       || new RegExp(`^/(catalog|shelves|stock)/${uuid}$`).test(path)
       || new RegExp(`^/counts/${uuid}(/review|/line/${uuid})?$`).test(path)) allowed = can('inventory.view');
   if (path === '/catalog/new') allowed = can('inventory.view') && can('catalog.manage');

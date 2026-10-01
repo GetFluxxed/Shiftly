@@ -38,6 +38,15 @@ class InventoryRepository:
         return {'items': [product(r) for r in rows[:PAGE_SIZE]],
                 'nextCursor': encode_product_cursor(rows[PAGE_SIZE-1]['name_sort'], rows[PAGE_SIZE-1]['id']) if len(rows)>PAGE_SIZE else None}
 
+    def products_by_skus(self, connection, business_id, skus):
+        with connection.cursor(row_factory=dict_row) as c:
+            c.execute('''SELECT DISTINCT p.* FROM inventory_product_skus s
+                         JOIN inventory_products p ON p.business_id=s.business_id AND p.id=s.product_id
+                         WHERE s.business_id=%s AND s.sku_key=ANY(
+                             SELECT inventory_key(value) FROM unnest(%s::text[]) AS value)
+                         ORDER BY p.id''', (business_id, list(skus)))
+            return [product(row) for row in c.fetchall()]
+
     def reserve_sku(self, connection, business_id, product_id, sku):
         row = connection.execute('SELECT product_id FROM inventory_product_skus WHERE business_id=%s AND sku_key=inventory_key(%s)',
                                  (business_id, sku)).fetchone()

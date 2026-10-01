@@ -18,8 +18,9 @@ archive and restore, plus named store shelves and assignment/removal of existing
 products. Owners or delegated catalog administrators manage shared products;
 store configuration permission controls shelf changes. Catalog products now
 include an editable full-container amount, exact gram/kilogram equivalents and
-A–Z catalog ordering. New unit choices are each, grams and kilograms. Quantities, camera capture
-and offline posting remain later phases. This is a development foundation; bundling is not a
+A–Z catalog ordering. New unit choices are each, grams and kilograms. Current stock,
+reviewed counts and confirmed production are implemented. Barcode capture assists
+catalog entry; shelf-photo counting and offline posting remain later phases. This is a development foundation; bundling is not a
 claim of physical-device or store-release verification.
 
 The [inventory foundation and shared catalog](../../docs/workstreams/inventory-foundation-and-shared-catalog.md)
@@ -258,3 +259,34 @@ connection. This is not offline stock posting.
 
 See the [production and assisted inventory contract](../../docs/workstreams/production-and-assisted-inventory.md)
 for implementation evidence and the later camera, scale and Forecast phases.
+
+
+## Scan products into the catalog
+
+Open **Inventory → Catalog → Scan product → Open camera** in Expo Go. Allow camera
+access, then scan the printed barcode on a package. Existing or archived codes
+show the product name with **is already in the catalog** and a **View product**
+action; archived matches explain how to review or restore them. Equivalent padded
+retail barcode forms resolve to the same existing item. For a new code, enter the
+product name, choose each/g/kg
+and optionally its full-container amount, then tap **Create product**. Use
+**Scan next product** for the next ingredient. You can type a code manually when
+camera access or the label is unavailable. Only owners/delegated catalog managers
+can create products; inventory viewers can look them up.
+
+This uses Expo Camera's bundled barcode scanner, not AI. No photo is saved or
+uploaded, no microphone is requested, and stock stays unchanged. Old SKU aliases
+are recognized. UPC-A and equivalent EAN-13 scans share one product identity;
+leading zeros remain strings. Draft names/units survive interruption through the
+existing workspace checkpoint; the camera itself requires reopening/resuming.
+
+Use **Zoom in / Zoom out** for small labels after moving back until the bars are
+sharp. A failed lookup shows the received code with **Scan again** and **Change
+code**. Supported native format names and iOS's shortened EAN-13 values are
+normalized by the API, with retail check-digit validation retained. Code 93 joins
+the existing linear barcode formats. Delivery stickers may identify a shipment;
+use a manufacturer barcode or stable internal SKU when the code changes by delivery.
+
+Physical device checks are still required for scanning, permissions, zoom, torch and
+background return. The browser-rendered test client uses manual code entry; this
+does not add camera scanning to the existing hosted browser portal.

@@ -8,6 +8,7 @@ from backend.shiftly.identity.contracts import IdentityError
 from .repository import InventoryRepository
 from . import validation as valid
 from .quantities import container_amount
+from .barcodes import identity as barcode_identity
 
 
 class InventoryService:
@@ -42,6 +43,18 @@ class InventoryService:
         with self.connect() as connection:
             actor = self._actor(connection, token)
             return self._found(self.repository.product(connection, actor.business_id, product_id))
+
+    def lookup_product(self, token, *, sku, barcode_type=None):
+        canonical, aliases = barcode_identity(sku, barcode_type)
+        with self.connect() as connection:
+            actor = self._actor(connection, token)
+            matches = self.repository.products_by_skus(connection, actor.business_id, aliases)
+            if len(matches) > 1:
+                raise IdentityError(
+                    'conflict',
+                    'This barcode matches more than one catalog product. Resolve the duplicate SKUs before scanning again.',
+                    reason='state_conflict')
+            return {'sku': canonical, 'product': matches[0] if matches else None}
 
     def shelves(self, token, *, after=None):
         _, after = valid.page('', after)
@@ -80,9 +93,21 @@ class InventoryService:
         if 'containerAmount' in data:
             data['containerAmount'] = container_amount(data['containerAmount'], data['baseUnit'])
         def change(connection, actor):
+            aliases = data.get('barcodeAliases', (data['sku'],))
+            if 'barcodeType' in data:
+                matches = self.repository.products_by_skus(connection, actor.business_id, aliases)
+                if len(matches) > 1:
+                    raise IdentityError(
+                        'conflict',
+                        'This barcode matches more than one catalog product. Resolve the duplicate SKUs before trying again.',
+                        reason='state_conflict')
+                if matches:
+                    raise IdentityError(
+                        'conflict', 'This barcode already belongs to a catalog product.', reason='duplicate_identifier')
             product_id = str(uuid4())
             self.repository.create_product(connection, actor, product_id, data)
-            self._reserve(connection, actor, product_id, data['sku'])
+            for alias in sorted(set(aliases), key=lambda value: (value.casefold(), value)):
+                self._reserve(connection, actor, product_id, alias)
             saved = self.repository.product(connection, actor.business_id, product_id)
             return product_id, None, saved, saved
         return self._write(token, fields, 'catalog.manage', 'product.created', data, change)

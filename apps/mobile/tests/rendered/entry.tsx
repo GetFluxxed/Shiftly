@@ -6,6 +6,7 @@ import { Alert, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { InventoryScreen } from '../../src/screens/InventoryScreen';
 import { CatalogScreen, NewProductScreen, ProductScreen } from '../../src/inventory/CatalogScreens';
+import { CatalogScanScreen } from '../../src/inventory/CatalogScanScreen';
 import { StockScreen, StockDetailScreen } from '../../src/inventory/counts/StockScreens';
 import { CountsScreen, CountSessionScreen, CountReviewScreen, CountHistoryScreen } from '../../src/inventory/counts/CountScreens';
 import { CountEntryScreen } from '../../src/inventory/counts/CountEntryScreen';
@@ -18,8 +19,21 @@ import { SessionContext } from './session';
 import { RouterContext, destination } from './router';
 import { WorkspaceProvider, WorkspaceNavigation } from '../../src/restoration/WorkspaceProvider';
 import { WorkspaceGate, workspaceStorage } from './workspace';
+import { cameraBoundary } from './camera-module';
 
-declare global { interface Window { __testToken: string; __inventoryTest: SessionController } }
+const catalogCamera = {
+  allow: () => {
+    Object.defineProperty(AppState, 'currentState', { configurable: true, get: () => 'active' });
+    cameraBoundary.setPermission({ granted: true, canAskAgain: true });
+  },
+  ready: cameraBoundary.ready,
+  scan: cameraBoundary.scan,
+  staleScan: cameraBoundary.staleScan,
+};
+declare global { interface Window {
+  __testToken: string; __inventoryTest: SessionController; __catalogCameraTest: typeof catalogCamera;
+} }
+window.__catalogCameraTest = catalogCamera;
 // Android focus/blur events have no browser implementation. State changes and
 // workspace invalidation remain exercised through the actual controller.
 const subscribe = AppState.addEventListener.bind(AppState);
@@ -38,7 +52,7 @@ function App() {
    setRoute(destination(value));
  },[]);
  const ctx=React.useMemo(()=>({go,path:route.path,params:route.params,setParams:()=>{}}),[go,route]);
- const Screen=({'/today':InventoryScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,
+ const Screen=({'/today':InventoryScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,
    '/stock':StockScreen,'/stock/[productId]':StockDetailScreen,'/counts':CountsScreen,
    '/counts/[countId]':CountSessionScreen,'/counts/[countId]/review':CountReviewScreen,'/counts/history':CountHistoryScreen,
    '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen,
