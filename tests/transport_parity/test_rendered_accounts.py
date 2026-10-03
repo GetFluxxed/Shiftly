@@ -98,20 +98,20 @@ def account_screenshot(page, name):
 
 def test_native_sign_out_requires_confirmation_and_cancel_preserves_session(page,native_accounts):
     base,m=native_accounts;page.set_viewport_size({'width':390,'height':844});page.goto(base+'/accounts')
-    expect(page.get_by_role('button',name='View permissions',exact=True)).to_be_visible()
+    expect(page.get_by_role('button',name='Permissions',exact=True)).to_be_visible()
     account_screenshot(page,'account-settings-phone.png')
     logouts=[]
     page.on('request',lambda request:logouts.append(request.url) if request.url.endswith('/accounts/logout') else None)
-    page.get_by_role('button',name='Sign Out',exact=True).click()
-    expect(page.get_by_role('button',name='Cancel Sign Out',exact=True)).to_be_visible()
+    page.get_by_role('button',name='Sign out',exact=True).click()
+    expect(page.get_by_role('button',name='Cancel',exact=True)).to_be_visible()
     assert not logouts
     account_screenshot(page,'sign-out-confirmation-phone.png')
-    page.get_by_role('button',name='Cancel Sign Out',exact=True).click()
-    expect(page.get_by_role('button',name='View permissions',exact=True)).to_be_visible()
+    page.get_by_role('button',name='Cancel',exact=True).click()
+    expect(page.get_by_role('button',name='Permissions',exact=True)).to_be_visible()
     assert not logouts
-    page.get_by_role('button',name='Sign Out',exact=True).click()
-    page.get_by_role('button',name='Cancel Sign Out',exact=True).wait_for()
-    page.get_by_role('button',name='Sign Out',exact=True).click()
+    page.get_by_role('button',name='Sign out',exact=True).click()
+    page.get_by_role('button',name='Cancel',exact=True).wait_for()
+    page.get_by_role('button',name='Sign out',exact=True).click()
     expect(page.get_by_role('button',name='Sign in',exact=True)).to_be_visible()
     assert len(logouts)==1
 
@@ -127,9 +127,9 @@ def test_native_store_tab_and_direct_route_use_the_requested_roles(page,native_a
     expect(navigation.get_by_role('button',name='Account',exact=True)).to_be_visible()
     expect(navigation.get_by_role('button',name='Store',exact=True)).to_have_count(1 if visible else 0)
     if visible:
-        build=page.get_by_role('button',name=re.compile('^Build your team',re.I))
+        build=page.get_by_role('button',name=re.compile('^Build team',re.I))
         expect(build).to_be_visible()
-        owner=page.get_by_role('button',name=re.compile('owner workspace',re.I))
+        owner=page.get_by_role('button',name=re.compile('owner tools',re.I))
         if role=='manager':
             expect(build).to_be_disabled();expect(owner).to_be_disabled()
         else:
@@ -138,7 +138,7 @@ def test_native_store_tab_and_direct_route_use_the_requested_roles(page,native_a
             account_screenshot(page,'store-hub-phone.png')
     else:
         expect(page.get_by_text('Store management is available to store managers and business owners.',exact=True)).to_be_visible()
-        expect(page.get_by_role('button',name=re.compile('owner workspace',re.I))).to_have_count(0)
+        expect(page.get_by_role('button',name=re.compile('owner tools',re.I))).to_have_count(0)
 
 
 def test_native_member_dropdown_orders_recent_sign_ins_and_manages_one_member(page,native_accounts):
@@ -178,9 +178,9 @@ def test_native_settings_preserve_authorized_switching_and_permissions(page,nati
     assert page.evaluate('window.__accountsTest.getSnapshot().actor.storeId')==m.stores[0]
     page.once('dialog',lambda dialog:dialog.accept())
     page.get_by_role('button',name='Switch to mobile-second',exact=True).click()
-    expect(page.get_by_role('button',name='View permissions',exact=True)).to_be_visible()
+    expect(page.get_by_role('button',name='Permissions',exact=True)).to_be_visible()
     assert page.evaluate('window.__accountsTest.getSnapshot().actor.storeId')==m.stores[1]
-    page.get_by_role('button',name='View permissions',exact=True).click()
+    page.get_by_role('button',name='Permissions',exact=True).click()
     expect(page.get_by_text('Manage shared products',exact=True)).to_be_visible()
 
 
@@ -206,16 +206,16 @@ def test_native_store_sections_return_directly_to_store_despite_navigation_histo
     navigation.get_by_role('button',name='Today',exact=True).click()
     navigation.get_by_role('button',name='Store',exact=True).click()
     # Visit Store Access first so later team pages have a previous sibling in history.
-    sections=[('Store Access: view store access policy','Store access.'),
-              ('Build your team','Build your team.'),
-              ('View team members','Team members.'),
-              ('Open owner workspace','A view of your business.')]
+    sections=[('Store access','Store access'),
+              ('Build team','Build team'),
+              ('Team members','Team members'),
+              ('Owner tools','Owner tools')]
     for action,title in sections:
         page.get_by_role('button',name=action,exact=True).click()
         expect(page.get_by_role('heading',name=title,exact=True)).to_be_visible()
-        page.get_by_role('button',name='Back to Store',exact=True).click()
+        page.get_by_role('button',name='Back to store',exact=True).click()
         expect(page.get_by_role('heading',name='Store',exact=True)).to_be_visible()
-        expect(page.get_by_role('button',name='Build your team',exact=True)).to_be_visible()
+        expect(page.get_by_role('button',name='Build team',exact=True)).to_be_visible()
 
 
 def test_native_admin_team_back_returns_to_account_without_store_access(page,native_accounts):
@@ -224,6 +224,6 @@ def test_native_admin_team_back_returns_to_account_without_store_access(page,nat
     m.accounts.set_membership(owner,user_id=m.users['viewer'],role='admin',capabilities=['memberships.manage','reports.submit'])
     page.goto(base+'/accounts?as=viewer')
     page.get_by_role('link',name='Team administration',exact=True).click()
-    page.get_by_role('button',name='Back to Account',exact=True).click()
-    expect(page.get_by_role('button',name='View permissions',exact=True)).to_be_visible()
+    page.get_by_role('button',name='Back to account',exact=True).click()
+    expect(page.get_by_role('button',name='Permissions',exact=True)).to_be_visible()
     expect(page.get_by_role('navigation').get_by_role('button',name='Store',exact=True)).to_have_count(0)

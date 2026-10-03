@@ -25,16 +25,17 @@ def test_lookup_matches_current_alias_and_archived_product(inventory):
     archived = i.service.product_state(i.tokens['owner'], original['id'], fields(i, version=2, active=False))
 
     assert i.service.lookup_product(i.tokens['crew'], sku='036000291452', barcode_type='upc_a') == {
-        'sku': '0036000291452', 'product': archived}
+        'sku': '0036000291452', 'product': archived, 'package': None}
     assert i.service.lookup_product(i.tokens['crew'], sku='legacy-alias') == {
-        'sku': 'legacy-alias', 'product': archived}
+        'sku': 'legacy-alias', 'product': archived, 'package': None}
     assert renamed['id'] == archived['id']
 
 
 def test_lookup_missing_auth_scope_and_company_isolation(inventory):
     i = inventory
     product = create(i, '0036000291452')
-    assert i.service.lookup_product(i.tokens['crew'], sku='MISSING') == {'sku': 'MISSING', 'product': None}
+    assert i.service.lookup_product(i.tokens['crew'], sku='MISSING') == {
+        'sku': 'MISSING', 'product': None, 'package': None}
     assert i.service.lookup_product(i.tokens['foreign'], sku='0036000291452')['product'] is None
     with pytest.raises(IdentityError) as denied:
         i.service.lookup_product(i.tokens['noinventory'], sku='0036000291452')
@@ -82,9 +83,9 @@ def test_photo_retail_codes_match_ios_shortened_and_full_platform_payloads(
 
     assert product['sku'] == expected
     assert i.service.lookup_product(i.tokens['crew'], sku=printed, barcode_type=printed_type) == {
-        'sku': expected, 'product': product}
+        'sku': expected, 'product': product, 'package': None}
     assert i.service.lookup_product(i.tokens['crew'], sku=native, barcode_type=native_type) == {
-        'sku': expected, 'product': product}
+        'sku': expected, 'product': product, 'package': None}
     with i.connect() as connection:
         assert connection.execute(
             'SELECT count(DISTINCT product_id) FROM inventory_product_skus WHERE business_id=%s',
@@ -169,7 +170,7 @@ def test_native_http_lookup_create_lookup_and_same_request_replay(
 
     missing = i.client.get(lookup, headers=headers, params=params)
     assert missing.status_code == 200
-    assert missing.json() == {'sku': canonical, 'product': None}
+    assert missing.json() == {'sku': canonical, 'product': None, 'package': None}
 
     request = {
         'requestId': str(uuid4()), 'expectedStoreId': i.stores[0],
@@ -267,7 +268,7 @@ def test_manual_lookup_does_not_infer_gtin_equivalence(inventory):
     product = create(i, '00072488009455')
     assert i.service.lookup_product(i.tokens['crew'], sku='00072488009455')['product'] == product
     assert i.service.lookup_product(i.tokens['crew'], sku='072488009455') == {
-        'sku': '072488009455', 'product': None}
+        'sku': '072488009455', 'product': None, 'package': None}
 
 
 def test_ambiguous_legacy_equivalents_return_state_conflict(inventory):
@@ -323,7 +324,8 @@ def test_api_route_precedes_product_id_and_edit_rejects_barcode_type(inventory):
     headers = {'Authorization': f'Bearer {i.tokens["owner"]}'}
     response = i.client.get('/api/mobile/inventory/products/lookup', headers=headers,
                             params={'sku': '036000291452', 'barcodeType': 'upc_a'})
-    assert response.status_code == 200 and response.json() == {'sku': '0036000291452', 'product': None}
+    assert response.status_code == 200 and response.json() == {
+        'sku': '0036000291452', 'product': None, 'package': None}
     product = create(i, 'MANUAL')
     with pytest.raises(IdentityError) as error:
         i.service.edit_product(i.tokens['owner'], product['id'], fields(

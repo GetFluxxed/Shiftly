@@ -17,13 +17,12 @@ export function HeadsUpScreen() {
   const back = () => router.replace(canEdit ? '/store' : '/today');
 
   if (!allowed) return <Screen title="Heads Up" eyebrow="Store update">
-    <Button title="Back to Today" icon="arrow-back" variant="quiet" onPress={() => router.replace('/today')} />
+    <Button title="Back to today" icon="arrow-back" variant="quiet" onPress={() => router.replace('/today')} />
     <Card><Heading>Heads Up is unavailable</Heading><Body>This update is for store managers, production, and crew members.</Body></Card>
   </Screen>;
 
-  return <Screen title={canEdit ? 'Keep your team in the loop.' : 'Heads Up'} eyebrow="Store update"
-    subtitle={canEdit ? 'Share one clear update for everyone working at this store.' : 'The latest note from your manager.'}>
-    <Button title={canEdit ? 'Back to Store' : 'Back to Today'} icon="arrow-back" variant="quiet" onPress={back} />
+  return <Screen title="Heads Up" eyebrow="Store update" subtitle={canEdit ? 'Write one update for this store.' : undefined}>
+    <Button title={canEdit ? 'Back to store' : 'Back to today'} icon="arrow-back" variant="quiet" onPress={back} />
     {resource.loading ? <Card><Loading label="Getting the latest update…" /></Card> : resource.error ? <Card>
       <Notice message={resource.error} kind="error" /><Button title="Retry update" variant="secondary" onPress={() => { void resource.refresh(); }} />
     </Card> : resource.data ? <HeadsUpContent current={resource.data} canEdit={canEdit} busy={busy}
@@ -60,14 +59,14 @@ function HeadsUpContent({ current, canEdit, busy, request, refresh }: {
       {editor.draft !== current.message ? <Notice message="You have an unsaved change." /> : null}
       <Button title="Save Heads Up" icon="checkmark-outline" loading={task.pending || busy} disabled={!editor.draft.trim()} onPress={save} />
       <Button title="Cancel" variant="quiet" disabled={task.pending || busy} onPress={cancel} />
-      <Body muted>This draft is saved securely on this device until you save or cancel it.</Body>
+      <Body muted>Saved on this device until you save or cancel.</Body>
     </Card> : <Card>
       <Heading>Current update</Heading>
       {current.message ? <>
         <Body>{current.message}</Body>
         {current.updatedAt ? <Body muted>Updated {friendlyDate(current.updatedAt)}</Body> : null}
-      </> : <EmptyState icon="chatbubble-ellipses-outline" title="All clear for now"
-        description={canEdit ? 'There is no store update. Create one when your team needs a quick heads up.' : 'There are no store updates to show right now.'} />}
+      </> : <EmptyState icon="chatbubble-ellipses-outline" title="No store updates"
+        description={canEdit ? 'Create one when the team needs it.' : 'No update from your manager.'} />}
       {canEdit ? <Button title={current.message ? 'Edit Heads Up' : 'Create Heads Up'} icon="create-outline" onPress={beginEdit} /> : null}
       <Button title="Refresh update" variant="secondary" icon="refresh-outline" onPress={() => { void refresh(); }} />
     </Card>;

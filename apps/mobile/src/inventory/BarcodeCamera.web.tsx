@@ -10,7 +10,7 @@ type Props = {
 export function BarcodeCamera({ onClose }: Props) {
   return <Card>
     <Heading>Barcode camera</Heading>
-    <Body muted>Camera scanning is available in the Shiftly mobile app. Enter the barcode to continue in your browser.</Body>
+    <Body muted>Enter the barcode here, or scan it in the mobile app.</Body>
     <Button title="Enter code instead" onPress={onClose} />
   </Card>;
 }

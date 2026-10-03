@@ -1,11 +1,16 @@
 import React from 'react';
 type RouterValue = {
   path?: string; go: (value: unknown) => void; params: Record<string,string>; setParams: (values: Record<string,string>) => void;
-  replace?: (value: unknown) => void; canGoBack?: () => boolean; back?: () => void;
+  replace?: (value: unknown) => void; dismissTo?: (value: unknown) => void; canGoBack?: () => boolean; back?: () => void;
 };
 export const RouterContext = React.createContext<RouterValue>({ go: () => {}, params: {}, setParams: () => {} });
 export const useRouter = () => { const r=React.useContext(RouterContext);return {
-  push:r.go,replace:r.replace||r.go,setParams:r.setParams,canGoBack:r.canGoBack||(()=>false),back:r.back||(()=>r.go('/accounts')),
+  push:r.go,replace:r.replace||r.go,dismissTo:(value:unknown)=>{
+    // Like Expo's stack-only POP_TO, this cannot cross sibling tab sections.
+    if(r.path && r.path.split('/')[1] !== destination(value).path.split('/')[1])
+      throw new Error('dismissTo cannot target a different tab stack');
+    (r.dismissTo||r.replace||r.go)(value);
+  },setParams:r.setParams,canGoBack:r.canGoBack||(()=>false),back:r.back||(()=>r.go('/accounts')),
 }; };
 export const usePathname = () => { const r=React.useContext(RouterContext); return (r.path || '/').replace(/\[(\w+)\]/g, (match,key:string)=>r.params[key] || match); };
 export const useGlobalSearchParams = () => React.useContext(RouterContext).params;
@@ -32,6 +37,7 @@ export function destination(value: unknown): { path: string; params: Record<stri
     [/^\/counts\/([0-9a-f-]+)\/review$/, '/counts/[countId]/review', ['countId']],
     [/^\/counts\/([0-9a-f-]{36})$/, '/counts/[countId]', ['countId']],
     [/^\/catalog\/([0-9a-f-]{36})$/, '/catalog/[productId]', ['productId']],
+    [/^\/catalog\/packages\/([0-9a-f-]{36})$/, '/catalog/packages/[productId]', ['productId']],
     [/^\/stock\/([0-9a-f-]{36})$/, '/stock/[productId]', ['productId']],
     [/^\/shelves\/([0-9a-f-]{36})$/, '/shelves/[shelfId]', ['shelfId']],
     [/^\/production\/recipes\/([0-9a-f-]{36})$/, '/production/recipes/[recipeId]', ['recipeId']],

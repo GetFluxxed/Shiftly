@@ -18,8 +18,8 @@ function RecipeBook() {
   const { api, canManageRecipes } = useProduction(); const router = useRouter();
   const [filters, setFilters] = useRememberedState('production.recipes.list', { query: '', search: '', cursor: '' });
   const resource = useInventoryResource(useCallback(() => api.recipes(filters.search, filters.cursor), [api, filters.search, filters.cursor]));
-  return <><Card><Heading>Recipe</Heading><Body>Recipes keep each flavor consistent and connect every batch to the right stock ingredients.</Body>
-    {canManageRecipes ? <Button title="New Recipe" icon="add" onPress={() => router.push('/production/recipes/new')} /> : null}
+  return <><Card><Heading>Recipes</Heading><Body>Batch yields and ingredients.</Body>
+    {canManageRecipes ? <Button title="New recipe" icon="add" onPress={() => router.push('/production/recipes/new')} /> : null}
     <InventorySearch label="Find a recipe" value={filters.query} onChange={query => setFilters(v => ({ ...v, query }))} submitLabel="Find recipes" onSubmit={() => setFilters(v => ({ ...v, search: v.query.trim(), cursor: '' }))} />
   </Card>{resource.loading ? <Loading label="Opening the recipe book…" /> : resource.error || !resource.data ? <LoadError {...resource} /> : <>
     {!resource.data.items.length ? <Card><EmptyState icon="restaurant-outline" title="No recipes here yet" description={canManageRecipes ? 'Create the first recipe when you are ready.' : 'A manager or owner can add recipes for this store.'} /></Card> : null}
@@ -43,8 +43,12 @@ function RecipeLoader({ id }: { id: string }) {
   if (resource.error || !resource.data) return <LoadError {...resource} />;
   const item = resource.data;
   return <><Card><Heading>Recipe</Heading><Text style={styles.recipeTitle}>{item.name}</Text><Pill label={`Makes ${item.yieldAmount} ${item.yieldUnit}`} />{item.instructions ? <Body>{item.instructions}</Body> : null}
-    {canManageRecipes ? <><Button title="Edit Recipe" variant="secondary" onPress={() => setEditing(true)} /><Button title="New Recipe" icon="add" onPress={() => router.push('/production/recipes/new')} /></> : null}</Card><IngredientSummary item={item} />
+    {canManageRecipes ? <><Button title="Edit recipe" variant="secondary" onPress={() => setEditing(true)} /><Button title="New recipe" icon="add" onPress={() => router.push('/production/recipes/new')} /></> : null}</Card><IngredientSummary item={item} />
     <RecipeEditorModal item={item} visible={editing} onClose={resetEditing} onSaved={() => { resetEditing(); void resource.refresh(); }} /></>;
 }
-function IngredientSummary({ item }: { item: Recipe }) { return <><Heading>Ingredients</Heading><InventoryList>{item.ingredients.map(x => <InventoryItem key={x.productId} title={x.name} detail={`${x.amount} ${x.unit}`} />)}</InventoryList></>; }
+function IngredientSummary({ item }: { item: Recipe }) { return <><Heading>Ingredients</Heading><InventoryList>{item.ingredients.map(ingredient => {
+  const changed = ingredient.currentBaseUnit && ingredient.currentBaseUnit !== ingredient.baseUnit;
+  return <InventoryItem key={ingredient.productId} title={ingredient.name}
+    subtitle={changed ? `Stock unit changed to ${ingredient.currentBaseUnit}` : undefined} detail={`${ingredient.amount} ${ingredient.unit}`} />;
+})}</InventoryList></>; }
 const styles = StyleSheet.create({ recipeTitle: { color: colors.ink, fontSize: 30, lineHeight: 36, fontWeight: '700' } });

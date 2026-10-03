@@ -24,10 +24,10 @@ export function AdministrationScreen({ title, ownerOnly = false, children }: {
   const storeName = stores.find(store => store.storeId === actor?.storeId)?.storeName || 'Current store';
   const mismatch = resource.data && (resource.data.storeId !== actor?.storeId || (ownerOnly && !resource.data.isOwner));
   return <Screen title={title} eyebrow={ownerOnly ? 'Owner workspace' : 'Team & access'} subtitle={storeName}>
-    <Button title={canViewStore(actor?.role) ? 'Back to Store' : 'Back to Account'} icon="arrow-back" variant="quiet"
+    <Button title={canViewStore(actor?.role) ? 'Back to store' : 'Back to account'} icon="arrow-back" variant="quiet"
       onPress={() => router.replace(canViewStore(actor?.role) ? '/store' : '/accounts')} />
     <Notice message={notice} kind="success" />
-    {!allowed ? <Card><Heading>Access is limited</Heading><Body>Your current account does not have permission to manage this area.</Body></Card>
+    {!allowed ? <Card><Heading>Access is limited</Heading><Body>You do not have permission to manage this area.</Body></Card>
       : resource.loading ? <Loading label="Checking team access…" />
       : resource.error || mismatch ? <Card><Notice kind="error" message={resource.error || 'Your store changed. Reload to continue.'} />
         <Button title="Reload team" onPress={() => { void resource.refresh(); }} /></Card>
@@ -58,7 +58,6 @@ export function Permissions({ included = [], optional, value, onChange, disabled
   included?: string[]; optional: string[]; value: string[]; onChange: (value: string[]) => void; disabled?: boolean;
 }) {
   return <View style={layout.smallGap}><Heading>Permissions</Heading>
-    <Body muted>Inventory permissions take effect as those modules become available.</Body>
     {included.map(capability => <Choice key={capability} label={permissionLabels[capability] || capability}
       hint="Included with this role" selected disabled checkbox onPress={() => undefined} />)}
     {optional.map(capability => <Choice key={capability} label={permissionLabels[capability] || capability}
@@ -69,24 +68,24 @@ export function Permissions({ included = [], optional, value, onChange, disabled
 }
 export function Reason({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return <Field label="Reason (optional)" value={value} onChangeText={onChange} maxLength={500} editable={!disabled}
-    multiline style={{ minHeight: 90 }} hint="Recorded with this account change." />;
+    multiline style={{ minHeight: 90 }} hint="Saved with this change." />;
 }
 export function InvitationResult({ invitation, username, onDismiss }: {
   invitation: Invitation; username: string; onDismiss: () => void;
 }) {
   const link = invitationLink(createURL('activate'), invitation.token);
   const [error, setError] = useState<string | null>(null);
-  return <Card><Heading>Invitation ready</Heading><Body>Share this private link only with @{username}. It expires in {Math.round(invitation.expiresIn / 3600)} hours and can create one crew account.</Body>
+  return <Card><Heading>Invitation ready</Heading><Body>Only share this private link with @{username}. It expires in {Math.round(invitation.expiresIn / 3600)} hours and works once for a crew account.</Body>
     <Text selectable style={styles.code} accessibilityLabel="Invitation link">{link}</Text>
     <Button title="Share invitation link" icon="share-outline" onPress={() => {
       void Share.share({ message: `Join Shiftly as @${username}. Open this single-use invitation and choose your password:\n${link}` })
         .catch(() => setError('Sharing is unavailable. Select and copy the invitation link.'));
     }} />
     <Notice message={error} kind="error" />
-    <Body muted>Alternatively, enter this code on the activation screen:</Body>
+    <Body muted>Or enter this code on the activation screen:</Body>
     <Text selectable style={styles.code} accessibilityLabel={`Activation code: ${invitation.token}`}>{invitation.token}</Text>
-    <Body muted>The link opens account activation. An administrator can change their role after activation. In Expo Go, the recipient must be able to reach the local development server. The link and code are hidden when you leave this screen or background the app.</Body>
-    <Button title="Done with this invitation" onPress={onDismiss} />
+    <Body muted>An administrator can change their role after activation. The link and code disappear when you leave or background Shiftly.</Body>
+    <Button title="Done" onPress={onDismiss} />
   </Card>;
 }
 const styles = StyleSheet.create({

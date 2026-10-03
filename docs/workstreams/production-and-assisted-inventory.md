@@ -304,6 +304,10 @@ connection type, protocol/sample output and minimum useful measurement precision
 
 ## Slice 4 — Manager/owner Forecast tab
 
+The 2026-10-01 request brings a smaller native Reports advisory forward. Its
+[store forecast contract](store-production-forecast.md) defines the current slice.
+The broader calculations and evaluated predictions below remain subsequent work.
+
 Build daily and weekly tables/charts from confirmed production batches and the
 snapshotted recipe usage/1% allowances. Reversed logs are excluded from net usage
 but remain auditable. Physical count corrections are not ingredient consumption.

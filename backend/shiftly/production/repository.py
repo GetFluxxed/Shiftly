@@ -40,12 +40,15 @@ class ProductionRepository:
         return self.render_recipe(connection,result[0]) if result else None
 
     def render_recipe(self,connection,row):
-        ingredients=rows(connection,'''SELECT product_id,name,sku,amount,unit,base_unit,base_amount FROM production_recipe_ingredients
-          WHERE revision_id=%s ORDER BY inventory_key(name) COLLATE "C",product_id''',(row['revision_id'],))
+        ingredients=rows(connection,'''SELECT i.product_id,i.name,i.sku,i.amount,i.unit,i.base_unit,i.base_amount,p.base_unit current_base_unit
+          FROM production_recipe_ingredients i JOIN inventory_products p
+            ON p.id=i.product_id AND p.business_id=i.business_id
+          WHERE i.revision_id=%s ORDER BY inventory_key(i.name) COLLATE "C",i.product_id''',(row['revision_id'],))
         return {'id':str(row['id']),'name':row['name'],'version':row['version'],'revisionId':str(row['revision_id']),
           'yieldAmount':decimal(row['yield_amount']),'yieldUnit':row['yield_unit'],'instructions':row['instructions'],
           'ingredients':[{'productId':str(i['product_id']),'name':i['name'],'sku':i['sku'],'amount':decimal(i['amount']),
-                          'unit':i['unit'],'baseUnit':i['base_unit'],'baseAmount':decimal(i['base_amount'])} for i in ingredients]}
+                          'unit':i['unit'],'baseUnit':i['base_unit'],'baseAmount':decimal(i['base_amount']),
+                          'currentBaseUnit':i['current_base_unit']} for i in ingredients]}
 
     def recipes(self,connection,actor,query,after):
         name,identifier=after or (None,None)
