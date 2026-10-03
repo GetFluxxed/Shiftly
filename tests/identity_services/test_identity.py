@@ -26,7 +26,7 @@ def services(isolated_database):
     def provider(*args):
         raise AssertionError("Identity work must not invoke AI")
     return build_services(settings=SimpleNamespace(admin_signup_key="test-admin",
-                          report_cooldown_seconds=60, openai_model="test-model"),
+                          report_cooldown_seconds=60, openai_model="test-model", openai_api_key=""),
                           connection_factory=db_connection, provider=provider)
 
 
@@ -151,7 +151,8 @@ def test_missing_and_forged_manager_id_cannot_select_store(services):
 
 def test_admission_and_validation_order_without_database():
     calls = []
-    settings = SimpleNamespace(admin_signup_key="", report_cooldown_seconds=60, openai_model="test")
+    settings = SimpleNamespace(admin_signup_key="", report_cooldown_seconds=60,
+                               openai_model="test", openai_api_key="")
     services = build_services(settings=settings, connection_factory=lambda: calls.append("db"), provider=lambda *a: calls.append("ai"))
     with pytest.raises(IdentityError) as error:
         services.identity.admit_account_creation("peer")
@@ -217,7 +218,8 @@ builtins.__import__ = guarded
 from backend.shiftly.runtime import build_services
 def forbidden(*a, **kw):
     raise AssertionError('construction performed I/O')
-settings = SimpleNamespace(admin_signup_key='key', report_cooldown_seconds=60, openai_model='test')
+settings = SimpleNamespace(admin_signup_key='key', report_cooldown_seconds=60,
+                           openai_model='test', openai_api_key='')
 services = build_services(settings=settings, connection_factory=forbidden, provider=forbidden)
 assert services.identity and services.stores and services.submission
 '''

@@ -12,7 +12,7 @@ def cream(i):
         i, name='Heavy Cream', sku='070852990316', barcodeType='upc_a', baseUnit='each', containerAmount='1'))
 
 
-def test_catalog_change_sheet_preserves_card_search_and_requires_new_recipe_amount(page, native_inventory):
+def test_catalog_change_sheet_preserves_card_search_and_requires_new_recipe_amount(page, native_inventory, tmp_path):
     url, i = native_inventory
     item = cream(i)
     production = i.client.app.state.context.services.production
@@ -51,7 +51,7 @@ def test_catalog_change_sheet_preserves_card_search_and_requires_new_recipe_amou
         }''')
         expect(page.get_by_role('button', name='Save', exact=True)).to_be_visible()
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.screenshot(path=f'/private/tmp/shiftly-measurement-sheet-{width}.png', full_page=False, animations='disabled')
+        page.screenshot(path=str(tmp_path / f'shiftly-measurement-sheet-{width}.png'), full_page=False, animations='disabled')
     page.get_by_role('button', name='Save', exact=True).click()
     expect(page.get_by_role('button', name='Close measurement editor', exact=True)).to_have_count(0)
     expect(page.get_by_label('Find a product or SKU', exact=True)).to_have_value('Cream')

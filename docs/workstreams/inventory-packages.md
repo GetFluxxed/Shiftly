@@ -293,3 +293,15 @@ The existing local API was restarted; API/worker health and Expo status passed,
 and the new endpoint rejects unauthenticated reads. No live inventory or recipe
 values were changed and no commit, publication or hosted deployment was performed.
 These checks do not establish physical-device or hosted/CI acceptance.
+
+
+## Publishing verification — 2026-10-03
+
+The first published CI run passed mobile checks and both native exports, but
+exposed two test-environment issues: three minimal identity settings fixtures
+omitted the forecast provider key, and two rendered journeys wrote screenshots
+to a macOS-only temporary directory. The fixtures now explicitly disable the
+provider, and screenshots use pytest-owned temporary folders on every platform.
+Production behavior and test assertions are unchanged. The focused identity suite
+(17 tests) and both affected rendered journeys passed locally after correction.
+The pull request records CI results for the exact published revision.

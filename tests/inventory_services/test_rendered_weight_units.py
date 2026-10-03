@@ -8,7 +8,7 @@ from tests.inventory_services.test_package_counts import post
 from tests.inventory_services.test_rendered_native import inventory_bundle, native_inventory
 
 
-def test_rendered_barcode_free_pounds_product_keeps_label_and_posts_metric_stock(page, native_inventory):
+def test_rendered_barcode_free_pounds_product_keeps_label_and_posts_metric_stock(page, native_inventory, tmp_path):
     url, i = native_inventory
     page.set_viewport_size({'width': 390, 'height': 844})
     page.goto(url + '/catalog/new')
@@ -24,7 +24,7 @@ def test_rendered_barcode_free_pounds_product_keeps_label_and_posts_metric_stock
     page.evaluate('window.__workspaceTest.flush()')
     page.reload()
     expect(page.get_by_label('Full container amount (lbs)', exact=True)).to_have_value('50')
-    page.screenshot(path='/private/tmp/shiftly-pound-product-320.png', full_page=True)
+    page.screenshot(path=str(tmp_path / 'shiftly-pound-product-320.png'), full_page=True)
     page.get_by_role('button', name='Create product', exact=True).click()
     expect(page.get_by_role('button', name='Save company product', exact=True)).to_be_visible()
     expect(page.get_by_text('50 lbs (22.6796185 kg)', exact=True)).to_be_visible()
@@ -47,7 +47,7 @@ def test_rendered_barcode_free_pounds_product_keeps_label_and_posts_metric_stock
     page.get_by_label('Combined loose or partial amount', exact=True).fill('500')
     expect(page.get_by_role('heading', name='This location: 45.859237 kg', exact=True)).to_be_visible()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    page.screenshot(path='/private/tmp/shiftly-pound-count-320.png', full_page=True)
+    page.screenshot(path=str(tmp_path / 'shiftly-pound-count-320.png'), full_page=True)
     page.get_by_role('button', name='Save count entry', exact=True).click()
     with i.connect() as c:
         count_id = str(c.execute('SELECT id FROM inventory_counts').fetchone()[0])
