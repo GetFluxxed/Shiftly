@@ -16,13 +16,13 @@ export default function AppLayout() {
   const { width, fontScale } = useWindowDimensions();
   if (status === 'loading') return <Loading />;
   if (status === 'signedOut') return <Redirect href="/sign-in" />;
-  if (status === 'locked' || !actor) return <Screen title="Let's reconnect" eyebrow="Workspace paused"
-    subtitle="Your workspace will return once we can confirm your account access.">
+  if (status === 'locked' || !actor) return <Screen title="Reconnect to Shiftly" eyebrow="Access paused"
+    subtitle="Confirm your account access to continue.">
     <Card><Notice message={message || 'Your connection is unavailable.'} />
       <Button title="Try again" onPress={() => { void retry(); }} loading={busy} />
-      <Button title="Sign Out" variant="quiet" onPress={() => Alert.alert('Sign out of this device?', undefined, [
-        { text: 'Cancel Sign Out', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: () => { void signOut(); } },
+      <Button title="Sign out" variant="quiet" onPress={() => Alert.alert('Sign out of this device?', undefined, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => { void signOut(); } },
       ])} disabled={busy} />
     </Card></Screen>;
   if (workspace.controller && (!workspace.ready || workspace.scope !== workspaceScope(actor, stores))) return <Loading label="Restoring your workspace…" />;

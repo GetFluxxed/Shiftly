@@ -40,3 +40,15 @@ test('preview accepts exact nine-place quantities and a negative remaining balan
   assert.equal(result.canConfirm, false); assert.equal(result.deductions[0]?.remaining, '-1000000000000');
   assert.equal(result.issues[0]?.code, 'insufficient_stock');
 });
+
+
+test('recipe reads distinguish saved measurements from the current catalog unit', async () => {
+  const ingredient = { ...recipe.ingredients[0]!, amount: '1', unit: 'each', baseUnit: 'each', baseAmount: '1', currentBaseUnit: 'kg' };
+  const api = productionApi(async <T>() => ({ ...recipe, ingredients: [ingredient] }) as T);
+  const result = await api.recipe(recipe.id);
+  assert.equal(result.ingredients[0]?.baseUnit, 'each');
+  assert.equal(result.ingredients[0]?.amount, '1');
+  assert.equal(result.ingredients[0]?.currentBaseUnit, 'kg');
+  const invalid = productionApi(async <T>() => ({ ...recipe, ingredients: [{ ...ingredient, currentBaseUnit: 'litres' }] }) as T);
+  await assert.rejects(invalid.recipe(recipe.id), ApiError);
+});

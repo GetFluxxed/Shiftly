@@ -2,7 +2,7 @@ import { ApiError } from '../api/client';
 import type { RequestOptions } from '../api/types';
 
 export type ProductionUnit = 'each' | 'g' | 'kg';
-export interface RecipeIngredient { productId: string; name: string; sku: string; amount: string; unit: ProductionUnit; baseUnit: ProductionUnit; baseAmount: string }
+export interface RecipeIngredient { productId: string; name: string; sku: string; amount: string; unit: ProductionUnit; baseUnit: ProductionUnit; baseAmount: string; currentBaseUnit?: ProductionUnit }
 export interface Recipe { id: string; name: string; version: number; revisionId: string; yieldAmount: string; yieldUnit: string; instructions: string; ingredients: RecipeIngredient[] }
 export interface RecipeInput { name: string; yieldAmount: string; yieldUnit: string; instructions: string; ingredients: { productId: string; amount: string; unit: ProductionUnit }[] }
 export interface ProductionEntry { recipeId: string; revisionId: string; batches: number }
@@ -26,7 +26,7 @@ function decimal(value: unknown, allowZero = false): value is string { return ty
 function responseDecimal(value: unknown, signed = false): value is string { return typeof value === 'string' && (signed ? signedResponseDecimalPattern : responseDecimalPattern).test(value); }
 function unit(value: unknown): value is ProductionUnit { return value === 'each' || value === 'g' || value === 'kg'; }
 function cursor(value: unknown) { return typeof value === 'string' && value.length <= 1200 && /^[A-Za-z0-9._-]+$/.test(value); }
-function ingredient(value: unknown): RecipeIngredient { record(value); verify(uuid(value.productId) && typeof value.name === 'string' && typeof value.sku === 'string' && decimal(value.amount) && unit(value.unit) && unit(value.baseUnit) && responseDecimal(value.baseAmount)); return value as unknown as RecipeIngredient; }
+function ingredient(value: unknown): RecipeIngredient { record(value); verify(uuid(value.productId) && typeof value.name === 'string' && typeof value.sku === 'string' && decimal(value.amount) && unit(value.unit) && unit(value.baseUnit) && responseDecimal(value.baseAmount) && (value.currentBaseUnit === undefined || unit(value.currentBaseUnit))); return value as unknown as RecipeIngredient; }
 function recipe(value: unknown): Recipe { record(value); verify(uuid(value.id) && uuid(value.revisionId) && typeof value.name === 'string' && Number.isSafeInteger(value.version) && Number(value.version) > 0 && decimal(value.yieldAmount) && typeof value.yieldUnit === 'string' && value.yieldUnit.length <= 40 && typeof value.instructions === 'string' && Array.isArray(value.ingredients) && value.ingredients.length <= 50); return { ...value, ingredients: value.ingredients.map(ingredient) } as unknown as Recipe; }
 function page<T>(value: unknown, parse: (item: unknown) => T): Page<T> { record(value); verify(Array.isArray(value.items) && value.items.length <= 40 && (value.nextCursor === null || cursor(value.nextCursor))); return { items: value.items.map(parse), nextCursor: value.nextCursor as string | null }; }
 function deduction(value: unknown): Deduction { record(value); verify(uuid(value.productId) && typeof value.name === 'string' && responseDecimal(value.recipeAmount) && responseDecimal(value.allowanceAmount) && responseDecimal(value.quantity) && unit(value.baseUnit) && (value.balance === null || responseDecimal(value.balance)) && (value.remaining === null || responseDecimal(value.remaining, true))); return value as unknown as Deduction; }

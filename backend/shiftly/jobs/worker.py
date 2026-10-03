@@ -6,14 +6,17 @@ and never starts a web listener. Tests may call run_worker with a fake provider.
 
 import logging
 import signal
+import time
 from functools import partial
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 
 import psycopg
 
 from backend.shiftly.runtime.database import DatabaseResources
 from backend.shiftly.runtime.migrate import require_schema
 from backend.shiftly.runtime.provider import make_provider
+from backend.shiftly.forecasts import ForecastWorker
+from backend.shiftly.forecasts.provider import make_forecast_provider
 from .status import PersistentWorkerStatus
 
 
@@ -29,11 +32,12 @@ class ShutdownWake:
         pass
 
 
-def run_worker(settings, *, provider=None, stop_event=None, install_signals=False):
+def run_worker(settings, *, provider=None, forecast_provider=None, stop_event=None, install_signals=False):
     # Imports stay inside explicit runtime execution, never package construction.
     import reporting
     stop = stop_event if stop_event is not None else Event()
     provider = provider if provider is not None else make_provider(settings)
+    forecast_provider = forecast_provider if forecast_provider is not None else make_forecast_provider(settings)
     old_signals = {}
     if install_signals:
         for signum in (signal.SIGINT, signal.SIGTERM):
@@ -50,9 +54,11 @@ def run_worker(settings, *, provider=None, stop_event=None, install_signals=Fals
                 if not locked:
                     raise RuntimeError("A separate briefing worker is already running.")
                 ownership_lost = Event()
+                ownership_lock = Lock()
                 def check_ownership():
                     try:
-                        ownership.execute("SELECT 1")
+                        with ownership_lock:
+                            ownership.execute("SELECT 1")
                     except psycopg.Error:
                         ownership_lost.set()
                         stop.set()
@@ -79,19 +85,33 @@ def run_worker(settings, *, provider=None, stop_event=None, install_signals=Fals
                     except BaseException as error:
                         failures.append(error)
                 thread = Thread(target=loop, name="briefing-worker", daemon=True)
+                forecast_worker=ForecastWorker(resources.connection,forecast_provider)
+                def forecast_loop():
+                    try:
+                        while not stop.is_set():
+                            check_ownership()
+                            worked=forecast_worker.run_one()
+                            if not worked: stop.wait(2)
+                    except BaseException as error:
+                        failures.append(error); stop.set()
+                forecast_thread=Thread(target=forecast_loop,name='forecast-worker',daemon=True)
                 thread.start()
-                while thread.is_alive() and not stop.is_set():
+                forecast_thread.start()
+                while thread.is_alive() and forecast_thread.is_alive() and not stop.is_set():
                     thread.join(timeout=0.1)
+                stop.set()
+                deadline=time.monotonic()+settings.shutdown_timeout
                 if stop.is_set():
-                    thread.join(timeout=settings.shutdown_timeout)
-                if thread.is_alive():
+                    thread.join(timeout=max(0,deadline-time.monotonic()))
+                    forecast_thread.join(timeout=max(0,deadline-time.monotonic()))
+                if thread.is_alive() or forecast_thread.is_alive():
                     # Main returns to its supervisor without waiting for stuck AI;
                     # the durable claim stays fenced and expires normally.
                     raise RuntimeError("Worker shutdown deadline exceeded; unfinished work remains recoverable.")
-                if failures:
-                    raise RuntimeError("Worker stopped unexpectedly; inspect sanitized diagnostics.") from None
                 if ownership_lost.is_set():
                     raise RuntimeError("Worker ownership was lost; restart under the process supervisor.")
+                if failures:
+                    raise RuntimeError("Worker stopped unexpectedly; inspect sanitized diagnostics.") from None
     finally:
         for signum, previous in old_signals.items():
             signal.signal(signum, previous)

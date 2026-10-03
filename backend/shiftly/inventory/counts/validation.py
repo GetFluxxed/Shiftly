@@ -1,6 +1,6 @@
 """Exact, bounded count measurements. A missing observation is not zero."""
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 import re
 
 from ..validation import invalid
@@ -50,8 +50,31 @@ def measurement(value, product):
         partial = number(value['partialAmount'], 'Net partial amount')
         quantity = full * product['container_amount'] + mass_or_items(partial, value['partialUnit'], base)
         entry = {'mode': mode, 'fullContainers': full, 'partialAmount': decimal_text(partial), 'partialUnit': value['partialUnit']}
+    elif mode == 'packages' and set(value) == {'mode', 'packages', 'partialAmount', 'partialUnit'}:
+        selections = value['packages']
+        if not isinstance(selections, list) or len(selections) > 40:
+            invalid('Choose at most 40 package options for this location.')
+        options = {option['id']: option for option in product.get('packages', []) if option['active']}
+        seen, normalized = set(), []
+        partial = number(value['partialAmount'], 'Net partial amount')
+        with localcontext() as context:
+            context.prec = 50
+            quantity = mass_or_items(partial, value['partialUnit'], base)
+            for selection in selections:
+                if not isinstance(selection, dict) or set(selection) != {'packageId', 'count'}:
+                    invalid('Each package entry needs its package and full quantity.')
+                package_id, count = selection['packageId'], selection['count']
+                if not isinstance(package_id, str) or package_id not in options or package_id in seen:
+                    invalid('Choose each package once from this count’s saved options.')
+                if type(count) is not int or not 0 <= count <= 1_000_000:
+                    invalid('Full packages must be a whole number between zero and one million.')
+                seen.add(package_id)
+                quantity += Decimal(options[package_id]['amount']) * count
+                normalized.append({'packageId': package_id, 'count': count})
+        entry = {'mode': mode, 'packages': sorted(normalized, key=lambda item: item['packageId']),
+                 'partialAmount': decimal_text(partial), 'partialUnit': value['partialUnit']}
     else:
-        invalid('Choose a total measurement or full containers plus net partial amount.')
+        invalid('Choose a measured total, full containers or package quantities plus a net partial amount.')
     if quantity > MAX_QUANTITY:
         invalid('The counted quantity is too large.')
     return quantity, entry

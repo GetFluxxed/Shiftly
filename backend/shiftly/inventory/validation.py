@@ -55,6 +55,10 @@ def product_fields(fields, *, creating=False):
     if 'containerAmount' in fields:
         # Validation depends on the stored unit for edits, within the transaction.
         data['containerAmount'] = fields['containerAmount']
+    if 'containerUnit' in fields:
+        if fields.get('containerAmount') is None:
+            invalid('A container unit requires a container amount.')
+        data['containerUnit'] = fields['containerUnit']
     return data
 
 
@@ -62,6 +66,48 @@ def version(value):
     if type(value) is not int or not 1 <= value <= 2147483647:
         invalid('A current record version is required.')
     return value
+
+
+def package_fields(fields):
+    kind = fields.get('kind')
+    if kind not in ('container', 'box', 'case'):
+        invalid('Choose container, box or case as the package kind.')
+    data = {'name': text(fields.get('name'), 'Package name', 120), 'kind': kind}
+    contained = fields.get('containedPackageId')
+    count = fields.get('containedCount')
+    if (contained is None) != (count is None):
+        invalid('A contained package and count must be supplied together.')
+    if contained is not None:
+        if kind != 'case':
+            invalid('Only a case can contain another package option.')
+        if type(count) is not int or not 1 <= count <= 1000000:
+            invalid('Contained count must be a whole number from 1 to 1000000.')
+        data.update(containedPackageId=identifier(contained), containedCount=count)
+        if fields.get('amount') is not None:
+            invalid('A contained case amount is computed from its package and count.')
+        if 'amountUnit' in fields:
+            invalid('A contained case amount unit is computed from its package.')
+    else:
+        data.update(containedPackageId=None, containedCount=None, amount=fields.get('amount'))
+        if 'amountUnit' in fields:
+            if fields.get('amount') is None:
+                invalid('An amount unit requires an amount.')
+            data['amountUnit'] = fields['amountUnit']
+    barcode = fields.get('barcode')
+    barcode_type = fields.get('barcodeType')
+    if barcode is not None:
+        barcode = text(barcode, 'Barcode', 64)
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]{0,63}', barcode):
+            invalid('Barcode must use the supported identifier characters.')
+        if barcode_type is not None:
+            from .barcodes import identity
+            barcode, aliases = identity(barcode, barcode_type)
+        else:
+            aliases = (barcode,)
+        data.update(barcode=barcode, barcodeAliases=aliases)
+    elif barcode_type is not None:
+        invalid('Barcode type requires a barcode.')
+    return data
 
 
 def page(query, after):

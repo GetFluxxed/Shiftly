@@ -127,7 +127,7 @@ def test_first_shelf_assignment_reuses_catalog_and_keeps_removal_local(inventory
     assert again['shelf']['version']==2
     i.service.place(i.tokens['manager'],a['id'],p['id'],fields(i,version=2,active=False))
     assert i.service.shelf(i.tokens['crew'],a['id'])['products']['items']==[]
-    assert i.service.shelf(i.tokens['crew'],b['id'])['products']['items']==[p]
+    assert i.service.shelf(i.tokens['crew'],b['id'])['products']['items']==[{**p,'storeQuantity':None}]
     assert i.service.shelves(i.second)['items']==[]
     with i.connect() as c:
         assert c.execute('SELECT count(*) FROM inventory_products').fetchone()[0]==1
@@ -204,7 +204,7 @@ def test_shelf_names_and_stale_changes_are_scoped_and_preserve_placements(invent
             change()
         assert stale.value.reason == 'stale_record'
     current = i.service.shelf(i.tokens['manager'], first['id'])
-    assert current['name'] == 'Back freezer' and current['products']['items'] == [product]
+    assert current['name'] == 'Back freezer' and current['products']['items'] == [{**product, 'storeQuantity': None}]
 
 
 def test_database_rejects_cross_store_placement_even_with_valid_local_listing(inventory):

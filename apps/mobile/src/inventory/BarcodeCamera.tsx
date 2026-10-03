@@ -138,7 +138,7 @@ export function BarcodeCamera({ onScan, onClose }: Props) {
     const blocked = !permission.canAskAgain;
     return <Card>
       <Heading>Camera access needed</Heading>
-      <Body>Shiftly uses the camera only while this scanner is open. It does not save or upload images.</Body>
+      <Body>The scanner uses your camera without saving or uploading images.</Body>
       <Notice kind={blocked ? 'error' : 'info'} message={blocked
         ? 'Camera access is blocked. Open device settings to allow it, or enter the barcode instead.'
         : 'Allow camera access to scan a product barcode.'} />
@@ -153,7 +153,7 @@ export function BarcodeCamera({ onScan, onClose }: Props) {
   return <Card style={styles.card}>
     <View>
       <Heading>Scan a product barcode</Heading>
-      <Body muted>Fit the whole barcode in the frame. If it is blurry, move back until sharp, then use zoom for small print.</Body>
+      <Body muted>Keep the full barcode in view. Move back to focus; zoom for small print.</Body>
     </View>
     {canShowCamera ? <View style={styles.preview} accessibilityLabel="Barcode camera preview">
       <CameraView

@@ -30,7 +30,7 @@ def remember_picker(page):
     }''')
 
 
-def test_shelf_add_remove_keeps_picker_search_page_and_name_draft(page, native_inventory):
+def test_shelf_add_remove_keeps_picker_search_and_page(page, native_inventory):
     url, i = native_inventory
     shelf, products = setup_shelf(i, 42)
     page.add_init_script("""(() => {
@@ -50,7 +50,7 @@ def test_shelf_add_remove_keeps_picker_search_page_and_name_draft(page, native_i
     page.goto(url + '/shelves/' + shelf['id'])
     query = page.get_by_label('Find a product to assign', exact=True)
     expect(query).to_be_visible()
-    page.get_by_label('Shelf name', exact=True).fill('Unsaved shelf name')
+    expect(page.get_by_label('Shelf name', exact=True)).to_have_count(0)
     query.fill('Ingredient')
     page.get_by_role('button', name='Find products', exact=True).click()
     page.get_by_role('button', name='Next page', exact=True).click()
@@ -63,7 +63,7 @@ def test_shelf_add_remove_keeps_picker_search_page_and_name_draft(page, native_i
     target.click()
     page.wait_for_function('typeof window.__releaseShelfRead === \"function\"')
     expect(query).to_have_value('Ingredient')
-    expect(page.get_by_label('Shelf name', exact=True)).to_have_value('Unsaved shelf name')
+    expect(page.get_by_label('Shelf name', exact=True)).to_have_count(0)
     expect(page.get_by_text('Loading shelf…', exact=True)).to_have_count(0)
     expect(page.get_by_role('button', name='Assign Ingredient 41', exact=True)).to_be_disabled()
     expect(page.get_by_role('button', name='Back to first page', exact=True)).to_be_disabled()
@@ -79,7 +79,7 @@ def test_shelf_add_remove_keeps_picker_search_page_and_name_draft(page, native_i
     expect(page.get_by_role('button', name='Assign Ingredient 40', exact=True)).to_be_enabled()
     expect(page.get_by_role('button', name='Remove Ingredient 40 from shelf', exact=True)).to_have_count(0)
     expect(query).to_have_value('Ingredient')
-    expect(page.get_by_label('Shelf name', exact=True)).to_have_value('Unsaved shelf name')
+    expect(page.get_by_label('Shelf name', exact=True)).to_have_count(0)
     assert page.evaluate('window.__pickerNode.isConnected && !window.__pickerLost')
     assert [p['id'] for p in i.service.shelf(i.tokens['owner'], shelf['id'])['products']['items']] == [products[41]['id']]
     with i.connect() as c:
@@ -175,3 +175,53 @@ def test_newer_server_placement_wins_over_local_add_confirmation(page, native_in
     expect(page.get_by_role('button', name='Ingredient 00 is assigned', exact=True)).to_have_count(0)
     expect(page.get_by_role('button', name='Remove Ingredient 00 from shelf', exact=True)).to_have_count(0)
     assert not i.service.shelf(i.tokens['owner'], shelf['id'])['products']['items']
+
+
+def test_shelf_name_window_keeps_draft_on_conflict_and_respects_viewer_access(page, native_inventory):
+    url, i = native_inventory
+    shelf, products = setup_shelf(i, 1)
+    i.service.place(i.tokens['owner'], shelf['id'], products[0]['id'], fields(i, version=shelf['version'], active=True))
+    page.goto(url + '/shelves')
+    edit = page.get_by_role('button', name='Edit shelf name: Ingredients shelf', exact=True)
+    expect(edit).to_be_visible()
+    bounds = edit.bounding_box()
+    assert bounds['width'] >= 44 and bounds['height'] >= 44
+    edit.click()
+    expect(page.get_by_role('heading', name='Edit shelf name', exact=True)).to_be_visible()
+    name = page.get_by_label('Shelf name', exact=True)
+    expect(name).to_have_value('Ingredients shelf')
+    expect(page.get_by_role('button', name='Save', exact=True)).to_be_disabled()
+    name.fill('   ')
+    expect(page.get_by_role('button', name='Save', exact=True)).to_be_disabled()
+    name.fill('Back ingredients')
+    for width, height in ((320, 760), (768, 360), (768, 760), (1024, 760), (1440, 760)):
+        page.set_viewport_size({'width': width, 'height': height})
+        expect(name).to_be_visible()
+        expect(page.get_by_role('button', name='Save', exact=True)).to_be_in_viewport(ratio=1)
+        expect(page.get_by_role('button', name='Cancel', exact=True)).to_be_in_viewport(ratio=1)
+        expect(page.get_by_role('button', name='Save', exact=True)).to_be_visible()
+        expect(page.get_by_role('button', name='Cancel', exact=True)).to_be_visible()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        if directory := os.environ.get('INVENTORY_SCREENSHOT_DIR'):
+            page.screenshot(path=str(Path(directory) / f'shelf-name-{width}.png'), full_page=True)
+    current = i.service.shelf(i.tokens['owner'], shelf['id'])
+    i.service.edit_shelf(i.tokens['owner'], shelf['id'], fields(i, version=current['version'], name='Another editor'))
+    page.get_by_role('button', name='Save', exact=True).click()
+    expect(page.get_by_role('alert')).to_contain_text('record changed')
+    expect(name).to_have_value('Back ingredients')
+    page.get_by_role('button', name='Reload shelf', exact=True).click()
+    expect(name).to_have_value('Back ingredients')
+    expect(page.get_by_role('button', name='Save', exact=True)).to_be_enabled()
+    page.get_by_role('button', name='Save', exact=True).click()
+    expect(page.get_by_role('button', name='Open Back ingredients', exact=True)).to_be_visible()
+    expect(page.get_by_label('Shelf name', exact=True)).to_have_count(0)
+    saved = i.service.shelf(i.tokens['owner'], shelf['id'])
+    assert saved['name'] == 'Back ingredients'
+    assert [item['id'] for item in saved['products']['items']] == [products[0]['id']]
+    page.get_by_role('button', name='Open Back ingredients', exact=True).click()
+    expect(page.get_by_role('heading', name='Assigned products', exact=True)).to_be_visible()
+    expect(page.get_by_label('Shelf name', exact=True)).to_have_count(0)
+    expect(page.get_by_role('button', name='Cancel', exact=True)).to_have_count(0)
+    page.goto(url + '/shelves?crew')
+    expect(page.get_by_role('button', name='Open Back ingredients', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name='Edit shelf name:', exact=False)).to_have_count(0)
