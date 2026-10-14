@@ -1,8 +1,14 @@
 ---
-description: Describe when these instructions should be loaded by the agent based on task context
-# applyTo: 'Describe when these instructions should be loaded by the agent based on task context' # when provided, instructions will automatically be added to the request context when the pattern matches an attached file
+description: Shiftly engineering and project instructions
+applyTo: "**"
 ---
 
-<!-- Tip: Use /create-instructions in chat to generate content with agent assistance -->
+Read and follow the repository's [ENGINEERING.md](../../ENGINEERING.md) and
+[AGENTS.md](../../AGENTS.md) before substantive work. ENGINEERING.md defines the
+adopted general standards; AGENTS.md defines Shiftly-specific architecture,
+authorization, inventory integrity, verification and collaboration rules.
 
-Provide project context and coding guidelines that AI should follow when generating code, answering questions, or reviewing changes.
+Use [README.md](../../README.md) for current supported behavior. Historical
+workstream entries describe their own dated revisions. Preserve user work and
+stock/account history, keep changes bounded, and report observed verification
+without treating a build or AI review as proof of overall correctness.

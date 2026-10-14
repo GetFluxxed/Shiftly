@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.12.15'
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -72,7 +72,9 @@ jobs:
       - name: Check Python sources
         run: python -m compileall -q backend scripts server.py auth.py config.py database.py reporting.py routes.py security.py store_service.py tests
       - name: Check installed dependencies
-        run: python -m pip check
+        run: |
+          python scripts/verify_dependency_locks.py
+          python -m pip check
       - name: Run test suite
         run: pytest -q --browser chromium --tracing=retain-on-failure --screenshot=only-on-failure --junitxml=test-results/junit.xml
       - name: Rehearse upgrade, worker recovery, rollback and restore

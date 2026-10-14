@@ -17,6 +17,7 @@ from backend.shiftly.runtime.migrate import require_schema
 from backend.shiftly.runtime.provider import make_provider
 from backend.shiftly.forecasts import ForecastWorker
 from backend.shiftly.forecasts.provider import make_forecast_provider
+from . import reporting
 from .status import PersistentWorkerStatus
 
 
@@ -33,8 +34,6 @@ class ShutdownWake:
 
 
 def run_worker(settings, *, provider=None, forecast_provider=None, stop_event=None, install_signals=False):
-    # Imports stay inside explicit runtime execution, never package construction.
-    import reporting
     stop = stop_event if stop_event is not None else Event()
     provider = provider if provider is not None else make_provider(settings)
     forecast_provider = forecast_provider if forecast_provider is not None else make_forecast_provider(settings)

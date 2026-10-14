@@ -1,7 +1,9 @@
 # Shiftly agent instructions
 
 Applies throughout this repository. Adapted on 2026-09-26 from the supplied
-three-model workflow and Shiftly's current implementation decisions. Follow
+three-model workflow and Shiftly's current implementation decisions. The project
+owner adopted [ENGINEERING.md](ENGINEERING.md) on 2026-10-11; it defines the general
+engineering standard. This file supplies Shiftly-specific implementation guidance. Follow
 system/developer instructions and the user's current request first; use applicable
 directory guidance for more specific conventions.
 
@@ -22,6 +24,11 @@ directory guidance for more specific conventions.
 
 ## Read the current decisions
 
+Start with the current feature status in [README.md](README.md).
+[Engineering adoption](docs/workstreams/engineering-adoption.md) records the
+baseline, maintenance evidence and outstanding legacy/hosted gaps. Historical
+workstream entries are evidence for their dated revision, not today's feature list.
+
 Use these documents as entry points, then inspect the relevant implementation:
 
 | Concern | Source |
@@ -36,10 +43,10 @@ Use these documents as entry points, then inspect the relevant implementation:
 | Verification and recovery | [Testing](docs/TESTING.md), [CI workflow](.github/workflows/ci.yml) |
 | Schema and deployment | [Database](docs/DATABASE.md), [deployment](docs/DEPLOYMENT.md) |
 
-Older sections of the architecture, security, database and planning documents
-describe historical baselines or proposed features. The account release and
-inventory workstream contracts above supersede their shared-login, web-first and
-earlier inventory sequencing assumptions. Check actual code and migrations before
+Dated historical workstreams may describe retired shared-login, web-first and
+earlier inventory sequencing assumptions. Use the current README and maintained
+architecture/security/database documents for supported behavior; retain original
+workstream evidence with its date and revision. Check actual code and migrations before
 claiming a feature exists. If code conflicts with an accepted contract, investigate
 and document the discrepancy rather than treating the implementation as permission
 to discard the rule.
@@ -52,7 +59,10 @@ transient branch names, network addresses or test totals into this instruction f
 ## Model ownership and delegation
 
 Use the lightest available model that can finish reliably without avoidable rework.
-These are role assignments, not permission to bypass host/tool constraints:
+The human project owner retains decisions about objectives, scope, consequential
+architecture, operational risk and cost. Model roles below assign implementation
+and review duties; they do not transfer that decision authority. These are role
+assignments, not permission to bypass host/tool constraints:
 
 | Model | Responsibility |
 | --- | --- |
@@ -99,8 +109,8 @@ continuing independent work. Avoid repeated retries without new evidence.
    update the relevant workstream if the design changes.
 3. Implement within existing boundaries, delegating independent work when useful.
 4. Integrate, verify changed behavior and review failures at their root cause.
-5. Review against the design, reconcile documentation and report actual evidence
-   and remaining limitations. Measure before and after performance changes.
+5. Review against the design and the seven pillars in ENGINEERING.md, reconcile
+   documentation and report actual evidence and remaining limitations. Measure before and after performance changes.
 
 Resolve routine implementation choices autonomously. Ask for missing information
 only when it materially changes the outcome or is needed for authorization. Do
@@ -212,3 +222,19 @@ the already-authorized preparation before requesting approval for a final action
   merge and deployment are separate actions; stay within the user's authorization.
   When publishing is requested, verify CI for the exact published revision and
   report its status accurately. Earlier CI results do not verify new changes.
+
+## Reviewable changes and maintenance independence
+
+- Give substantive work a short objective, scope, tradeoffs and observable
+  acceptance criteria before implementation. Apply verification to the actual risk.
+- Keep behavior changes separate from unrelated formatting/refactors; expand
+  compressed control flow when touching it, without reformatting the entire repo.
+- Record material service/dependency purpose, accountable owner, data and exit path
+  in [deployment operations](docs/DEPLOYMENT.md). New dependencies need an explicit
+  necessity, maintenance/license, exposure, cost and replacement assessment.
+- Use the same runtime lock for production and development/CI. Follow the lock
+  verification and refresh procedure in [TESTING.md](docs/TESTING.md).
+- Keep routine operation reproducible using repository commands and private
+  operator-managed configuration; no required private assistant launchers or state.
+- Track known legacy deviations with impact, disposition, owner and closure evidence
+  in the adoption workstream. Do not label a pending hosted gate as verified.

@@ -4,10 +4,12 @@ services:
     runtime: python
     plan: free
     region: oregon
-    buildCommand: pip install -r requirements.txt
+    buildCommand: python -m pip install -r requirements.lock
     startCommand: python server.py
     healthCheckPath: /api/health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.15"
       - key: HOST
         value: "0.0.0.0"
       - key: SECURE_COOKIES

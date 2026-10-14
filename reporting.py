@@ -1,19 +1,18 @@
-import json
-import logging
-import os
-import ssl
-import time
-import urllib.error
-import urllib.request
-import uuid
-from threading import BoundedSemaphore, Event, Lock
+"""Compatibility facade for legacy root reporting imports."""
 
-import psycopg
+import time
+from threading import BoundedSemaphore, Event
 
 from backend.shiftly.reports import ReportsRepository, ReportsService, WeeklyOverviewBusy, WeeklyOverviewService
 from backend.shiftly.reports.service import normalized_notes as _normalized_notes
 from backend.shiftly.reports.weekly import validated_weekly_result, weekly_cache_result, weekly_source
+from backend.shiftly.jobs import reporting as _briefing_jobs
 from backend.shiftly.runtime.prompts import SYSTEM_PROMPT, QUALITY_PROMPT, WEEKLY_PROMPT
+from backend.shiftly.runtime.provider import (
+    ProviderConfigurationError as _ProviderConfigurationError,
+    call_openai as _runtime_call_openai,
+    json_bytes as _runtime_json_bytes,
+)
 from config import load_settings
 from database import db_connection
 
@@ -21,134 +20,24 @@ SETTINGS = load_settings()
 MODEL = SETTINGS.openai_model
 REPORT_COOLDOWN_SECONDS = SETTINGS.report_cooldown_seconds
 JOB_WAKE = Event()
-MAX_JOB_ATTEMPTS = 3
-JOB_LEASE_SECONDS = 300
-JOB_RETRY_SECONDS = 30
-WORKER_STALE_SECONDS = 60
-WORKER_LOG = logging.getLogger("shiftly.worker")
+MAX_JOB_ATTEMPTS = _briefing_jobs.MAX_JOB_ATTEMPTS
+JOB_LEASE_SECONDS = _briefing_jobs.JOB_LEASE_SECONDS
+JOB_RETRY_SECONDS = _briefing_jobs.JOB_RETRY_SECONDS
+WORKER_STALE_SECONDS = _briefing_jobs.WORKER_STALE_SECONDS
+WORKER_LOG = _briefing_jobs.WORKER_LOG
 
 
-class ClaimedJobId(int):
-    """An int-compatible ID carrying the lease acquired by claim_job.
-
-    Pass this ID unchanged to complete_job/fail_job. Two-value claim unpacking
-    and existing SQL/JSON uses remain compatible; a bare ID cannot mutate work.
-    """
-
-    def __new__(cls, value, lease_token, attempt):
-        result = super().__new__(cls, value)
-        result.lease_token = lease_token
-        result.attempt = attempt
-        return result
-
-
-class TerminalJobError(RuntimeError):
-    """Work that cannot succeed by retrying its current inputs."""
-
-
-def _failure_kind(error):
-    # Inspect types/codes, never provider text, SQL detail, notes or credentials.
-    cause = error
-    for _ in range(8):
-        if isinstance(cause, TerminalJobError):
-            return "terminal_job_error", False
-        if isinstance(cause, urllib.error.HTTPError):
-            retry = cause.code in {408, 409, 425, 429} or cause.code >= 500
-            return ("provider_unavailable" if retry else "provider_rejected"), retry
-        if isinstance(cause, (psycopg.OperationalError, psycopg.InterfaceError)):
-            return "database_unavailable", True
-        if isinstance(cause, psycopg.Error):
-            return "database_error", False
-        if isinstance(cause, (urllib.error.URLError, TimeoutError, ConnectionError)):
-            return "provider_unavailable", True
-        if isinstance(cause, (ValueError, TypeError, KeyError)):
-            return "invalid_result", True
-        if cause.__cause__ is None:
-            break
-        cause = cause.__cause__
-    return "processing_error", True
-
-
-def _worker_log(event, job_id=None, error=None):
-    fields = {"event": event}
-    if job_id is not None:
-        fields.update(jobId=int(job_id), attempt=getattr(job_id, "attempt", None))
-    if error is not None:
-        fields["errorCode"], fields["retryable"] = _failure_kind(error)
-    WORKER_LOG.log(logging.WARNING if error else logging.INFO, json.dumps(fields))
-
-
-class WorkerStatus:
-    """Process-local observations; polling is deliberately separate from output."""
-
-    def __init__(self, clock=time.monotonic):
-        self.clock = clock
-        self.lock = Lock()
-        self.running = False
-        self.phase = "not_started"
-        self.last_poll = None
-        self.last_completion = None
-        self.last_activity = None
-        self.completed = 0
-        self.errors = 0
-
-    def update(self, phase, *, polled=False, completed=False, errors=0):
-        with self.lock:
-            now = self.clock()
-            self.phase = phase
-            self.running = phase != "stopped"
-            self.last_activity = now
-            if polled:
-                self.last_poll = now
-            if completed:
-                self.last_completion = now
-                self.completed += 1
-            self.errors = errors
-
-    def snapshot(self):
-        with self.lock:
-            now = self.clock()
-            def age(value):
-                return round(max(0, now - value), 3) if value is not None else None
-            stale = self.last_activity is not None and now - self.last_activity >= WORKER_STALE_SECONDS
-            healthy = self.running and self.last_poll is not None and not stale and self.phase in {"idle", "processing"}
-            return {
-                "status": "ok" if healthy else "degraded",
-                "state": "stalled" if self.running and stale else self.phase,
-                "running": self.running,
-                "lastPollAgeSeconds": age(self.last_poll),
-                "lastCompletionAgeSeconds": age(self.last_completion),
-                "completedJobs": self.completed,
-                "consecutiveErrors": self.errors,
-            }
-
-
-WORKER_STATUS = WorkerStatus()
+WORKER_STATUS = _briefing_jobs.WorkerStatus()
 
 
 def worker_status():
     return WORKER_STATUS.snapshot()
 
 
-
-
-
-
 REPORT_SIMILARITY_THRESHOLD = 0.75
 WEEKLY_MAX_REPORTS = 50
 WEEKLY_MAX_INPUT_CHARS = 20_000
 WEEKLY_GENERATION_SLOTS = BoundedSemaphore(2)
-
-
-
-try:
-    import certifi
-except ImportError:
-    certifi = None
-
-
-def json_bytes(value):
-    return json.dumps(value, ensure_ascii=False).encode("utf-8")
 
 
 def _reports_service():
@@ -163,262 +52,6 @@ def _reports_service():
 def queue_report(employee, shift, notes, store_id, *, actor_token=None, accounts=None, legacy_credentials=None):
     return _reports_service().queue_report(employee, shift, notes, store_id,
                                          actor_token=actor_token, accounts=accounts, legacy_credentials=legacy_credentials)
-
-
-def claim_job(*, connect=None):
-    """Claim one due job; database timestamps and attempts survive restarts."""
-    with (connect if connect is not None else db_connection)() as connection:
-        with connection.cursor() as cursor:
-            # Final crashed attempts must become terminal, not live forever as
-            # processing. Bound cleanup and skip rows another worker owns.
-            cursor.execute(
-                """
-                WITH exhausted AS (
-                    SELECT id FROM briefing_jobs
-                    WHERE status = 'processing' AND attempts >= %s
-                      AND COALESCE(locked_at, created_at) <= NOW() - %s * INTERVAL '1 second'
-                    ORDER BY created_at, id
-                    FOR UPDATE SKIP LOCKED LIMIT 100
-                ), finalized AS (
-                    UPDATE briefing_jobs j
-                    SET status = 'failed', last_error = 'attempts_exhausted',
-                        finished_at = NOW(), locked_at = NULL
-                    FROM exhausted WHERE j.id = exhausted.id
-                    RETURNING j.id
-                )
-                INSERT INTO briefing_job_recovery (job_id, terminal)
-                SELECT id, TRUE FROM finalized
-                ON CONFLICT (job_id) DO UPDATE SET terminal = TRUE,
-                    lease_token = NULL, next_attempt_at = NULL
-                """,
-                (MAX_JOB_ATTEMPTS, JOB_LEASE_SECONDS),
-            )
-            cursor.execute(
-                """
-                SELECT j.id, j.report_id, j.attempts
-                FROM briefing_jobs j
-                LEFT JOIN briefing_job_recovery r ON r.job_id = j.id
-                WHERE j.attempts < %s AND NOT COALESCE(r.terminal, FALSE)
-                  AND (
-                    j.status = 'pending'
-                    OR (j.status = 'processing' AND COALESCE(j.locked_at, j.created_at)
-                        <= NOW() - %s * INTERVAL '1 second')
-                    OR (j.status = 'failed' AND COALESCE(r.next_attempt_at,
-                        COALESCE(j.finished_at, j.created_at) +
-                        %s * POWER(2, GREATEST(j.attempts - 1, 0)) * INTERVAL '1 second') <= NOW())
-                  )
-                ORDER BY j.created_at, j.id
-                FOR UPDATE OF j SKIP LOCKED LIMIT 1
-                """,
-                (MAX_JOB_ATTEMPTS, JOB_LEASE_SECONDS, JOB_RETRY_SECONDS),
-            )
-            job = cursor.fetchone()
-            if job is None:
-                return None
-            job_id, report_id, attempts = job
-            lease_token = uuid.uuid4()
-            cursor.execute(
-                """
-                UPDATE briefing_jobs SET status = 'processing', locked_at = NOW(),
-                    attempts = attempts + 1, finished_at = NULL, last_error = NULL
-                WHERE id = %s
-                """, (job_id,),
-            )
-            cursor.execute(
-                """
-                INSERT INTO briefing_job_recovery (job_id, lease_token)
-                VALUES (%s, %s)
-                ON CONFLICT (job_id) DO UPDATE SET lease_token = EXCLUDED.lease_token,
-                    next_attempt_at = NULL, terminal = FALSE
-                """, (job_id, lease_token),
-            )
-        connection.commit()
-    return ClaimedJobId(job_id, lease_token, attempts + 1), report_id
-
-
-def job_report(report_id, *, connect=None):
-    with (connect if connect is not None else db_connection)() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT id, employee, shift, notes FROM reports WHERE id = %s", (report_id,))
-            row = cursor.fetchone()
-    if not row:
-        raise TerminalJobError("Queued report no longer exists.")
-    return {"id": str(row[0]), "employee": row[1], "shift": row[2], "notes": row[3]}
-
-
-def _owned_job(cursor, job_id):
-    token = getattr(job_id, "lease_token", None)
-    if token is None:
-        return None
-    # Always lock the parent first, then read the current token in a fresh
-    # statement. A waiter must not validate a token from a pre-lock snapshot.
-    cursor.execute("SELECT report_id, attempts FROM briefing_jobs WHERE id = %s FOR UPDATE", (int(job_id),))
-    row = cursor.fetchone()
-    if row is None:
-        return None
-    cursor.execute(
-        """
-        SELECT 1 FROM briefing_jobs j JOIN briefing_job_recovery r ON r.job_id = j.id
-        WHERE j.id = %s AND j.status = 'processing' AND r.lease_token = %s
-          AND j.locked_at > clock_timestamp() - %s * INTERVAL '1 second'
-          AND NOT r.terminal
-        """, (int(job_id), token, JOB_LEASE_SECONDS),
-    )
-    return row if cursor.fetchone() else None
-
-
-def _record_failure(cursor, job_id, attempt, code, retryable):
-    terminal = not retryable or attempt >= MAX_JOB_ATTEMPTS
-    cursor.execute(
-        """
-        UPDATE briefing_jobs SET status = 'failed', last_error = %s,
-            finished_at = NOW(), locked_at = NULL WHERE id = %s
-        """, (code, int(job_id)),
-    )
-    delay = JOB_RETRY_SECONDS * 2 ** (attempt - 1)
-    cursor.execute(
-        """
-        UPDATE briefing_job_recovery SET lease_token = NULL, terminal = %s,
-            next_attempt_at = CASE WHEN %s THEN NULL ELSE NOW() + %s * INTERVAL '1 second' END
-        WHERE job_id = %s
-        """, (terminal, terminal, delay, int(job_id)),
-    )
-
-
-def complete_job(job_id, report, briefing, *, connect=None, model=None):
-    """Commit a current claim once; stale/duplicate/bare IDs return False."""
-    with (connect if connect is not None else db_connection)() as connection:
-        with connection.cursor() as cursor:
-            owned = _owned_job(cursor, job_id)
-            if owned is None:
-                return False
-            report_id, attempt = owned
-            if str(report_id) != str(report["id"]):
-                raise TerminalJobError("Claim does not belong to this report.")
-            if not isinstance(briefing, dict) or briefing.get("status") not in ("accepted", "rejected"):
-                raise ValueError("Invalid briefing response.")
-            if briefing["status"] == "rejected":
-                _record_failure(cursor, job_id, attempt, "Report rejected by briefing rules.", False)
-            else:
-                if (any(not isinstance(briefing.get(key, ""), str) for key in ("summary", "follow_up"))
-                    or any(not isinstance(briefing.get(key, []), list)
-                           or any(not isinstance(item, str) for item in briefing[key])
-                           for key in ("wins", "risks") if key in briefing)):
-                    raise ValueError("Invalid briefing response.")
-                cursor.execute(
-                    """
-                    INSERT INTO briefings (report_id, source_notes, summary, wins, risks, follow_up, model)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (report_id) DO NOTHING
-                    """,
-                    (report_id, report["notes"], briefing.get("summary", ""), briefing.get("wins", []), briefing.get("risks", []), briefing.get("follow_up", ""), MODEL if model is None else model),
-                )
-                cursor.execute("UPDATE briefing_jobs SET status = 'completed', finished_at = NOW(), last_error = NULL, locked_at = NULL WHERE id = %s", (int(job_id),))
-                cursor.execute("UPDATE briefing_job_recovery SET lease_token = NULL, next_attempt_at = NULL, terminal = TRUE WHERE job_id = %s", (int(job_id),))
-        connection.commit()
-    return True
-
-
-def fail_job(job_id, error, *, connect=None):
-    code, retryable = _failure_kind(error)
-    with (connect if connect is not None else db_connection)() as connection:
-        with connection.cursor() as cursor:
-            owned = _owned_job(cursor, job_id)
-            if owned is None:
-                return False
-            _record_failure(cursor, job_id, owned[1], code, retryable)
-        connection.commit()
-    return True
-
-
-def _worker_backoff(delay, stop_event):
-    # Report submissions cannot wake an outage retry early. Shutdown can.
-    stop_event.wait(delay)
-
-
-def worker_loop(*, stop_event=None, claim=None, load_report=None, provider=None,
-                complete=None, fail=None, status=None, wake=None, backoff=None, poll_seconds=2):
-    claim = claim if claim is not None else claim_job
-    load_report = load_report if load_report is not None else job_report
-    provider = provider if provider is not None else call_openai
-    complete = complete if complete is not None else complete_job
-    fail = fail if fail is not None else fail_job
-    status = status if status is not None else WORKER_STATUS
-    wake = wake if wake is not None else JOB_WAKE
-    backoff = backoff if backoff is not None else _worker_backoff
-    stop_event = stop_event if stop_event is not None else Event()
-    failures = 0
-    status.update("starting")
-    _worker_log("worker_started")
-    try:
-        while not stop_event.is_set():
-            job_id = None
-            try:
-                job = claim()
-                status.update("processing" if job else "idle", polled=True)
-                if job:
-                    job_id, report_id = job
-                    _worker_log("job_claimed", job_id)
-                    report = load_report(report_id)
-                    briefing = provider(report)
-                    committed = complete(job_id, report, briefing)
-                    accepted = committed and briefing.get("status") == "accepted"
-                    status.update("idle", completed=accepted)
-                    event = "job_completed" if accepted else "job_rejected" if committed else "lease_lost"
-                    _worker_log(event, job_id)
-                    failures = 0
-                    continue
-                failures = 0
-            except Exception as error:
-                failures += 1
-                _worker_log("job_failed" if job_id is not None else "claim_failed", job_id, error)
-                if job_id is not None:
-                    try:
-                        recorded = fail(job_id, error)
-                        _worker_log("failure_recorded" if recorded else "lease_lost", job_id)
-                    except Exception as recording_error:
-                        # Leave the durable lease intact for recovery after expiry.
-                        _worker_log("failure_recording_failed", job_id, recording_error)
-                status.update("backoff", errors=failures)
-                backoff(min(30, 2 ** min(failures, 5)), stop_event)
-                continue
-            wake.wait(poll_seconds)
-            wake.clear()
-    finally:
-        status.update("stopped")
-        _worker_log("worker_stopped")
-
-
-def call_openai(report, system_prompt=SYSTEM_PROMPT, *, api_key=None, model=None):
-    api_key = os.environ.get("OPENAI_API_KEY") if api_key is None else api_key
-    if not api_key:
-        raise TerminalJobError("OPENAI_API_KEY is not configured on the server.")
-    content = [{"type": "input_text", "text": f"Employee: {report['employee']}\nShift: {report['shift']}\nNotes: {report['notes']}"}]
-    request = {
-        "model": MODEL if model is None else model,
-        "input": [{"role": "system", "content": [{"type": "input_text", "text": system_prompt}]}, {"role": "user", "content": content}],
-        "text": {"format": {"type": "json_object"}},
-        "max_output_tokens": 500,
-    }
-    http_request = urllib.request.Request(
-        "https://api.openai.com/v1/responses",
-        data=json_bytes(request),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        ssl_context = ssl.create_default_context(cafile=certifi.where()) if certifi else ssl.create_default_context()
-        with urllib.request.urlopen(http_request, timeout=30, context=ssl_context) as response:
-            payload = json.loads(response.read())
-    except urllib.error.HTTPError as error:
-        raise RuntimeError(f"OpenAI request failed ({error.code}).") from error
-    except urllib.error.URLError as error:
-        raise RuntimeError(f"Could not reach OpenAI: {error.reason}") from error
-    output = payload.get("output", [])
-    text = "".join(item.get("text", "") for item in output if item.get("type") == "message" for item in item.get("content", []) if item.get("type") == "output_text")
-    if not text:
-        raise RuntimeError("OpenAI returned no briefing.")
-    return json.loads(text)
 
 
 def normalized_notes(notes):
@@ -472,3 +105,86 @@ def _weekly_overview(store_id):
 
 def validate_report(report):
     return call_openai(report, QUALITY_PROMPT)
+
+
+# Package implementations back the legacy root API. Resolve facade defaults at
+# call time so supported monkeypatch/test contracts continue to work.
+ClaimedJobId = _briefing_jobs.ClaimedJobId
+TerminalJobError = _briefing_jobs.TerminalJobError
+WorkerStatus = _briefing_jobs.WorkerStatus
+
+
+def json_bytes(value):
+    return _runtime_json_bytes(value)
+
+
+def _failure_kind(error):
+    return _briefing_jobs.failure_kind(error)
+
+
+def _worker_log(event, job_id=None, error=None):
+    return _briefing_jobs.worker_log(event, job_id, error, logger=WORKER_LOG)
+
+
+def claim_job(*, connect=None):
+    return _briefing_jobs.claim_job(
+        connect=db_connection if connect is None else connect,
+        max_attempts=MAX_JOB_ATTEMPTS, lease_seconds=JOB_LEASE_SECONDS,
+        retry_seconds=JOB_RETRY_SECONDS,
+    )
+
+
+def job_report(report_id, *, connect=None):
+    return _briefing_jobs.job_report(
+        report_id, connect=db_connection if connect is None else connect,
+    )
+
+
+def complete_job(job_id, report, briefing, *, connect=None, model=None):
+    return _briefing_jobs.complete_job(
+        job_id, report, briefing,
+        connect=db_connection if connect is None else connect,
+        model=MODEL if model is None else model,
+        lease_seconds=JOB_LEASE_SECONDS, max_attempts=MAX_JOB_ATTEMPTS,
+        retry_seconds=JOB_RETRY_SECONDS,
+    )
+
+
+def fail_job(job_id, error, *, connect=None):
+    return _briefing_jobs.fail_job(
+        job_id, error, connect=db_connection if connect is None else connect,
+        lease_seconds=JOB_LEASE_SECONDS, max_attempts=MAX_JOB_ATTEMPTS,
+        retry_seconds=JOB_RETRY_SECONDS,
+    )
+
+
+def _worker_backoff(delay, stop_event):
+    return _briefing_jobs.worker_backoff(delay, stop_event)
+
+
+def worker_loop(*, stop_event=None, claim=None, load_report=None, provider=None,
+                complete=None, fail=None, status=None, wake=None, backoff=None,
+                poll_seconds=2):
+    return _briefing_jobs.worker_loop(
+        stop_event=stop_event,
+        claim=claim if claim is not None else claim_job,
+        load_report=load_report if load_report is not None else job_report,
+        provider=provider if provider is not None else call_openai,
+        complete=complete if complete is not None else complete_job,
+        fail=fail if fail is not None else fail_job,
+        status=status if status is not None else WORKER_STATUS,
+        wake=wake if wake is not None else JOB_WAKE,
+        backoff=backoff if backoff is not None else _worker_backoff,
+        poll_seconds=poll_seconds,
+        log=_worker_log,
+    )
+
+
+def call_openai(report, system_prompt=SYSTEM_PROMPT, *, api_key=None, model=None):
+    try:
+        return _runtime_call_openai(
+            report, system_prompt, api_key=api_key,
+            model=MODEL if model is None else model,
+        )
+    except _ProviderConfigurationError as error:
+        raise TerminalJobError(str(error)) from error
