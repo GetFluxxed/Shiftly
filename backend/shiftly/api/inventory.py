@@ -41,6 +41,49 @@ async def lookup_product(request: Request, context: AppContext = Depends(get_app
                           sku=request.query_params.get('sku'), barcode_type=request.query_params.get('barcodeType'))
 
 
+@router.api_route('/products/{product_id}/packages', methods=['GET', 'POST'])
+async def packages(product_id: str, request: Request, context: AppContext = Depends(get_app_context)):
+    service = context.services.inventory
+    return await dispatch(request, context, service.create_package if request.method == 'POST' else service.packages,
+                          product_id)
+
+
+@router.post('/products/{product_id}/packages/{package_id}')
+async def package(product_id: str, package_id: str, request: Request,
+                  context: AppContext = Depends(get_app_context)):
+    return await dispatch(request, context, context.services.inventory.edit_package, product_id, package_id)
+
+
+@router.post('/products/{product_id}/packages/{package_id}/state')
+async def package_state(product_id: str, package_id: str, request: Request,
+                        context: AppContext = Depends(get_app_context)):
+    return await dispatch(request, context, context.services.inventory.package_state, product_id, package_id)
+
+
+@router.get('/products/{product_id}/combine-preview')
+async def combine_preview(product_id: str, request: Request,
+                          context: AppContext = Depends(get_app_context)):
+    return await dispatch(request, context, context.services.inventory.preview_product_combine,
+                          product_id, request.query_params.get('targetProductId'))
+
+
+@router.post('/products/{product_id}/combine')
+async def combine_product(product_id: str, request: Request,
+                          context: AppContext = Depends(get_app_context)):
+    return await dispatch(request, context, context.services.inventory.combine_product, product_id)
+
+
+@router.api_route('/products/{product_id}/measurement', methods=['GET', 'POST'])
+async def product_measurement(product_id: str, request: Request,
+                              context: AppContext = Depends(get_app_context)):
+    service = context.services.inventory
+    return await dispatch(
+        request, context,
+        service.correct_measurement if request.method == 'POST' else service.measurement_correction,
+        product_id,
+    )
+
+
 @router.api_route('/products/{product_id}', methods=['GET', 'POST'])
 async def product(product_id: str, request: Request, context: AppContext = Depends(get_app_context)):
     service = context.services.inventory

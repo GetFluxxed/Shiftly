@@ -19,7 +19,7 @@ export function useCounts() {
 }
 export function CountHeading({ item }: { item: Count }) {
   return <Card><Heading>Count for {item.businessDate}</Heading><Pill label={{ draft: 'Counting in progress', review: 'Awaiting approval', posted: 'Finalized', cancelled: 'Cancelled' }[item.state]} />
-    <Body>{item.countedLines} of {item.totalLines} locations counted · {item.totalProducts} products</Body><Body muted>Started by @{item.startedBy}</Body>
+    <Body>Product accounted for: {item.countedProducts}/{item.totalProducts}</Body><Body muted>{item.countedLines} of {item.totalLines} required locations counted</Body><Body muted>Started by @{item.startedBy}</Body>
     {item.postedBy ? <Body muted>Finalized by @{item.postedBy}</Body> : null}
     {item.configurationChanged ? <Notice message="Products or shelves changed during this count. An approver must cancel it and start a fresh count before stock can be updated." kind="error" /> : null}
   </Card>;

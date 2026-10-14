@@ -20,9 +20,10 @@ def found(value,message='This production record is unavailable.'):
 
 
 class ProductionService:
-    def __init__(self,connect,accounts):
+    def __init__(self,connect,accounts,forecast_enqueue=None):
         self.connect,self.accounts=connect,accounts
         self.repository=ProductionRepository(); self.movements=MovementRepository()
+        self.forecast_enqueue=forecast_enqueue
 
     def actor(self,connection,token,capability='production.view',expected=None,*,writing=False):
         actor=(self.accounts.require_selected_store(token,capability,connection=connection,expected_store_id=expected)
@@ -161,6 +162,8 @@ class ProductionService:
                 self.repository.create_log(connection,actor,log_id,day,payload_fingerprint,snapshots,deductions)
                 result=self.repository.log(connection,actor,log_id)
                 self.repository.record_request(connection,actor,request_id,payload_fingerprint,result)
+                if self.forecast_enqueue is not None:
+                    self.forecast_enqueue(connection,actor,log_id)
                 return result
         except psycopg.errors.UniqueViolation as error:
             # A concurrent actor may have committed the same client-generated log

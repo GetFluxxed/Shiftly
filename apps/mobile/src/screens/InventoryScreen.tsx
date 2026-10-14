@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
+import { useInventoryNavigation } from '@/src/inventory/shared';
 import { useSession } from '@/src/session/SessionProvider';
 import { Notice, Screen } from '@/src/ui/components';
 import { ActionGrid, ActionTile } from '@/src/ui/ActionGrid';
@@ -10,7 +10,7 @@ import { colors } from '@/src/ui/theme';
 
 export function InventoryScreen() {
   const { actor, stores } = useSession();
-  const router = useRouter();
+  const nav = useInventoryNavigation();
   const store = stores.find(item => item.storeId === actor?.storeId);
   if (!actor?.capabilities.includes('inventory.view')) {
     return <Screen title="Inventory"><Notice message="Your current account does not have inventory access for this store." /></Screen>;
@@ -18,15 +18,15 @@ export function InventoryScreen() {
   return <Screen title="Inventory" eyebrow={store?.storeName || 'Your store'}>
     <ActionGrid>
       <ActionTile title="Current Inventory" label="View current inventory" icon="stats-chart-outline"
-        onPress={() => router.push('/stock')} footer={
-          <Pressable accessibilityRole="button" accessibilityLabel="Count history" onPress={() => router.push('/counts/history')}
+        onPress={() => nav.open('/stock')} footer={
+          <Pressable accessibilityRole="button" accessibilityLabel="Count history" onPress={() => nav.open('/counts/history')}
             style={({ pressed }) => [styles.history, pressed && styles.pressed]}>
             <Text style={styles.historyText}>Count history</Text>
             <Ionicons name="chevron-forward" size={14} color={colors.primary} accessible={false} />
           </Pressable>} />
-      <ActionTile title="Begin Count" icon="clipboard-outline" onPress={() => router.push('/counts')} />
-      <ActionTile title="Open Shelves" label="Open shelves" icon="albums-outline" onPress={() => router.push('/shelves')} />
-      <ActionTile title="Catalog" label="Open company catalog" icon="cube-outline" onPress={() => router.push('/catalog')} />
+      <ActionTile title="Begin Count" icon="clipboard-outline" onPress={() => nav.open('/counts')} />
+      <ActionTile title="Open Shelves" label="Open shelves" icon="albums-outline" onPress={() => nav.open('/shelves')} />
+      <ActionTile title="Catalog" label="Open company catalog" icon="cube-outline" onPress={() => nav.open('/catalog')} />
     </ActionGrid>
   </Screen>;
 }

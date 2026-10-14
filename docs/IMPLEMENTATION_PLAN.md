@@ -1,6 +1,6 @@
 # Shiftly implementation plan
 
-Updated: 2026-09-29. Current inventory baseline is implemented through migration 017. Earlier commit references below are historical.
+Updated: 2026-10-02. Read the current delivery section for active scope and verification; earlier commit references below are historical.
 
 **Verification update — 2026-09-21:** PRs #1–#7 are merged through `e01e84e`.
 Services, FastAPI compatibility, durable worker and migration commands are now
@@ -25,31 +25,48 @@ features that already exist. Product rules and worked inventory examples are in
 [ARCHITECTURE.md](ARCHITECTURE.md); executable work packages are in
 [TASKS.md](TASKS.md).
 
-**Current delivery — 2026-09-30:** Individual accounts, the shared catalog,
+**Current delivery — 2026-10-01:** Individual accounts, the shared catalog,
 shelves, container references, native current inventory, reviewed whole-store
 counts, workspace restoration, Production accounts, versioned recipes and
 confirmed recipe-plus-1% stock deductions are implemented through migration 020.
-The production checkpoint passed CI; physical-device and hosted release acceptance
-remain separate. See the [count contract](workstreams/inventory-counts.md) and
-[production contract](workstreams/production-and-assisted-inventory.md).
+The production checkpoint passed CI. Barcode-assisted catalog entry is implemented;
+physical-device acceptance and hosted release acceptance remain separate. Package
+catalog and mixed-count implementation adds migrations 021–022. Its local
+verification and rollout evidence live in the [package contract](workstreams/inventory-packages.md);
+CI and physical-device acceptance remain separate. See the [count contract](workstreams/inventory-counts.md),
+[production contract](workstreams/production-and-assisted-inventory.md), and
+[camera and invoice readiness plan](workstreams/camera-and-invoice-readiness.md).
 
-**Current slice:** Expo Go barcode scanning to look up or explicitly create and
-name company catalog products. Build out the ingredient catalog before enabling
-shelf-photo counting. This scan flow changes catalog identity only; it does not
-receive stock, assign shelves or call an AI provider. It reuses existing product
-permissions, SKU aliases and creation transactions without a migration.
+**Current slice:** the compact inventory and combined Reports inbox add the early
+[store advisory forecast](workstreams/store-production-forecast.md), with migration
+023 and store-isolated background analysis. Local verification, preserved-data
+upgrade/restore, and demo rollout are recorded in that contract. Live AI remains
+unconfigured; live model evaluation, CI and device acceptance remain separate. Also finish the real ingredient catalog and versioned package/case
+definitions, then verify sealed-case, loose-package and net-partial count entry.
+Complete all recipes and post an accurate reviewed opening count before treating
+camera proposals as stock evidence. The existing camera scans barcodes for catalog
+identity; it does not count shelves, receive stock or call an AI provider.
 
-**Next inventory prerequisite:** preserve current products and counts while adding
-explicit package sizes/barcode mappings and a count breakdown for sealed cases,
-loose full packages and net partial weight. Supplier shipment labels need a stable
-product mapping; the scanner-format fixes do not implement that packaging model.
+**Package weight input — 2026-10-02:** pounds-labelled containers and packages
+are implemented with automatic kg/g conversion, retained label measurements and
+additive migration 024. Local checks, upgrade/restore rehearsal and demo rollout
+passed; physical-device and CI acceptance remain separate. See the [package contract](workstreams/inventory-packages.md)
+for precision, preservation and verification evidence. Partial counts remain metric;
+volume-to-weight conversion requires a separate explicit net-weight reference.
 
-**Following delivery order:** (1) reviewed shelf-camera proposals after ingredient
-and packaging setup; (2) scale-assisted inventory counts after hardware selection;
-(3) a manager/owner daily/weekly Forecast tab. The
-[production and assisted-inventory contract](workstreams/production-and-assisted-inventory.md)
-defines the rules and gates. Camera counting, hardware integration and forecasting
-remain later phases, all using the same store-scoped stock history.
+**Next readiness gate:** resolve current issues, review security and least-privilege
+permissions, establish recovery evidence, and prepare fact-checked privacy and
+operating policies for attorney review. Camera OS consent remains separate from
+staff authority. These reviews do not guarantee compliance or security.
+
+**Following delivery order:** (1) a private, non-posting shelf-photo prototype;
+(2) a named staff camera pilot after explicit evidence gates; (3) invoice-photo
+receiving only after stored product/package facts and the receipt ledger are ready;
+(4) scale-assisted counts after hardware selection; and (5) evaluated sales and
+shortage forecasting. The early Reports advisory described above does not satisfy
+that later forecasting gate. The [camera and invoice readiness plan](workstreams/camera-and-invoice-readiness.md)
+defines dependencies, owners and go/no-go evidence. AI extraction always creates a
+review proposal; it never posts stock by itself.
 
 ## 1. Intended outcome
 

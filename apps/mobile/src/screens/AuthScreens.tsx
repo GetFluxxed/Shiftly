@@ -24,11 +24,10 @@ export function SignInScreen() {
     setPassword('');
     await signIn({ username: username.trim(), password: secret });
   }); };
-  return <Screen title="A better handoff.
-A calmer shift." subtitle="Your people, your store, and everything the next shift needs to know.">
+  return <Screen title="Sign in to Shiftly">
     <Brand />
     <Columns><Column><Card>
-      <Heading>Welcome back</Heading><Body muted>Sign in with your individual account.</Body>
+      <Heading>Welcome back</Heading>
       <Notice message={task.error || message} kind={task.error ? 'error' : 'info'} />
       <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none"
         autoCorrect={false} autoComplete="username" textContentType="username" maxLength={80}
@@ -39,13 +38,11 @@ A calmer shift." subtitle="Your people, your store, and everything the next shif
         maxLength={1024} returnKeyType="go" onSubmitEditing={submit} />
       <Button title="Sign in" icon="arrow-forward" onPress={submit} loading={task.pending || busy}
         disabled={!username.trim() || !password} />
-      <Button title="Activate or recover an account" variant="quiet" onPress={() => router.push('/activate')} />
+      <Button title="Activate account or reset password" variant="quiet" onPress={() => router.push('/activate')} />
     </Card></Column>
     <Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
-      <Heading>Good shifts start with a clear picture.</Heading>
-      <Body>Leave a useful handoff, catch up on your team's reports, and keep your store in sync.</Body>
-      <View style={layout.divider} />
-      <Body muted>New to the team? Ask your manager for an invitation link to set up your own account.</Body>
+      <Heading>New to Shiftly?</Heading>
+      <Body>Ask your manager for a private invitation.</Body>
     </Card></Column></Columns>
   </Screen>;
 }
@@ -97,8 +94,8 @@ export function ActivateScreen() {
       await (mode === 'activate' ? activate(credentials) : resetPassword(credentials));
     }, () => setComplete(true));
   };
-  return <Screen title={mode === 'activate' ? 'Make it yours.' : 'A fresh start.'} eyebrow="Your Shiftly account"
-    subtitle="Use the private invitation link or code given to you by your manager or account administrator.">
+  return <Screen title={mode === 'activate' ? 'Activate account' : 'Reset password'} eyebrow="Your Shiftly account"
+    subtitle="Enter your private, single-use code.">
     <Columns><Column><Card>
       <View style={layout.wrap}>
         <Button title="Activate account" variant={mode === 'activate' ? 'primary' : 'secondary'} onPress={() => changeMode('activate')} disabled={task.pending || busy} />
@@ -123,8 +120,8 @@ export function ActivateScreen() {
         <Button title="Back to sign in" variant="quiet" onPress={() => router.replace('/sign-in')} />
       </>}
     </Card></Column><Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
-      <Heading>A code just for you</Heading><Body>Codes can be used once and expire. If yours no longer works, ask {mode === 'activate' ? 'your manager' : 'your account administrator or operator'} for a replacement.</Body>
-      <Body muted>Keep your code private. Your password belongs to you and is never shared with your team.</Body>
+      <Heading>Keep your code private</Heading><Body>Codes work once and expire. If needed, ask {mode === 'activate' ? 'your manager' : 'your administrator or operator'} for a new one.</Body>
+      <Body muted>Choose a password only you know.</Body>
     </Card></Column></Columns>
   </Screen>;
 }

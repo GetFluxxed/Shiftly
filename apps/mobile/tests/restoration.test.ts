@@ -120,6 +120,19 @@ test('the ready gate rejects reads and writes until hydration completes and enfo
   assert.equal(controller.read('draft', 'initial'), 'initial');
 });
 
+test('a fixed forty-package count map restores exactly and rejects corrupt map shapes', async () => {
+  const controller = new WorkspaceController(new MemoryStorage(), () => NOW);
+  await open(controller);
+  const packageCounts = Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`package-${index}`, '0']));
+  const initial = { packageCounts };
+  controller.write('count.entry', { packageCounts: { ...packageCounts, 'package-39': '7' } }, 'snapshot-40', controller.getSnapshot().scope);
+  assert.equal(controller.read('count.entry', initial, 'snapshot-40').packageCounts['package-39'], '7');
+  controller.write('count.entry', { packageCounts: { ...packageCounts, unexpected: '1' } }, 'snapshot-40', controller.getSnapshot().scope);
+  assert.deepEqual(controller.read('count.entry', initial, 'snapshot-40'), initial);
+  controller.write('count.entry', { packageCounts: null }, 'snapshot-40', controller.getSnapshot().scope);
+  assert.deepEqual(controller.read('count.entry', initial, 'snapshot-40'), initial);
+});
+
 test('sign-out clears memory and the saved checkpoint', async () => {
   const storage = new MemoryStorage();
   const controller = new WorkspaceController(storage, () => NOW);
@@ -182,6 +195,14 @@ test('route restoration denies public, malformed, and role-limited pages and str
   assert.equal(savedRoute(`/counts/${UUID_A}/line/${UUID_B}`, {}, actor({ capabilities: [] })), null);
   assert.deepEqual(savedRoute('/owner/42', {}, actor({ role: 'owner' })), { pathname: '/owner/42' });
   assert.deepEqual(savedRoute('/team/42', {}, actor({ role: 'manager' })), { pathname: '/team/42' });
+  assert.deepEqual(savedRoute(`/catalog/packages/${UUID_A}`, {
+    barcode: '000CASE-12', barcodeType: 'org.iso.Code39', token: 'secret', unexpected: 'discard me',
+  }, crew), { pathname: `/catalog/packages/${UUID_A}`, params: { barcode: '000CASE-12', barcodeType: 'org.iso.Code39' } });
+  assert.deepEqual(savedRoute(`/catalog/packages/${UUID_A}`, {
+    barcode: '../unsafe value', barcodeType: 'unknown-type', token: 'secret',
+  }, crew), { pathname: `/catalog/packages/${UUID_A}` });
+  assert.deepEqual(savedRoute(`/catalog/${UUID_A}`, { barcode: '000CASE-12', barcodeType: 'code39' }, crew),
+    { pathname: `/catalog/${UUID_A}` });
 });
 
 test('production restoration follows view, submit, and recipe management capabilities', () => {
@@ -266,4 +287,15 @@ test('failed device cleanup cannot resurrect a signed-out draft in the same sess
   storage.failRemove = false;
   await controller.flush();
   assert.equal((storage.value || '').includes('discarded private notes'), false);
+});
+
+test('inventory checkpoints preserve safe immediate origins and drop inaccessible or unsafe parents', () => {
+  const inventoryTrail = JSON.stringify([{ pathname: '/inventory' }, { pathname: '/catalog/new' },
+    { pathname: `/catalog/${UUID_A}`, params: { token: 'secret' } }]);
+  assert.deepEqual(savedRoute(`/catalog/packages/${UUID_A}`, { inventoryTrail, barcode: '00CASE' }, actor()), {
+    pathname: `/catalog/packages/${UUID_A}`, params: { barcode: '00CASE', inventoryTrail: JSON.stringify([
+      { pathname: '/inventory' }, { pathname: `/catalog/${UUID_A}` }]) },
+  });
+  assert.deepEqual(savedRoute('/stock', { inventoryTrail: JSON.stringify([{ pathname: 'https://example.com' }]) }, actor()), { pathname: '/stock' });
+  assert.equal(savedRoute('/stock', { inventoryTrail }, actor({ capabilities: [] })), null);
 });

@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ..quantities import decimal_text
+from ..packages import PackageRepository
 from ..movements import MovementRepository
 from ..validation import encode_product_cursor
 
@@ -35,7 +36,8 @@ def paged(records, render, *, id_key='product_id'):
 
 def product_snapshot(row):
     return {'productId': str(row['product_id']), 'name': row['name'], 'sku': row['sku'],
-            'baseUnit': row['base_unit'], 'containerAmount': decimal(row['container_amount'])}
+            'baseUnit': row['base_unit'], 'containerAmount': decimal(row['container_amount']),
+            'packages': row.get('packages', [])}
 
 
 def observation(row):
@@ -84,7 +86,10 @@ class CountRepository:
         result = rows(connection, '''SELECT c.*,u.username AS starter, reviewer.username AS reviewer, poster.username AS poster,
             (SELECT count(*) FROM inventory_count_lines l WHERE l.count_id=c.id) AS total_lines,
             (SELECT count(*) FROM inventory_count_lines l WHERE l.count_id=c.id AND l.quantity IS NOT NULL) AS counted_lines,
-            (SELECT count(*) FROM inventory_count_products p WHERE p.count_id=c.id) AS total_products
+            (SELECT count(*) FROM inventory_count_products p WHERE p.count_id=c.id) AS total_products,
+            (SELECT count(*) FROM inventory_count_products p WHERE p.count_id=c.id
+              AND NOT EXISTS (SELECT 1 FROM inventory_count_lines l
+                WHERE l.count_id=p.count_id AND l.product_id=p.product_id AND l.quantity IS NULL)) AS counted_products
             FROM inventory_counts c JOIN account_users u ON u.id=c.started_by
             LEFT JOIN account_users reviewer ON reviewer.id=c.reviewed_by
             LEFT JOIN account_users poster ON poster.id=c.posted_by
@@ -96,7 +101,8 @@ class CountRepository:
                 'state':row['state'], 'version':row['version'], 'startedAt':timestamp(row['started_at']),
                 'startedBy':row['starter'], 'reviewedAt':timestamp(row['reviewed_at']), 'reviewedBy':row['reviewer'],
                 'postedAt':timestamp(row['posted_at']), 'postedBy':row['poster'],
-                'totalLines':row['total_lines'], 'countedLines':row['counted_lines'], 'totalProducts':row['total_products']}
+                'totalLines':row['total_lines'], 'countedLines':row['counted_lines'], 'totalProducts':row['total_products'],
+                'countedProducts':row['counted_products']}
 
     def dashboard(self, connection, actor):
         open_row = connection.execute("SELECT id FROM inventory_counts WHERE store_id=%s AND state IN ('draft','review')", (actor.store_id,)).fetchone()
@@ -111,19 +117,21 @@ class CountRepository:
         products = {row['product_id']:row for row in scope}
         for product in products.values():
             connection.execute('''INSERT INTO inventory_count_products(business_id,store_id,count_id,product_id,name,sku,base_unit,
-                  container_amount,product_version,previous_quantity,previous_count_id,previous_stock_version)
-                SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,b.quantity,b.count_id,b.version
+                  container_amount,product_version,packages,previous_quantity,previous_count_id,previous_stock_version)
+                SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,b.quantity,b.count_id,b.version
                 FROM (SELECT 1) seed LEFT JOIN inventory_stock_balances b
                   ON b.business_id=%s AND b.store_id=%s AND b.product_id=%s''',
                 (actor.business_id,actor.store_id,count_id,product['product_id'],product['name'],product['sku'],product['base_unit'],
-                 product['container_amount'],product['product_version'],actor.business_id,actor.store_id,product['product_id']))
+                 product['container_amount'],product['product_version'],
+                 Jsonb(PackageRepository().packages(connection, actor.business_id, product['product_id'], active_only=True)),
+                 actor.business_id,actor.store_id,product['product_id']))
         with connection.cursor() as cursor:
             cursor.executemany('''INSERT INTO inventory_count_lines(id,business_id,store_id,count_id,product_id,shelf_id,shelf_name)
                 VALUES(%s,%s,%s,%s,%s,%s,%s)''',
                 [(str(uuid4()),actor.business_id,actor.store_id,count_id,row['product_id'],row['shelf_id'],row['shelf_name'] or 'Unassigned') for row in scope])
 
     def line(self, connection, actor, count_id, line_id):
-        result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,u.username AS observer_name
+        result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,p.packages,u.username AS observer_name
             FROM inventory_count_lines l JOIN inventory_count_products p ON p.count_id=l.count_id AND p.product_id=l.product_id
             LEFT JOIN account_users u ON u.id=l.observed_by
             WHERE l.business_id=%s AND l.store_id=%s AND l.count_id=%s AND l.id=%s''', (actor.business_id,actor.store_id,count_id,line_id))
@@ -136,7 +144,7 @@ class CountRepository:
 
     def lines(self, connection, actor, count_id, query, after, shelf, missing):
         name, identifier = after or (None,None)
-        result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,u.username AS observer_name,
+        result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,p.packages,u.username AS observer_name,
                    (inventory_key(p.name)||' / '||inventory_key(l.shelf_name)) COLLATE "C" AS sort_name
             FROM inventory_count_lines l JOIN inventory_count_products p ON p.count_id=l.count_id AND p.product_id=l.product_id
             LEFT JOIN account_users u ON u.id=l.observed_by
@@ -212,7 +220,7 @@ class CountRepository:
         return paged(result,stock_item)
 
     def stock_locations(self, connection, actor, product_id, count_id, after):
-        result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,u.username AS observer_name
+        result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,p.packages,u.username AS observer_name
             FROM inventory_count_lines l JOIN inventory_count_products p ON p.count_id=l.count_id AND p.product_id=l.product_id
             LEFT JOIN account_users u ON u.id=l.observed_by
             WHERE l.business_id=%s AND l.store_id=%s AND l.product_id=%s AND l.count_id=%s AND (%s::uuid IS NULL OR l.id>%s)

@@ -10,7 +10,7 @@ import { accountId, accountState, type BusinessMember } from './types';
 import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 
 export function OwnerScreen() {
-  return <AdministrationScreen title="A view of your business." ownerOnly>{context => <OwnerList {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Owner tools" ownerOnly>{context => <OwnerList {...context} />}</AdministrationScreen>;
 }
 function OwnerList({ data, changed }: AdminContext) {
   const router = useRouter();
@@ -18,15 +18,15 @@ function OwnerList({ data, changed }: AdminContext) {
   const [search, setSearch] = useRememberedState('owner.people.search', '');
   const people = data.directory.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.toLowerCase()));
   return <><Columns><Column><Card><Heading>People & authority</Heading>
-    <Body>Appoint administrators or additional owners, review account status, and transfer ownership. These controls apply to the business behind your selected store.</Body>
+    <Body>Manage administrators, owners, account status, and ownership.</Body>
     <Button title="Manage this store's team" variant="secondary" icon="people-outline" onPress={() => router.push('/team')} />
   </Card></Column><Column><Card><Heading>Individual sign-in</Heading>
     <Pill label="Individual sign-in required" />
     <Body>Everyone joins by invitation and uses their own username and password.</Body>
     <Button title="Review store sign-in" variant="secondary" icon="key-outline" onPress={() => router.push('/owner/cutover')} />
   </Card></Column></Columns>
-  <Button title="Refresh business access" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Business access refreshed.'); }} />
-  <Field label="Find a person in this business" value={search} onChangeText={setSearch} autoCorrect={false} />
+    <Button title="Refresh owner access" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Owner access refreshed.'); }} />
+  <Field label="Find a person" value={search} onChangeText={setSearch} autoCorrect={false} />
   {!people.length ? <Card><EmptyState title="No matching people" icon="people-outline" description="Try another name or invite someone through the store team." /></Card> : null}
   {people.map(person => <Card key={person.userId}><Heading>{person.displayName || person.username}{person.userId === actor?.userId ? ' (you)' : ''}</Heading>
     <Body muted>@{person.username} · {person.businessState === 'active' ? person.businessRole === 'owner' ? 'Business owner' : 'Delegated administrator' : 'Store memberships only'}</Body>
@@ -37,7 +37,7 @@ function OwnerList({ data, changed }: AdminContext) {
 }
 export function BusinessMemberScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  return <AdministrationScreen title="Business authority." ownerOnly>{context => {
+  return <AdministrationScreen title="Business access" ownerOnly>{context => {
     const member = context.data.directory.find(person => person.userId === accountId(userId || ''));
     return member ? <BusinessMemberForm key={member.userId} {...context} member={member} />
       : <Card><Heading>Account unavailable</Heading><Body>Return to the owner workspace to select someone in this business.</Body></Card>;
@@ -51,11 +51,11 @@ function BusinessMemberForm({ data, member, changed }: AdminContext & { member: 
   const [reason, setReason] = useState('');
   const [transferName, setTransferName] = useState('');
   useSensitiveForm(() => { setReason(''); setTransferName(''); setGrants([]); });
-  const delegate = (active: boolean) => confirmChange(active ? `Update @${member.username}'s authority?` : `Remove @${member.username}'s business authority?`,
-    `${active ? role === 'owner' ? 'An owner can manage the whole business and appoint other owners. Your ownership will remain.' : 'An administrator receives only the permissions you choose, intersected with their store access.' : 'Business authority will end; separate store memberships remain.'} Their sessions in this business will end.`,
+  const delegate = (active: boolean) => confirmChange(active ? `Update @${member.username}'s business access?` : `Remove @${member.username}'s business access?`,
+    `${active ? role === 'owner' ? 'An owner can manage the whole business and appoint other owners. Your ownership will remain.' : 'An administrator receives only the permissions you choose, limited by their store access.' : 'Business access will end; store access remains.'} Their sessions in this business will end.`,
     () => { void task.run(() => request('/accounts/business-memberships', { method: 'POST', uncertainMessage: accountChangeUncertain, body: {
       userId: member.userId, role: active ? role : member.businessRole, capabilities: active && role === 'admin' ? grants : [], active, reason,
-    } }), () => { void changed(active ? 'Business authority saved. Review matching store access for administrators.' : 'Business authority removed.'); }); }, role === 'owner' || !active);
+    } }), () => { void changed(active ? 'Business access saved. Check matching store access for administrators.' : 'Business access removed.'); }); }, role === 'owner' || !active);
   const suspended = member.accountState !== 'suspended';
   const changeStatus = () => confirmChange(`${suspended ? 'Suspend' : 'Restore'} @${member.username}?`, suspended
     ? 'This suspends the entire account across every store and ends all sessions. Store membership records remain.'
@@ -70,27 +70,27 @@ function BusinessMemberForm({ data, member, changed }: AdminContext & { member: 
     <Body muted>@{member.username} · Account ID {member.userId}</Body><Pill label={accountState(member)} />
     <Reason value={reason} onChange={setReason} disabled={task.pending} />
   </Card><Columns><Column><Card><Heading>Business role</Heading>
-    {member.canDelegate ? <><Choice label="Administrator" hint="Explicit permissions, limited by store access" selected={role === 'admin'} disabled={task.pending} onPress={() => setRole('admin')} />
-      <Choice label="Business owner" hint="Full authority across this business" selected={role === 'owner'} disabled={task.pending} onPress={() => setRole('owner')} />
+    {member.canDelegate ? <><Choice label="Administrator" hint="Selected permissions, limited by store access" selected={role === 'admin'} disabled={task.pending} onPress={() => setRole('admin')} />
+      <Choice label="Business owner" hint="Full access across this business" selected={role === 'owner'} disabled={task.pending} onPress={() => setRole('owner')} />
       {role === 'admin' ? <><Permissions optional={data.businessCapabilities} value={grants} onChange={setGrants} disabled={task.pending} />
-        <Body muted>For full administrator delegation at a store, also choose the Administrator store role and matching permissions in Team. A Store manager keeps that role; a shared-product delegation can add catalog access.</Body></> : null}
-      <Button title="Save business authority" loading={task.pending} onPress={() => delegate(true)} />
-    </> : <Body muted>Activate or restore this account before granting business authority. Your own authority is changed through ownership transfer.</Body>}
-    {member.canRevokeBusiness ? <Button title="Remove business authority" variant="danger" disabled={task.pending} onPress={() => delegate(false)} /> : null}
+        <Body muted>For full store access, also assign the Administrator role and matching permissions in Team.</Body></> : null}
+      <Button title="Save business access" loading={task.pending} onPress={() => delegate(true)} />
+    </> : <Body muted>Activate or restore this account first. Transfer ownership to change your own access.</Body>}
+    {member.canRevokeBusiness ? <Button title="Remove business access" variant="danger" disabled={task.pending} onPress={() => delegate(false)} /> : null}
   </Card></Column><Column><Card><Heading>Account status</Heading>
     {member.canSuspend ? <><Body>{suspended ? 'Suspend sign-in across every store this person belongs to.' : 'Restore this person’s ability to use their active memberships.'}</Body>
       <Button title={suspended ? 'Suspend account' : 'Restore account'} variant={suspended ? 'danger' : 'secondary'} disabled={task.pending} onPress={changeStatus} /></>
-      : <Body muted>{member.accountState === 'pending' ? 'This account is awaiting activation. Manage or remove the invitation through its store membership.' : 'Account-wide suspension or restoration is unavailable with your current authority. Store access can still be managed separately where permitted.'}</Body>}
+      : <Body muted>{member.accountState === 'pending' ? 'Awaiting activation. Manage the invitation from Team.' : 'You cannot change this account status. Store access may still be available in Team.'}</Body>}
   </Card>
-  {member.canTransfer ? <Card><Heading>Transfer your ownership</Heading><Body>You will give up your owner role in this business and be signed out. To keep your ownership, use Save business authority above instead.</Body>
+  {member.canTransfer ? <Card><Heading>Transfer ownership</Heading><Body>You will lose owner access and be signed out.</Body>
     <Field label={`Type ${member.username} to confirm the recipient`} value={transferName} onChangeText={setTransferName} autoCapitalize="none" autoCorrect={false} editable={!task.pending} />
     <Button title="Transfer ownership" variant="danger" disabled={task.pending || transferName !== member.username} onPress={transfer} />
   </Card> : null}</Column></Columns></>;
 }
 export function CutoverScreen() {
-  return <AdministrationScreen title="Personal sign-ins for everyone." ownerOnly>{context => <CutoverForm {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Store sign-in" ownerOnly>{context => <CutoverForm {...context} />}</AdministrationScreen>;
 }
 function CutoverForm({ storeName }: AdminContext) {
   return <Card><Heading>{storeName}</Heading><Pill label="Individual sign-in required" />
-    <Body>Every new person joins through a single-use invitation. Crew and managers belong to one store. Administrators control roles and permissions after activation.</Body></Card>;
+    <Body>New people join with a single-use invitation. Crew and managers have one store. Administrators set roles and permissions after activation.</Body></Card>;
 }

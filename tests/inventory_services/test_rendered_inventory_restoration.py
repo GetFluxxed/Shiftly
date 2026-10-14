@@ -60,20 +60,20 @@ def test_count_entry_draft_survives_resume_and_new_server_line_discards_it(page,
     page.get_by_role("button", name="Begin Count", exact=True).click()
     page.get_by_role("button", name="Resume count", exact=True).click()
     page.get_by_role("button", name="Count White Quella · Shelf 1", exact=True).click()
-    page.get_by_label("Full containers", exact=True).fill("2")
-    page.get_by_label("Combined net partial amount", exact=True).fill("1250")
+    page.get_by_label("Container count", exact=True).fill("2")
+    page.get_by_label("Combined loose or partial amount", exact=True).fill("1250")
     page.get_by_role("button", name="Grams", exact=True).click()
     expect(page.get_by_role("heading", name="This location: 13.25 kg", exact=True)).to_be_visible()
 
     resume_workspace(page)
-    expect(page.get_by_label("Full containers", exact=True)).to_have_value("2")
-    expect(page.get_by_label("Combined net partial amount", exact=True)).to_have_value("1250")
+    expect(page.get_by_label("Container count", exact=True)).to_have_value("2")
+    expect(page.get_by_label("Combined loose or partial amount", exact=True)).to_have_value("1250")
     expect(page.get_by_role("heading", name="This location: 13.25 kg", exact=True)).to_be_visible()
 
     page.evaluate("window.__workspaceTest.flush()")
     page.reload()
-    expect(page.get_by_label("Full containers", exact=True)).to_have_value("2")
-    expect(page.get_by_label("Combined net partial amount", exact=True)).to_have_value("1250")
+    expect(page.get_by_label("Container count", exact=True)).to_have_value("2")
+    expect(page.get_by_label("Combined loose or partial amount", exact=True)).to_have_value("1250")
     expect(page.get_by_role("heading", name="This location: 13.25 kg", exact=True)).to_be_visible()
     assert inventory.counts.stock(inventory.tokens["owner"])["items"][0]["quantity"] is None
     assert inventory.counts.line(inventory.tokens["owner"], count["id"], line["id"])["quantity"] is None
@@ -83,7 +83,7 @@ def test_count_entry_draft_survives_resume_and_new_server_line_discards_it(page,
     resume_workspace(page)
     expect(page.get_by_label("Measured total", exact=True)).to_have_value("4")
     expect(page.get_by_text("Saved quantity: 4 kg", exact=True)).to_be_visible()
-    expect(page.get_by_label("Full containers", exact=True)).to_have_count(0)
+    expect(page.get_by_label("Container count", exact=True)).to_have_count(0)
     assert inventory.counts.stock(inventory.tokens["owner"])["items"][0]["quantity"] is None
 
 
@@ -105,7 +105,7 @@ def test_catalog_search_and_state_filter_survive_detail_return_and_reload(page, 
     expect(page.get_by_role("button", name="View product: Active cocoa", exact=True)).to_have_count(0)
 
     page.get_by_role("button", name="View product: Archived cocoa", exact=True).click()
-    page.get_by_role("button", name="Back to catalog", exact=True).click()
+    page.get_by_role("button", name="Back to catalog", exact=True).first.click()
     expect(page.get_by_label("Find a product or SKU", exact=True)).to_have_value("Archived cocoa")
     expect(page.get_by_role("button", name="✓ Archived", exact=True)).to_be_visible()
     expect(page.get_by_role("button", name="View product: Archived cocoa", exact=True)).to_be_visible()

@@ -23,15 +23,15 @@ export function StoreScreen() {
 
   return <Screen title="Store" eyebrow={storeName}>
     <ActionGrid>
-      <ActionTile title="Build Your Team" label={canManageMemberships ? 'Build your team' : 'Build your team. Team management permission required.'}
+      <ActionTile title="Build team" label={canManageMemberships ? 'Build team' : 'Build team. Permission required.'}
         icon="person-add-outline" disabled={!canManageMemberships} onPress={() => router.push('/team/build')} />
-      <ActionTile title="View Team Members" label={canManageMemberships ? 'View team members' : 'View team members. Team management permission required.'}
+      <ActionTile title="Team members" label={canManageMemberships ? 'Team members' : 'Team members. Permission required.'}
         icon="people-outline" disabled={!canManageMemberships} onPress={() => router.push('/team')} />
-      {actor?.role === 'manager' ? <ActionTile title="Heads Up" label="Create or edit the store Heads Up message" icon="megaphone-outline"
+      {actor?.role === 'manager' ? <ActionTile title="Heads Up" label="Heads Up" icon="megaphone-outline"
         onPress={() => router.push('/heads-up')} />
-        : <ActionTile title="Store Access" label="Store Access: view store access policy" icon="key-outline"
+        : <ActionTile title="Store access" label="Store access" icon="key-outline"
           onPress={() => router.push('/team/access')} />}
-      <ActionTile title="Owner Workspace" label={isOwner ? 'Open owner workspace' : 'Owner workspace. Owner only.'}
+      <ActionTile title="Owner tools" label={isOwner ? 'Owner tools' : 'Owner tools. Owner only.'}
         icon="shield-checkmark-outline" disabled={!isOwner} onPress={() => router.push('/owner')}
         footer={!isOwner ? <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 12, paddingBottom: 12 }}>Owner only</Text> : undefined} />
     </ActionGrid>
@@ -44,17 +44,17 @@ export function StoreAccessScreen() {
   const router = useRouter();
   const storeName = stores.find(store => store.storeId === actor?.storeId)?.storeName || 'Current store';
   if (!canViewStore(actor?.role)) {
-    return <Screen title="Store access." eyebrow="Team & access" subtitle={storeName}>
-      <Button title="Back to Store" icon="arrow-back" variant="quiet" onPress={() => router.replace('/store')} />
+    return <Screen title="Store access" eyebrow="Team & access" subtitle={storeName}>
+      <Button title="Back to store" icon="arrow-back" variant="quiet" onPress={() => router.replace('/store')} />
       <Card><Heading>Access is limited</Heading><Body>Store access information is available to store managers and business owners.</Body></Card>
     </Screen>;
   }
-  return <Screen title="Store access." eyebrow="Team & access" subtitle={storeName}>
-    <Button title="Back to Store" icon="arrow-back" variant="quiet" onPress={() => router.replace('/store')} />
+  return <Screen title="Store access" eyebrow="Team & access" subtitle={storeName}>
+    <Button title="Back to store" icon="arrow-back" variant="quiet" onPress={() => router.replace('/store')} />
     <Columns>
-    <Column><Card><Heading>Invitation only</Heading><Body>Personal accounts join {storeName} through a private, single-use invitation. There is no public staff sign-up.</Body></Card></Column>
-    <Column><Card><Heading>One store for staff</Heading><Body>Crew members and store managers have one active store. An administrator must remove an old membership before a transfer.</Body></Card></Column>
-    <Column><Card><Heading>Permission changes</Heading><Body>Only administrators and business owners can change roles, permissions, or existing store memberships.</Body></Card></Column>
+    <Column><Card><Heading>Invitation only</Heading><Body>Join {storeName} with a private, single-use invitation. Staff cannot sign up publicly.</Body></Card></Column>
+    <Column><Card><Heading>One store for staff</Heading><Body>Crew and managers have one active store. An administrator must remove the old store before a transfer.</Body></Card></Column>
+    <Column><Card><Heading>Permission changes</Heading><Body>Only administrators and owners can change roles, permissions, or store access.</Body></Card></Column>
     </Columns>
   </Screen>;
 }

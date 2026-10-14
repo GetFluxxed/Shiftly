@@ -3,6 +3,7 @@ from uuid import uuid4
 import shutil
 import base64
 import json
+import hashlib
 
 import psycopg
 import pytest
@@ -40,7 +41,7 @@ def test_container_amount_is_exact_shared_editable_and_audited(inventory):
         assert c.execute('SELECT container_amount FROM inventory_products WHERE id=%s', (product['id'],)).fetchone()[0] == Decimal('6.125')
 
 
-@pytest.mark.parametrize('amount', [0, 6.1, True, '', '0', '-1', 'NaN', 'Infinity', '1e3', '1.0000001', '1000000000', '6 kg', {}, []])
+@pytest.mark.parametrize('amount', [0, 6.1, True, '', '0', '-1', 'NaN', 'Infinity', '1e3', '1.0000000001', '1000000000', '6 kg', {}, []])
 def test_invalid_container_amounts_never_create_partial_product(inventory, amount):
     i = inventory
     with pytest.raises(IdentityError): create(i, containerAmount=amount)
@@ -71,7 +72,7 @@ def test_mass_conversion_never_infers_volume_or_item_weight():
         with pytest.raises(IdentityError): convert_mass('1', unit, 'kg')
 
 
-@pytest.mark.parametrize('amount', ['-1', 'NaN', 'Infinity', '0.0000001'])
+@pytest.mark.parametrize('amount', ['-1', 'NaN', 'Infinity', '0.0000000001'])
 def test_database_rejects_invalid_container_amounts(inventory, amount):
     i = inventory
     product = create(i)
@@ -119,7 +120,7 @@ def test_upgrade_015_preserves_products_without_inventing_container_sizes(empty_
             c.execute('INSERT INTO inventory_products(id,business_id,sku,name,base_unit,version) VALUES(%s,%s,%s,%s,%s,3)',
                       (product_id, business, product_id, 'Existing '+unit, unit))
             c.execute('INSERT INTO inventory_product_skus(business_id,product_id,sku) VALUES(%s,%s,%s)', (business, product_id, product_id))
-    assert migrate(connect) == ['016_product_container_amounts.sql', '017_inventory_counts.sql', '018_inventory_movements.sql', '019_production.sql', '020_production_accounts.sql']
+    assert migrate(connect) == ['016_product_container_amounts.sql', '017_inventory_counts.sql', '018_inventory_movements.sql', '019_production.sql', '020_production_accounts.sql', '021_inventory_packages.sql', '022_inventory_package_links.sql', '023_store_forecasts.sql', '024_inventory_package_weight_units.sql']
     assert migrate(connect) == []
     with connect() as c:
         rows = c.execute('SELECT base_unit,version,container_amount FROM inventory_products ORDER BY base_unit').fetchall()
@@ -135,4 +136,23 @@ def test_retry_of_pre_container_request_preserves_saved_result(inventory):
         c.execute("UPDATE inventory_requests SET result=result-'containerAmount' WHERE request_id=%s", (request['requestId'],))
     replay = i.service.create_product(i.tokens['owner'], request)
     assert replay['id'] == original['id'] and 'containerAmount' not in replay
+    assert len(i.service.products(i.tokens['owner'])['items']) == 1
+
+
+def test_retry_of_pre_weight_unit_container_request_keeps_fingerprint(inventory):
+    i = inventory
+    request = fields(i, name='Existing sized request', sku='OLD-SIZED', baseUnit='kg', containerAmount='6')
+    original = i.service.create_product(i.tokens['owner'], request)
+    # Reproduce the durable pre-024 payload and response, without new label keys.
+    old_payload = {'name': 'Existing sized request', 'sku': 'OLD-SIZED',
+                   'baseUnit': 'kg', 'containerAmount': '6'}
+    old_fingerprint = hashlib.sha256(json.dumps(
+        ['product.created', old_payload], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    with i.connect() as connection:
+        connection.execute("UPDATE inventory_requests SET fingerprint=%s, result=result-'containerLabelAmount'-'containerLabelUnit' WHERE request_id=%s",
+                           (old_fingerprint, request['requestId']))
+    replay = i.service.create_product(i.tokens['owner'], request)
+    assert replay == {key: value for key, value in original.items()
+                      if key not in ('containerLabelAmount', 'containerLabelUnit')}
+    assert replay['containerAmount'] == '6'
     assert len(i.service.products(i.tokens['owner'])['items']) == 1

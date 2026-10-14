@@ -5,13 +5,14 @@ import { countsApi } from '../src/inventory/counts/api';
 import { MutationIdentity, type Request } from '../src/inventory/api';
 const product = { productId: '11111111-1111-4111-8111-111111111111', name: 'White Quella', sku: '000184', baseUnit: 'kg' as const, containerAmount: '6' };
 const count = { id: product.productId, storeId: 1, businessDate: '2026-09-25', state: 'draft', version: 1,
-  startedAt: '2026-09-25T01:00:00Z', startedBy: 'owner', reviewedAt: null, reviewedBy: null, postedAt: null, postedBy: null, totalLines: 1, countedLines: 0, totalProducts: 1 };
+  startedAt: '2026-09-25T01:00:00Z', startedBy: 'owner', reviewedAt: null, reviewedBy: null, postedAt: null, postedBy: null, totalLines: 1, countedLines: 0, totalProducts: 1, countedProducts: 0 };
 function request(value: unknown): Request { return async <T>() => value as T; }
 
 test('full containers and gram partials produce exact kilograms', () => {
   assert.equal(entryTotal({ mode: 'containers', fullContainers: 2, partialAmount: '1250', partialUnit: 'g' }, product), '13.25');
   assert.equal(entryTotal({ mode: 'total', amount: '0.000001', unit: 'g' }, product), '0.000000001');
   assert.equal(entryTotal({ mode: 'total', amount: '0', unit: 'kg' }, product), '0');
+  assert.equal(entryTotal({ mode: 'containers', fullContainers: 2, partialAmount: '500', partialUnit: 'g' }, { ...product, containerAmount:'22.6796185' }), '45.859237');
 });
 test('invalid, incomplete and incompatible measurements do not become zero', () => {
   for (const amount of ['', '-1', 'NaN', '1e2', '.5']) assert.equal(entryTotal({ mode: 'total', amount, unit: 'kg' }, product), null);
@@ -26,6 +27,32 @@ test('individual items require whole quantities', () => {
 });
 test('historical entry description uses the captured container reference', () => {
   assert.equal(entryLabel({ mode: 'containers', fullContainers: 2, partialAmount: '1250', partialUnit: 'g' }, product), '2 full × 6 kg + 1250 g net partial');
+});
+
+test('mixed package counts add exact snapshotted package amounts and loose weight', () => {
+  const packages = [{ id:'22222222-2222-4222-8222-222222222222', productId:product.productId, name:'1 kg tub', amount:'1', kind:'container' as const, active:true, version:1, isDefault:false, containedPackageId:null, containedCount:null, barcodes:[] },
+    { id:'33333333-3333-4333-8333-333333333333', productId:product.productId, name:'Case of 10', amount:'10', kind:'case' as const, active:true, version:1, isDefault:false, containedPackageId:'22222222-2222-4222-8222-222222222222', containedCount:10, barcodes:[] }];
+  const snapshot={...product,packages};
+  const entry={mode:'packages' as const,packages:[{packageId:packages[1]!.id,count:2},{packageId:packages[0]!.id,count:3}],partialAmount:'250',partialUnit:'g' as const};
+  assert.equal(entryTotal(entry,snapshot),'23.25');
+  assert.equal(entryLabel(entry,snapshot),'2 × Case of 10 [10 kg] + 3 × 1 kg tub [1 kg] + 250 g loose');
+});
+
+test('package history retains the original pounds label and canonical size', () => {
+  const option={id:'22222222-2222-4222-8222-222222222222',productId:product.productId,name:'Bag',amount:'22.6796185',labelAmount:'50',labelUnit:'lb' as const,kind:'container' as const,active:true,version:1,isDefault:false,containedPackageId:null,containedCount:null,barcodes:[]};
+  const snapshot={...product,packages:[option]};
+  const entry={mode:'packages' as const,packages:[{packageId:option.id,count:2}],partialAmount:'500',partialUnit:'g' as const};
+  assert.equal(entryTotal(entry,snapshot),'45.859237');
+  assert.equal(entryLabel(entry,snapshot),'2 × Bag [50 lbs = 22.6796185 kg] + 500 g loose');
+});
+
+test('mixed package counts reject duplicate, archived, fractional counts, and inexact conversion', () => {
+  const option={ id:'22222222-2222-4222-8222-222222222222', productId:product.productId, name:'Tub', amount:'1', kind:'container' as const, active:true, version:1, isDefault:false, containedPackageId:null, containedCount:null, barcodes:[] };
+  const snapshot={...product,packages:[option]};
+  assert.equal(entryTotal({mode:'packages',packages:[{packageId:option.id,count:1},{packageId:option.id,count:1}],partialAmount:'0',partialUnit:'kg'},snapshot),null);
+  assert.equal(entryTotal({mode:'packages',packages:[{packageId:option.id,count:1.5}],partialAmount:'0',partialUnit:'kg'},snapshot),null);
+  assert.equal(entryTotal({mode:'packages',packages:[{packageId:option.id,count:1}],partialAmount:'0.000000001',partialUnit:'g'},snapshot),null);
+  assert.equal(entryTotal({mode:'packages',packages:[{packageId:option.id,count:1}],partialAmount:'0',partialUnit:'kg'},{...snapshot,packages:[{...option,active:false}]}),null);
 });
 test('count requests reuse an identity after an uncertain response', async () => {
   const calls: { path: string; body: unknown }[] = []; let failed = false;
@@ -48,6 +75,7 @@ test('unknown balances remain null and measured zeros remain zero', async () => 
 });
 test('malformed count and stock responses fail closed', async () => {
   await assert.rejects(countsApi(request({ ...count, countedLines: 2 })).detail(product.productId));
+  await assert.rejects(countsApi(request({ ...count, countedProducts: 2 })).detail(product.productId));
   await assert.rejects(countsApi(request({ items: [{ ...product, quantity: '-1' }], nextCursor: null })).stock());
   await assert.rejects(countsApi(request(count)).detail('../../accounts'));
 });

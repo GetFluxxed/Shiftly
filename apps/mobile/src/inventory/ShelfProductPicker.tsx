@@ -51,7 +51,7 @@ export function ShelfProductPicker({ shelfId, assigned, disabled, onAdd }: Shelf
       ? <LoadError {...resource} />
       : <>
         {!resource.data.items.length
-          ? <Body>No matching active products. Add one to the company catalog or change your search.</Body>
+          ? <Body>No matching products. Try another search or add a product.</Body>
           : <View style={styles.list}>{resource.data.items.map(product => {
             const isAssigned = assigned.includes(product.id);
             const rowDisabled = disabled || isAssigned;

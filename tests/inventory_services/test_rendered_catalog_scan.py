@@ -29,6 +29,7 @@ def test_scan_draft_restores_then_creates_once_without_stock(page, native_invent
     url, i = native_inventory
     page.set_viewport_size({'width': 390, 'height': 844})
     open_scanner(page, url, '000SCAN-06')
+    page.get_by_role('button', name='Create new item', exact=True).click()
     expect(page.get_by_label('SKU', exact=True)).to_have_value('000SCAN-06')
     expect(page.get_by_label('SKU', exact=True)).not_to_be_editable()
     page.get_by_label('Product name', exact=True).fill('White Quella')
@@ -51,7 +52,7 @@ def test_scan_draft_restores_then_creates_once_without_stock(page, native_invent
     page.get_by_role('button', name='Enter another code', exact=True).click()
     page.get_by_label('Barcode or SKU', exact=True).fill('000SCAN-06')
     page.get_by_role('button', name='Look up code', exact=True).click()
-    expect(page.get_by_text('White Quella is already in the catalog.', exact=True)).to_be_visible()
+    expect(page.get_by_text('White Quella is already in the catalog as Container.', exact=True)).to_be_visible()
     expect(page.get_by_role('button', name='Create product', exact=True)).to_have_count(0)
     with i.connect() as c:
         assert c.execute('SELECT sku,name,base_unit,container_amount FROM inventory_products').fetchall() == [('000SCAN-06', 'White Quella', 'kg', 6)]
@@ -85,12 +86,14 @@ def test_scan_lookup_failure_does_not_offer_creation(page, native_inventory):
     expect(page.get_by_role('button', name='Create product', exact=True)).to_have_count(0)
     page.unroute('**/api/mobile/inventory/products/lookup?*')
     page.get_by_role('button', name='Reload', exact=True).click()
+    page.get_by_role('button', name='Create new item', exact=True).click()
     expect(page.get_by_label('SKU', exact=True)).to_have_value('000RETRY')
 
 
 def test_scan_creation_race_opens_existing_product(page, native_inventory):
     url, i = native_inventory
     open_scanner(page, url, '000RACE')
+    page.get_by_role('button', name='Create new item', exact=True).click()
     page.get_by_label('Product name', exact=True).fill('My pending name')
     created = create_product(i, '000RACE', 'Added by another person')
     page.get_by_role('button', name='Create product', exact=True).click()

@@ -19,7 +19,7 @@ function memberName(member: TeamMember) {
 }
 
 export function TeamScreen() {
-  return <AdministrationScreen title="Team members.">{context => <TeamMemberSelector {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Team members">{context => <TeamMemberSelector {...context} />}</AdministrationScreen>;
 }
 
 function TeamMemberSelector({ data, changed }: AdminContext) {
@@ -41,10 +41,9 @@ function TeamMemberSelector({ data, changed }: AdminContext) {
     {actor?.capabilities.includes('memberships.manage') ? <Button title="Build your team" icon="person-add-outline" variant="secondary"
       onPress={() => router.push('/team/build')} /> : null}
     <Button title="Refresh team" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Team refreshed.'); }} />
-    {!members.length ? <Card><EmptyState icon="people-outline" title="Your team starts here"
-      description="Build your team to invite a new person or add an existing account to this store." /></Card> : <>
+    {!members.length ? <Card><EmptyState icon="people-outline" title="No team members" description="Invite someone or add an existing account." /></Card> : <>
       <View style={styles.selector}>
-        <Body muted>Most recent sign-ins first.</Body>
+        <Body muted>Recent sign-ins first.</Body>
         <Pressable accessibilityRole="button" accessibilityLabel={selected ? `Selected team member: ${memberName(selected)}` : 'Choose a team member'}
           accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)}
           style={({ pressed }) => [styles.selectorButton, pressed && styles.pressed]}>
@@ -74,14 +73,14 @@ function TeamMemberSelector({ data, changed }: AdminContext) {
         <Body muted>{selected.lastSignInAt ? `Last signed in here ${friendlyDate(selected.lastSignInAt)}` : 'No sign-in recorded here'}</Body>
         {selected.canEdit ? <Button title={`Manage ${memberName(selected)}`} variant="secondary"
           onPress={() => router.push({ pathname: '/team/[userId]', params: { userId: selected.userId } })} />
-          : <Body muted>View only with your current account.</Body>}
+          : <Body muted>View only.</Body>}
       </Card> : <Notice message="Choose a team member to view their store access." />}
     </>}
   </View>;
 }
 
 export function BuildTeamScreen() {
-  return <AdministrationScreen title="Build your team.">{context => <BuildTeamActions {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Build team">{context => <BuildTeamActions {...context} />}</AdministrationScreen>;
 }
 
 function BuildTeamActions({ data }: AdminContext) {
@@ -90,19 +89,19 @@ function BuildTeamActions({ data }: AdminContext) {
   const canInvite = data.roles.some(choice => choice.role === 'crew');
   const canAssignRole = ['owner', 'admin'].includes(actor?.role || '');
   const canAssignExisting = Boolean(data.roles.length && canAssignRole);
-  const assignmentRestriction = canAssignRole ? 'Account assignment permission required' : 'Administrator or owner only';
+  const assignmentRestriction = canAssignRole ? 'Permission required' : 'Administrator or owner only';
   return <><ActionGrid>
-    <ActionTile title="Invite a New Person" label={canInvite ? 'Invite a new person' : 'Invite a new person. Invitation permission required.'}
+    <ActionTile title="Invite a new person" label={canInvite ? 'Invite a new person' : 'Invite a new person. Permission required.'}
       icon="person-add-outline" disabled={!canInvite} onPress={() => router.push('/team/invite')}
       footer={!canInvite ? <Text style={styles.tileFooter}>Invitation unavailable</Text> : undefined} />
-    <ActionTile title="Add an Existing Account" label={canAssignExisting ? 'Add an existing account' : `Add an existing account. ${assignmentRestriction}.`}
+    <ActionTile title="Add an existing account" label={canAssignExisting ? 'Add an existing account' : `Add an existing account. ${assignmentRestriction}.`}
       icon="person-add-outline" disabled={!canAssignExisting} onPress={() => router.push('/team/assign')}
       footer={!canAssignExisting ? <Text style={styles.tileFooter}>{assignmentRestriction}</Text> : undefined} />
   </ActionGrid></>;
 }
 
 export function InviteScreen() {
-  return <AdministrationScreen title="Welcome someone new.">{context => <InviteForm {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Invite a new person">{context => <InviteForm {...context} />}</AdministrationScreen>;
 }
 function InviteForm({ data, storeName }: AdminContext) {
   const { request } = useSession();
@@ -123,22 +122,22 @@ function InviteForm({ data, storeName }: AdminContext) {
   });
   if (invitation) return <InvitationResult invitation={invitation} username={username.trim()} onDismiss={() => { setInvitation(null); router.replace('/team'); }} />;
   return <><Notice message={task.error} kind="error" /><Columns><Column><Card>
-    <Heading>Personal sign-in</Heading><Body>They will set their own password when they activate the invitation.</Body>
+    <Heading>Personal sign-in</Heading><Body>They choose a password during activation.</Body>
     <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} maxLength={80} editable={!task.pending} />
     <Field label="Display name" value={name} onChangeText={setName} maxLength={120} editable={!task.pending} />
     <Reason value={reason} onChange={setReason} disabled={task.pending} />
-  </Card></Column><Column><Card><Heading>Crew first</Heading>
-    <Body>Every invitation creates an individual crew account at this store. After activation, an authorized administrator or owner can assign Production access or change their permissions.</Body>
+  </Card></Column><Column><Card><Heading>Crew access</Heading>
+    <Body>Invitations create a crew account for this store. After activation, an administrator or owner can change its access.</Body>
     <Button title="Create invitation" loading={task.pending} disabled={!username.trim() || !choice} onPress={submit} />
   </Card></Column></Columns></>;
 }
 
 export function AssignScreen() {
-  return <AdministrationScreen title="Connect an existing account.">{context => <MembershipForm {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Add an existing account">{context => <MembershipForm {...context} />}</AdministrationScreen>;
 }
 export function MemberScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  return <AdministrationScreen title="Team member access.">{context => {
+  return <AdministrationScreen title="Team member access">{context => {
     const member = context.data.members.find(item => item.userId === accountId(userId || ''));
     return member?.canEdit ? <MembershipForm key={member.userId} {...context} member={member} />
       : <Card><Heading>This membership is unavailable</Heading><Body>Return to the team to see the people you can manage.</Body></Card>;
@@ -167,20 +166,20 @@ function MembershipForm({ data, storeName, changed, member }: AdminContext & { m
   });
   if (invitation) return <InvitationResult invitation={invitation} username={member?.username || name} onDismiss={() => { setInvitation(null); void changed('Invitation issued.'); }} />;
   return <><Notice message={task.error} kind="error" /><Columns><Column><Card>
-    <Heading>{member?.displayName || 'An account they already use'}</Heading>
+    <Heading>{member?.displayName || 'Existing account'}</Heading>
     {member ? <><Body muted>@{member.username} · Account ID {member.userId}</Body><Pill label={accountState(member, member.membershipState)} /></>
-      : <><Body>Ask the person for their Account ID, shown on their Account screen. Their password stays the same. Crew, Production, and managers can belong to one store. An administrator must remove their previous store membership before a transfer.</Body>
+      : <><Body>Enter the Account ID from their Account screen. Their password stays the same. Crew, Production, and managers can have one store; an administrator must remove the old store before a transfer.</Body>
         <Field label="Account ID" value={user} onChangeText={setUser} keyboardType="number-pad" maxLength={16} editable={!task.pending} />
         {data.isOwner && data.directory.filter(person => person.userId !== actor?.userId && person.accountState === 'active' && !data.members.some(item => item.userId === person.userId)).map(person =>
           <Button key={person.userId} title={`Choose ${person.displayName} (@${person.username})`} variant="secondary" disabled={task.pending} onPress={() => setUser(String(person.userId))} />)}
       </>}
     <Reason value={reason} onChange={setReason} disabled={task.pending} />
     {member?.canReissue ? <Button title="Reissue activation code" variant="secondary" disabled={task.pending} onPress={reissue} /> : null}
-    {member?.accountState === 'pending' && !member.canReissue ? <Body muted>An invitation can be reissued only for a permitted, active membership with a single store assignment.</Body> : null}
+    {member?.accountState === 'pending' && !member.canReissue ? <Body muted>Reissuing requires active access to one store.</Body> : null}
   </Card></Column><Column><Card><Roles choices={choices} value={role} disabled={task.pending} onChange={value => {
     setRole(value); setGrants(roleGrants(choices.find(item => item.role === value), grants));
   }} />
-    {role === 'admin' ? <Body muted>Administrator access also requires an active business delegation with matching permissions. An owner sets that in the owner workspace.</Body> : null}
+    {role === 'admin' ? <Body muted>An owner must also grant matching business permissions.</Body> : null}
     {choice && member?.accountState !== 'pending' ? <Permissions included={choice.included} optional={choice.optional} value={grants} onChange={setGrants} disabled={task.pending} /> : null}
     <Button title={member?.membershipState === 'revoked' ? 'Restore store access' : 'Save store access'} loading={task.pending}
       disabled={!userId || userId === actor?.userId || !choice} onPress={() => save(true)} />

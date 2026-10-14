@@ -5,12 +5,14 @@ import { createRoot } from 'react-dom/client';
 import { Alert, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { InventoryScreen } from '../../src/screens/InventoryScreen';
+import { ReportsScreen } from '../../src/screens/ReportsScreen';
 import { CatalogScreen, NewProductScreen, ProductScreen } from '../../src/inventory/CatalogScreens';
 import { CatalogScanScreen } from '../../src/inventory/CatalogScanScreen';
 import { StockScreen, StockDetailScreen } from '../../src/inventory/counts/StockScreens';
 import { CountsScreen, CountSessionScreen, CountReviewScreen, CountHistoryScreen } from '../../src/inventory/counts/CountScreens';
 import { CountEntryScreen } from '../../src/inventory/counts/CountEntryScreen';
 import { ShelvesScreen, ShelfScreen } from '../../src/inventory/ShelfScreens';
+import { PackagesScreen } from '../../src/inventory/PackageScreens';
 import { NewRecipeScreen, RecipeScreen, RecipesScreen } from '../../src/production/RecipeScreens';
 import { ProductionLogScreen, ProductionLogsScreen, ProductionReviewScreen, ProductionRunScreen, ProductionScreen } from '../../src/production/ProductionScreens';
 import { createTransport } from '../../src/api/client';
@@ -52,10 +54,10 @@ function App() {
    setRoute(destination(value));
  },[]);
  const ctx=React.useMemo(()=>({go,path:route.path,params:route.params,setParams:()=>{}}),[go,route]);
- const Screen=({'/today':InventoryScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,
+ const Screen=({'/today':InventoryScreen,'/reports':ReportsScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,
    '/stock':StockScreen,'/stock/[productId]':StockDetailScreen,'/counts':CountsScreen,
    '/counts/[countId]':CountSessionScreen,'/counts/[countId]/review':CountReviewScreen,'/counts/history':CountHistoryScreen,
-   '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen,
+   '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/catalog/packages/[productId]':PackagesScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen,
    '/production':ProductionScreen,'/production/run':ProductionRunScreen,'/production/review':ProductionReviewScreen,
    '/production/recipes':RecipesScreen,'/production/recipes/new':NewRecipeScreen,'/production/recipes/[recipeId]':RecipeScreen,
    '/production/logs':ProductionLogsScreen,'/production/logs/[logId]':ProductionLogScreen} as Record<string,React.ComponentType>)[route.path]!;

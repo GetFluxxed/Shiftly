@@ -27,8 +27,7 @@ export function HeadsUpCard() {
       <Notice message={resource.error} kind="error" /> : resource.data?.message ? <>
         <Body>{resource.data.message}</Body>
         {resource.data.updatedAt ? <Body muted>Updated {friendlyDate(resource.data.updatedAt)}</Body> : null}
-      </> : <EmptyState icon="chatbubble-ellipses-outline" title="All clear for now"
-        description="There are no store updates to show. Check here for a note from your manager." />}
+      </> : <EmptyState icon="chatbubble-ellipses-outline" title="No store updates" description="No update from your manager." />}
   </Card>;
 }
 

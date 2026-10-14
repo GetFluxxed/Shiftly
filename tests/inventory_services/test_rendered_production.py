@@ -45,8 +45,8 @@ def test_rendered_recipe_create_and_production_review_confirm(page, native_inven
     page.set_viewport_size({'width': 390, 'height': 844})
     page.goto(url + '/production/recipes')
     expect(page.get_by_label('Recipe name', exact=True)).to_have_count(0)
-    expect(page.get_by_role('button', name='Save Recipe', exact=True)).to_have_count(0)
-    page.get_by_role('button', name='New Recipe', exact=True).click()
+    expect(page.get_by_role('button', name='Save recipe', exact=True)).to_have_count(0)
+    page.get_by_role('button', name='New recipe', exact=True).click()
     page.get_by_label('Recipe name', exact=True).fill('Chocolate base')
     page.get_by_role('button', name='Recipe yield', exact=True).click()
     page.get_by_role('radio', name='6 kg', exact=True).click()
@@ -55,7 +55,7 @@ def test_rendered_recipe_create_and_production_review_confirm(page, native_inven
     for width, height in ((320, 640), (768, 900), (1024, 768), (1440, 900), (844, 390), (568, 320)):
         page.set_viewport_size({'width': width, 'height': height})
         page.wait_for_function('''() => {
-            const action = document.querySelector('[aria-label="Save Recipe"]');
+            const action = document.querySelector('[aria-label="Save recipe"]');
             if (!action) return false;
             const box = action.getBoundingClientRect();
             const key = [window.innerWidth, window.innerHeight, box.x, box.y, box.width, box.height].join(':');
@@ -67,7 +67,7 @@ def test_rendered_recipe_create_and_production_review_confirm(page, native_inven
             return performance.now() - stable.since > 400
                 && box.x >= 0 && box.right <= window.innerWidth && box.y >= 0 && box.bottom <= window.innerHeight;
         }''')
-        actions = page.get_by_role('button', name='Save Recipe', exact=True)
+        actions = page.get_by_role('button', name='Save recipe', exact=True)
         expect(actions).to_be_visible()
         box = actions.bounding_box()
         assert box and box['x'] >= 0 and box['x'] + box['width'] <= width
@@ -83,8 +83,8 @@ def test_rendered_recipe_create_and_production_review_confirm(page, native_inven
     page.set_viewport_size({'width': 1024, 'height': 900})
     screenshot(page, 'shiftly-production-recipe-tablet.png', full_page=False)
     page.set_viewport_size({'width': 390, 'height': 844})
-    page.get_by_role('button', name='Save Recipe', exact=True).click()
-    expect(page.get_by_role('button', name='Edit Recipe', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Save recipe', exact=True).click()
+    expect(page.get_by_role('button', name='Edit recipe', exact=True)).to_be_visible()
     expect(page.get_by_label('Recipe name', exact=True)).to_have_count(0)
     made = production(i).recipes(i.tokens['owner'])['items'][0]
     assert (made['yieldAmount'], made['yieldUnit']) == ('6', 'kg')
@@ -203,11 +203,11 @@ def test_recipe_modal_cancel_and_saved_recipe_edit(page, native_inventory):
     url, i = native_inventory
     made = recipe(i, stocked_product(i))
     page.goto(url + '/production/recipes/' + made['id'])
-    expect(page.get_by_role('button', name='Edit Recipe', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name='Edit recipe', exact=True)).to_be_visible()
     expect(page.get_by_label('Recipe name', exact=True)).to_have_count(0)
-    page.get_by_role('button', name='Edit Recipe', exact=True).click()
+    page.get_by_role('button', name='Edit recipe', exact=True).click()
     # Earlier nonstandard yields must not silently become kilograms.
-    expect(page.get_by_role('button', name='Save Recipe', exact=True)).to_be_disabled()
+    expect(page.get_by_role('button', name='Save recipe', exact=True)).to_be_disabled()
     page.get_by_label('Recipe name', exact=True).fill('Unsaved change')
     page.evaluate('window.__workspaceTest.flush()')
     page.reload()
@@ -220,23 +220,23 @@ def test_recipe_modal_cancel_and_saved_recipe_edit(page, native_inventory):
     assert original['name'] == 'Chocolate base' and original['version'] == 1
     assert original['yieldAmount'] == '1' and original['yieldUnit'] == 'batch'
 
-    page.get_by_role('button', name='Edit Recipe', exact=True).click()
+    page.get_by_role('button', name='Edit recipe', exact=True).click()
     expect(page.get_by_label('Recipe name', exact=True)).to_have_value('Chocolate base')
     page.get_by_role('button', name='Recipe yield', exact=True).click()
     page.get_by_role('radio', name='6 kg', exact=True).click()
-    page.get_by_role('button', name='Save Recipe', exact=True).click()
+    page.get_by_role('button', name='Save recipe', exact=True).click()
     expect(page.get_by_label('Recipe name', exact=True)).to_have_count(0)
     expect(page.get_by_text('Makes 6 kg', exact=True)).to_be_visible()
     assert production(i).recipe(i.tokens['owner'], made['id'])['version'] == 2
     assert i.counts.stock(i.tokens['owner'])['items'][0]['quantity'] == '20'
 
-    page.get_by_role('button', name='New Recipe', exact=True).click()
+    page.get_by_role('button', name='New recipe', exact=True).click()
     page.get_by_label('Recipe name', exact=True).fill('Canceled flavor')
     page.get_by_role('button', name='Add Cocoa powder', exact=True).click()
     page.get_by_role('button', name='Cancel', exact=True).click()
     expect(page.get_by_label('Recipe name', exact=True)).to_have_count(0)
     assert len(production(i).recipes(i.tokens['owner'])['items']) == 1
-    page.get_by_role('button', name='New Recipe', exact=True).click()
+    page.get_by_role('button', name='New recipe', exact=True).click()
     expect(page.get_by_label('Recipe name', exact=True)).to_have_value('')
     expect(page.get_by_role('button', name='Remove Cocoa powder', exact=True)).to_have_count(0)
 
@@ -261,8 +261,8 @@ def test_recipe_modal_uncertain_save_cannot_be_canceled_or_duplicated(page, nati
             route.continue_()
 
     page.route('**/api/mobile/production/recipes', intercept)
-    page.get_by_role('button', name='Save Recipe', exact=True).click()
-    expect(page.get_by_role('button', name='Retry unchanged recipe save', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Save recipe', exact=True).click()
+    expect(page.get_by_role('button', name='Retry unchanged recipe', exact=True)).to_be_visible()
     expect(page.get_by_role('button', name='Cancel', exact=True)).to_be_disabled()
     expect(page.get_by_label('Recipe name', exact=True)).not_to_be_editable()
     expect(page.get_by_role('button', name='Recipe yield', exact=True)).to_be_disabled()
@@ -270,8 +270,8 @@ def test_recipe_modal_uncertain_save_cannot_be_canceled_or_duplicated(page, nati
     expect(page.get_by_label('Recipe name', exact=True)).to_be_visible()
     page.evaluate('window.__workspaceTest.flush()')
     page.reload()
-    page.get_by_role('button', name='Retry unchanged recipe save', exact=True).click()
-    expect(page.get_by_role('button', name='Edit Recipe', exact=True)).to_be_visible()
+    page.get_by_role('button', name='Retry unchanged recipe', exact=True).click()
+    expect(page.get_by_role('button', name='Edit recipe', exact=True)).to_be_visible()
     assert len(submissions) == 2 and submissions[0] == submissions[1]
     saved = production(i).recipes(i.tokens['owner'])['items']
     assert len(saved) == 1 and saved[0]['name'] == 'Recovered flavor'

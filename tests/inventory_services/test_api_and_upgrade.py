@@ -16,7 +16,7 @@ def test_native_catalog_and_shelf_flow(inventory):
     result=post(f'/shelves/{s["id"]}/products/{p["id"]}',version=1,active=True)
     assert result.status_code==200,result.text
     read=client.get('/api/mobile/inventory/shelves/'+s['id'],headers=headers)
-    assert read.status_code==200 and read.json()['products']['items']==[p]
+    assert read.status_code==200 and read.json()['products']['items']==[{**p,'storeQuantity':None}]
     assert read.headers['cache-control']=='no-store'
     conflict=post('/products',name='Duplicate',sku='001',baseUnit='kg')
     assert conflict.status_code==409 and conflict.json()['errorCode']=='duplicate_identifier'
@@ -54,7 +54,7 @@ def test_upgrade_from_014_retains_existing_store_and_is_repeatable(empty_databas
     assert len(migrate(connect,directory=old))==14
     with connect() as c:
         sid=c.execute("INSERT INTO stores(name,access_code_hash) VALUES('Existing store','existing') RETURNING id").fetchone()[0]
-    assert migrate(connect)==['015_inventory_catalog_and_shelves.sql', '016_product_container_amounts.sql', '017_inventory_counts.sql', '018_inventory_movements.sql', '019_production.sql', '020_production_accounts.sql']
+    assert migrate(connect)==['015_inventory_catalog_and_shelves.sql', '016_product_container_amounts.sql', '017_inventory_counts.sql', '018_inventory_movements.sql', '019_production.sql', '020_production_accounts.sql', '021_inventory_packages.sql', '022_inventory_package_links.sql', '023_store_forecasts.sql', '024_inventory_package_weight_units.sql']
     assert migrate(connect)==[]
     with connect() as c:
         assert c.execute('SELECT name FROM stores WHERE id=%s',(sid,)).fetchone()[0]=='Existing store'

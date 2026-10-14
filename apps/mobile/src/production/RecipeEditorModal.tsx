@@ -13,17 +13,31 @@ import { inventoryApi, units, type Product } from '@/src/inventory/api';
 import { newUuid, validAmount, type ProductionUnit, type Recipe, type RecipeInput } from './api';
 import { useProduction } from './shared';
 
-type DraftIngredient = RecipeInput['ingredients'][number] & { name: string; sku: string; baseUnit: ProductionUnit };
+type DraftIngredient = RecipeInput['ingredients'][number] & {
+  name: string;
+  sku: string;
+  baseUnit: ProductionUnit;
+  previousBaseUnit: ProductionUnit | null;
+};
 type RecipeDraft = Omit<RecipeInput, 'ingredients'> & { ingredients: DraftIngredient[]; requestId: string; pending: boolean };
 const blank = (): RecipeDraft => ({ name: '', yieldAmount: '4.5', yieldUnit: 'kg', instructions: '', ingredients: [], requestId: newUuid(), pending: false });
 const allowedYield = (draft: RecipeDraft) => draft.yieldUnit === 'kg' && (draft.yieldAmount === '4.5' || draft.yieldAmount === '6');
+const currentUnit = (ingredient: Recipe['ingredients'][number]) => ingredient.currentBaseUnit || ingredient.baseUnit;
+const defaultUnit = (baseUnit: ProductionUnit): ProductionUnit => baseUnit === 'each' ? 'each' : baseUnit;
 
 export function RecipeEditorModal({ item, visible, onClose, onSaved }: { item?: Recipe; visible: boolean; onClose: () => void; onSaved: (saved: Recipe) => void }) {
   const { api, actor, request, canManageRecipes } = useProduction();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const initial = () => item ? { name: item.name, yieldAmount: item.yieldAmount, yieldUnit: item.yieldUnit, instructions: item.instructions, ingredients: item.ingredients.map(x => ({ productId: x.productId, name: x.name, sku: x.sku, baseUnit: x.baseUnit, amount: x.amount, unit: x.unit })), requestId: newUuid(), pending: false } : blank();
-  const [draft, setDraft, reset] = useRememberedState(`production.recipe.${item?.id || 'new'}`, initial, item ? `${item.version}:${item.revisionId}` : 'new');
+  const initial = () => item ? { name: item.name, yieldAmount: item.yieldAmount, yieldUnit: item.yieldUnit, instructions: item.instructions, ingredients: item.ingredients.map(ingredient => {
+    const baseUnit = currentUnit(ingredient);
+    const changed = baseUnit !== ingredient.baseUnit;
+    return { productId: ingredient.productId, name: ingredient.name, sku: ingredient.sku, baseUnit,
+      previousBaseUnit: changed ? ingredient.baseUnit : null, amount: changed ? '' : ingredient.amount,
+      unit: changed ? defaultUnit(baseUnit) : ingredient.unit };
+  }), requestId: newUuid(), pending: false } : blank();
+  const unitSignature = item?.ingredients.map(ingredient => `${ingredient.productId}:${currentUnit(ingredient)}`).join(',');
+  const [draft, setDraft, reset] = useRememberedState(`production.recipe.${item?.id || 'new'}`, initial, item ? `${item.version}:${item.revisionId}:${unitSignature}` : 'new');
   const checkpoint = useWorkspaceCheckpoint();
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
@@ -49,10 +63,10 @@ export function RecipeEditorModal({ item, visible, onClose, onSaved }: { item?: 
   if (!canManageRecipes || !actor) return null;
   const phone = width < 700;
   return <Modal visible={visible || draft.pending} transparent animationType={phone ? 'slide' : 'fade'} statusBarTranslucent onRequestClose={close} accessibilityViewIsModal>
-    <View style={[styles.layer, phone ? styles.phoneLayer : styles.wideLayer]} accessibilityLabel={item ? 'Edit Recipe' : 'New Recipe'}>
+    <View style={[styles.layer, phone ? styles.phoneLayer : styles.wideLayer]} accessibilityLabel={item ? 'Edit recipe' : 'New recipe'}>
       <View style={styles.backdrop} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.dialog, phone ? [styles.sheet, { height: Math.min(height * 0.94, Math.max(0, height - insets.top - 12)), paddingBottom: insets.bottom }] : [styles.centered, { height: Math.max(0, Math.min(height - 64 - insets.top - insets.bottom, 860)) }]]}>
-        <View style={styles.header}><View style={layout.flex}><Text style={styles.eyebrow}>Recipe</Text><Text accessibilityRole="header" style={styles.title}>{item ? 'Edit Recipe' : 'New Recipe'}</Text></View>
+        <View style={styles.header}><View style={layout.flex}><Text style={styles.eyebrow}>Recipe</Text><Text accessibilityRole="header" style={styles.title}>{item ? 'Edit recipe' : 'New recipe'}</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="Close recipe editor" accessibilityState={{ disabled: locked }} disabled={locked} onPress={close} style={styles.close}><Ionicons name="close" size={25} color={locked ? colors.muted : colors.primary} /></Pressable></View>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <Notice message={error} kind="error" />
@@ -61,12 +75,12 @@ export function RecipeEditorModal({ item, visible, onClose, onSaved }: { item?: 
             <YieldSelector draft={draft} open={yieldOpen} disabled={locked} onToggle={() => setYieldOpen(v => !v)} onSelect={yieldAmount => { setDraft(v => ({ ...v, yieldAmount, yieldUnit: 'kg' })); setYieldOpen(false); }} />
             {!yieldIsAllowed && !draft.pending ? <Notice message={`This recipe currently makes ${draft.yieldAmount} ${draft.yieldUnit}. Choose 4.5 kg or 6 kg before saving changes.`} /> : null}
             <Field label="Instructions (optional)" value={draft.instructions} onChangeText={instructions => setDraft(v => ({ ...v, instructions }))} multiline style={{ minHeight: 110 }} maxLength={4000} editable={!locked} placeholder="Add the steps your crew needs to make this flavor." />
-            {draft.pending && !saving ? <Notice message="We could not verify the last save. Retry this unchanged recipe to recover its result. Editing and Cancel stay locked until it is resolved." /> : null}
-            <Body muted>Draft kept on this device until you save or cancel.</Body>
+            {draft.pending && !saving ? <Notice message="The last save is uncertain. Retry this recipe unchanged. Editing stays locked until it is resolved." /> : null}
+            <Body muted>Saved on this device until you save or cancel.</Body>
           </Card><SelectedIngredients draft={draft} disabled={locked} setDraft={setDraft} /></Column>
-          <Column><ProductPicker catalog={catalog} selected={draft.ingredients.map(x => x.productId)} disabled={locked || draft.ingredients.length >= 50} onAdd={product => setDraft(v => v.ingredients.length >= 50 ? v : ({ ...v, ingredients: [...v.ingredients, { productId: product.id, name: product.name, sku: product.sku, baseUnit: product.baseUnit as ProductionUnit, amount: '1', unit: product.baseUnit === 'each' ? 'each' : product.baseUnit === 'kg' ? 'kg' : 'g' }] }))} /></Column></Columns>
+          <Column><ProductPicker catalog={catalog} selected={draft.ingredients.map(x => x.productId)} disabled={locked || draft.ingredients.length >= 50} onAdd={product => setDraft(v => v.ingredients.length >= 50 ? v : ({ ...v, ingredients: [...v.ingredients, { productId: product.id, name: product.name, sku: product.sku, baseUnit: product.baseUnit as ProductionUnit, previousBaseUnit: null, amount: '1', unit: product.baseUnit === 'each' ? 'each' : product.baseUnit === 'kg' ? 'kg' : 'g' }] }))} /></Column></Columns>
         </ScrollView>
-        <View style={styles.footer}><View style={styles.footerButton}><Button title="Cancel" variant="quiet" disabled={locked} onPress={close} /></View><View style={styles.footerButton}><Button title={draft.pending && !saving ? 'Retry unchanged recipe save' : 'Save Recipe'} loading={saving} disabled={!valid} onPress={() => { void save(); }} /></View></View>
+        <View style={styles.footer}><View style={styles.footerButton}><Button title="Cancel" variant="quiet" disabled={locked} onPress={close} /></View><View style={styles.footerButton}><Button title={draft.pending && !saving ? 'Retry unchanged recipe' : 'Save recipe'} loading={saving} disabled={!valid} onPress={() => { void save(); }} /></View></View>
       </KeyboardAvoidingView>
     </View>
   </Modal>;
@@ -81,13 +95,19 @@ function YieldSelector({ draft, open, disabled, onToggle, onSelect }: { draft: R
 
 function SelectedIngredients({ draft, disabled, setDraft }: { draft: RecipeDraft; disabled: boolean; setDraft: React.Dispatch<React.SetStateAction<RecipeDraft>> }) {
   const setIngredient = (index: number, change: Partial<DraftIngredient>) => setDraft(v => ({ ...v, ingredients: v.ingredients.map((x, i) => i === index ? { ...x, ...change } : x) }));
-  return <><Heading>Recipe ingredients</Heading>{!draft.ingredients.length ? <Card><Body>Choose ingredients from the catalog. Nothing is added until you pick it.</Body></Card> : null}<InventoryList>{draft.ingredients.map((x, index) => <Card key={x.productId} style={styles.ingredient}><View style={layout.row}><View style={layout.flex}><Text style={styles.ingredientName}>{x.name}</Text><Body muted>SKU {x.sku}</Body></View><Pressable accessibilityRole="button" accessibilityLabel={`Remove ${x.name}`} disabled={disabled} onPress={() => setDraft(v => ({ ...v, ingredients: v.ingredients.filter(y => y.productId !== x.productId) }))} style={styles.iconButton}><Ionicons name="remove-circle-outline" size={25} color={colors.danger} /></Pressable></View><View style={layout.row}><View style={layout.flex}><Field label="Amount" value={x.amount} onChangeText={amount => setIngredient(index, { amount })} keyboardType="decimal-pad" editable={!disabled} hint={!validAmount(x.amount, x.unit) ? (x.unit === 'each' ? 'Enter a whole item count.' : 'Enter an amount greater than zero.') : undefined} /></View><View style={layout.flex}><Text style={styles.label}>Unit</Text>{x.baseUnit === 'each' ? <Pill label="each" /> : <View style={styles.units}>{(['g', 'kg'] as const).map(unit => <Pressable key={unit} accessibilityRole="button" accessibilityLabel={`Use ${unit} for ${x.name}`} accessibilityState={{ selected: x.unit === unit, disabled }} disabled={disabled} onPress={() => setIngredient(index, { unit })} style={[styles.unitButton, x.unit === unit && styles.unitSelected]}><Text style={[styles.unitText, x.unit === unit && styles.unitTextSelected]}>{unit}</Text></Pressable>)}</View>}<Text style={styles.hint}>SKU base: {x.baseUnit}</Text></View></View></Card>)}</InventoryList></>;
+  return <><Heading>Recipe ingredients</Heading>{!draft.ingredients.length ? <Card><Body>Choose ingredients from the catalog.</Body></Card> : null}<InventoryList>{draft.ingredients.map((x, index) => {
+    const amountValid = validAmount(x.amount, x.unit);
+    const amountHint = x.previousBaseUnit
+      ? `Measurement changed from ${x.previousBaseUnit} to ${x.baseUnit}.${amountValid ? '' : ' Enter a new amount.'}`
+      : !amountValid ? (x.unit === 'each' ? 'Enter a whole item count.' : 'Enter an amount greater than zero.') : undefined;
+    return <Card key={x.productId} style={styles.ingredient}><View style={layout.row}><View style={layout.flex}><Text style={styles.ingredientName}>{x.name}</Text><Body muted>SKU {x.sku}</Body></View><Pressable accessibilityRole="button" accessibilityLabel={`Remove ${x.name}`} disabled={disabled} onPress={() => setDraft(v => ({ ...v, ingredients: v.ingredients.filter(y => y.productId !== x.productId) }))} style={styles.iconButton}><Ionicons name="remove-circle-outline" size={25} color={colors.danger} /></Pressable></View><View style={layout.row}><View style={layout.flex}><Field label="Amount" value={x.amount} onChangeText={amount => setIngredient(index, { amount })} keyboardType="decimal-pad" editable={!disabled} hint={amountHint} /></View><View style={layout.flex}><Text style={styles.label}>Unit</Text>{x.baseUnit === 'each' ? <Pill label="each" /> : <View style={styles.units}>{(['g', 'kg'] as const).map(unit => <Pressable key={unit} accessibilityRole="button" accessibilityLabel={`Use ${unit} for ${x.name}`} accessibilityState={{ selected: x.unit === unit, disabled }} aria-selected={x.unit === unit} disabled={disabled} onPress={() => setIngredient(index, { unit })} style={[styles.unitButton, x.unit === unit && styles.unitSelected]}><Text style={[styles.unitText, x.unit === unit && styles.unitTextSelected]}>{unit}</Text></Pressable>)}</View>}<Text style={styles.hint}>Stock unit: {x.baseUnit}</Text></View></View></Card>;
+  })}</InventoryList></>;
 }
 
 function ProductPicker({ catalog, selected, disabled, onAdd }: { catalog: ReturnType<typeof inventoryApi>; selected: string[]; disabled: boolean; onAdd: (product: Product) => void }) {
   const [filters, setFilters] = useRememberedState('production.recipe.catalog', { query: '', search: '', cursor: '' });
   const resource = useInventoryResource(useCallback(() => catalog.products(filters.search, 'active', filters.cursor), [catalog, filters.search, filters.cursor]));
-  return <Card><Heading>Add an ingredient</Heading><Body>Pick from the company catalog. Products stay A–Z across pages.</Body><InventorySearch label="Find a catalog product" value={filters.query} onChange={query => setFilters(v => ({ ...v, query }))} submitLabel="Find products" disabled={disabled} onSubmit={() => setFilters(v => ({ ...v, search: v.query.trim(), cursor: '' }))} />{resource.loading ? <Loading label="Finding ingredients…" /> : resource.error || !resource.data ? <LoadError {...resource} /> : <><InventoryList>{resource.data.items.map(p => <InventoryItem key={p.id} title={p.name} subtitle={`SKU ${p.sku} · ${units[p.baseUnit]}`} label={selected.includes(p.id) ? `${p.name} is already in the recipe` : `Add ${p.name}`} icon={selected.includes(p.id) ? 'checkmark-circle-outline' : 'add-circle-outline'} disabled={disabled || selected.includes(p.id)} onPress={() => onAdd(p)} />)}</InventoryList><Pages next={resource.data.nextCursor} cursor={filters.cursor} setCursor={cursor => setFilters(v => ({ ...v, cursor }))} /></>}</Card>;
+  return <Card><Heading>Add an ingredient</Heading><InventorySearch label="Find a catalog product" value={filters.query} onChange={query => setFilters(v => ({ ...v, query }))} submitLabel="Find products" disabled={disabled} onSubmit={() => setFilters(v => ({ ...v, search: v.query.trim(), cursor: '' }))} />{resource.loading ? <Loading label="Finding ingredients…" /> : resource.error || !resource.data ? <LoadError {...resource} /> : <><InventoryList>{resource.data.items.map(p => <InventoryItem key={p.id} title={p.name} subtitle={`SKU ${p.sku} · ${units[p.baseUnit]}`} label={selected.includes(p.id) ? `${p.name} is already in the recipe` : `Add ${p.name}`} icon={selected.includes(p.id) ? 'checkmark-circle-outline' : 'add-circle-outline'} disabled={disabled || selected.includes(p.id)} onPress={() => onAdd(p)} />)}</InventoryList><Pages next={resource.data.nextCursor} cursor={filters.cursor} setCursor={cursor => setFilters(v => ({ ...v, cursor }))} /></>}</Card>;
 }
 
 const styles = StyleSheet.create({

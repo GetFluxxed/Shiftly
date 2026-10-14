@@ -19,12 +19,11 @@ export function TodayScreen() {
   const firstName = (actor?.displayName || actor?.username || 'there').split(' ')[0];
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  return <Screen title={`${greeting},\n${firstName}.`} eyebrow={new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-    subtitle="A little clarity for the shift ahead.">
+  return <Screen title={`${greeting},\n${firstName}.`} eyebrow={new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}>
     {showHeadsUp ? <HeadsUpCard /> : null}
     <Card style={styles.storeCard}>
       <View style={layout.row}><Ionicons name="storefront-outline" size={25} color={colors.onPrimary} />
-        <View style={layout.flex}><Text style={styles.storeLabel}>YOUR WORKSPACE</Text>
+        <View style={layout.flex}><Text style={styles.storeLabel}>CURRENT STORE</Text>
           <Text style={styles.storeName}>{store?.storeName || 'Current store'}</Text></View>
       </View>
       <View style={[layout.wrap, { alignItems: 'center', justifyContent: 'space-between' }]}>
@@ -37,18 +36,18 @@ export function TodayScreen() {
       </Pressable> : null}
     </Card>
     <ActionGrid>
-      {reports ? <ActionTile title={can('reports.view') ? 'Read Shift Reports' : 'Write a Shift Report'}
+      {reports ? <ActionTile title={can('reports.view') ? 'Shift reports' : 'Write shift report'}
         icon={can('reports.view') ? 'reader-outline' : 'create-outline'} onPress={() => router.push('/reports')} /> : null}
-      {can('inventory.view') ? <ActionTile title="Visit Inventory" icon="cube-outline"
+      {can('inventory.view') ? <ActionTile title="Inventory" icon="cube-outline"
         onPress={() => router.push('/inventory')} /> : null}
-      {can('production.view') ? <ActionTile title="Open Production" icon="restaurant-outline"
+      {can('production.view') ? <ActionTile title="Production" icon="restaurant-outline"
         onPress={() => router.push('/production')} /> : null}
       {can('memberships.manage') || actor?.role === 'manager' ? <ActionTile
-        title={actor?.role === 'owner' ? 'Owner Workspace' : 'Manage Your Team'}
-        label={can('memberships.manage') ? (actor?.role === 'owner' ? 'Owner Workspace' : 'Manage Your Team') : 'Manage Your Team. Team management permission required.'}
+        title={actor?.role === 'owner' ? 'Owner tools' : 'Manage team'}
+        label={can('memberships.manage') ? (actor?.role === 'owner' ? 'Owner tools' : 'Manage team') : 'Manage team. Permission required.'}
         icon="people-outline" disabled={!can('memberships.manage')}
         onPress={() => router.push(actor?.role === 'owner' ? '/owner' : '/team')} /> : null}
-      <ActionTile title="Your Account" icon="person-circle-outline" onPress={() => router.push('/accounts')} />
+      <ActionTile title="Account" icon="person-circle-outline" onPress={() => router.push('/accounts')} />
     </ActionGrid>
   </Screen>;
 }

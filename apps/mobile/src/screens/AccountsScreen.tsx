@@ -61,7 +61,7 @@ export function AccountsScreen() {
   };
   const chooseStore = (storeId: number, storeName: string) => {
     if (!canSwitchStore || storeId === actor?.storeId) return;
-    Alert.alert(`Switch to ${storeName}?`, 'Your workspace will reload for this store. Unsent notes will be cleared.', [
+    Alert.alert(`Switch to ${storeName}?`, 'Switching stores clears unsent notes.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Switch store', onPress: () => { void task.run(() => switchStore(storeId)); } },
     ]);
@@ -111,11 +111,11 @@ export function AccountsScreen() {
           onPress={() => openPanel('store')}
           disabled={unavailable}
         />
-        <ActionTile title="View permissions" icon="key-outline"
+        <ActionTile title="Permissions" icon="key-outline"
           onPress={() => openPanel('permissions')} disabled={unavailable} />
-        <ActionTile title="Sign-in & security" icon="shield-checkmark-outline"
+        <ActionTile title="Security" icon="shield-checkmark-outline"
           onPress={() => openPanel('security')} disabled={unavailable} />
-        <ActionTile title="Sign Out" icon="log-out-outline"
+        <ActionTile title="Sign out" icon="log-out-outline"
           onPress={() => openPanel('signOut')} disabled={unavailable} />
       </ActionGrid>
       {canAdministerTeam ? <Pressable accessibilityRole="link" accessibilityLabel="Team administration"
@@ -131,8 +131,8 @@ export function AccountsScreen() {
       {panel === 'store' ? <Card>
         <Heading>{canSwitchStore ? 'Switch store' : 'Current store'}</Heading>
         <Body muted>{canSwitchStore
-          ? 'Choose the store you want to work in. Your role and permissions may differ by store.'
-          : 'This is the store assigned to your account.'}</Body>
+          ? 'Roles and permissions may vary by store.'
+          : 'Assigned to your account.'}</Body>
         {canSwitchStore ? <View style={layout.smallGap}>{stores.map((item) => <Pressable key={item.storeId}
           accessibilityRole="button" accessibilityLabel={`Switch to ${item.storeName}`}
           accessibilityState={{ selected: item.storeId === actor?.storeId, disabled: unavailable }}
@@ -155,16 +155,15 @@ export function AccountsScreen() {
 
       {panel === 'permissions' ? <Card>
         <Heading>Your access at this store</Heading>
-        <Body muted>Access is set by your account administrator and can differ between stores.</Body>
+        <Body muted>Your administrator sets access for each store.</Body>
         {actor?.capabilities.length ? actor.capabilities.map((capability) => <View key={capability} style={layout.row}>
           <Ionicons name="checkmark-circle-outline" color={colors.primary} size={22} />
-          <View style={layout.flex}><Body>{permissionLabels[capability] || 'Workspace access'}</Body></View>
-        </View>) : <Body muted>No module permissions are assigned at this store.</Body>}
+          <View style={layout.flex}><Body>{permissionLabels[capability] || 'Store access'}</Body></View>
+        </View>) : <Body muted>No permissions assigned.</Body>}
       </Card> : null}
 
       {panel === 'security' ? <Card>
-        <Heading>Sign-in & security</Heading>
-        <Body muted>Keep your account personal, even when devices are shared.</Body>
+        <Heading>Security</Heading>
         {changingPassword ? <View style={layout.gap}>
           <Field label="Current password" value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry
             autoCapitalize="none" autoCorrect={false} textContentType="password" autoComplete="current-password" maxLength={1024}
@@ -197,8 +196,8 @@ export function AccountsScreen() {
       {panel === 'signOut' ? <Card>
         <Heading>Sign out of this device?</Heading>
         <Body muted>You will need your username and password to sign in again.</Body>
-        <Button title="Sign Out" variant="danger" loading={unavailable} onPress={() => { void task.run(() => signOut()); }} />
-        <Button title="Cancel Sign Out" variant="quiet" disabled={unavailable} onPress={closePanel} />
+        <Button title="Sign out" variant="danger" loading={unavailable} onPress={() => { void task.run(() => signOut()); }} />
+        <Button title="Cancel" variant="quiet" disabled={unavailable} onPress={closePanel} />
       </Card> : null}
     </View>}
   </Screen>;

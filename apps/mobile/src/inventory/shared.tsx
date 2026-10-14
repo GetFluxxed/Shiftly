@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, usePathname, useRouter, type Href } from 'expo-router';
+import { inventoryBackLabel, inventoryParent, inventoryRoute, inventoryTarget } from './navigation';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '@/src/ui/theme';
@@ -15,17 +16,39 @@ export function useInventory() {
   return { ...session, api, identity, canEdit: !!session.actor?.capabilities.includes('catalog.manage'),
     canConfigure: !!session.actor?.capabilities.includes('configuration.manage') };
 }
-const inventoryBackLabels = {
-  '/inventory': 'Back to inventory', '/catalog': 'Back to catalog', '/stock': 'Back to current inventory', '/shelves': 'Back to Open Shelves',
-} as const;
-export function InventoryPage({ title, children, backTo = '/inventory' }: React.PropsWithChildren<{
-  title: string; backTo?: keyof typeof inventoryBackLabels;
+export function useInventoryNavigation() {
+  const router = useRouter(); const pathname = usePathname(); const params = useLocalSearchParams();
+  const current = inventoryRoute(pathname, params) || { pathname: '/inventory' };
+  const route = (href: Href) => inventoryRoute(typeof href === 'string' ? href : href.pathname,
+    typeof href === 'string' ? {} : href.params) || { pathname: '/inventory' };
+  const parent = (fallback: Href) => {
+    const target = inventoryParent(params.inventoryTrail, route(fallback));
+    return { href: target as Href, label: inventoryBackLabel(target.pathname) };
+  };
+  return {
+    open: (href: Href) => router.push(inventoryTarget(current, params.inventoryTrail, route(href)) as Href),
+    replace: (href: Href, options?: { dropParents?: number }) => router.replace(
+      inventoryTarget(current, params.inventoryTrail, route(href), 'replace', options?.dropParents) as Href),
+    back: (fallback: Href) => {
+      const target = parent(fallback).href;
+      const targetPath = typeof target === 'string' ? target : target.pathname;
+      // Inventory sections are separate hidden tabs. POP_TO only works inside
+      // one stack; a cross-section return must replace the selected tab route.
+      if (pathname.split('/')[1] === targetPath.split('/')[1]) router.dismissTo(target);
+      else router.replace(target);
+    },
+    parent,
+  };
+}
+export function InventoryPage({ title, children, backTo = '/inventory', backLabel, onBack, backDisabled = false }: React.PropsWithChildren<{
+  title: string; backTo?: Href; backLabel?: string; onBack?: () => void; backDisabled?: boolean;
 }>) {
-  const { actor, stores } = useSession(); const router = useRouter();
+  const { actor, stores } = useSession(); const nav = useInventoryNavigation();
   const allowed = actor?.capabilities.includes('inventory.view');
   const name = stores.find(s => s.storeId === actor?.storeId)?.storeName || 'Current store';
   return <Screen title={title} eyebrow="Inventory" subtitle={name} compact>
-    <Button title={inventoryBackLabels[backTo]} variant="quiet" icon="arrow-back" onPress={() => router.replace(backTo)} />
+    <Button title={backLabel || nav.parent(backTo).label} variant="quiet" icon="arrow-back" disabled={backDisabled}
+      onPress={onBack || (() => nav.back(backTo))} />
     {allowed ? children : <Card><Heading>Access is limited</Heading><Body>Your account does not have inventory access at this store.</Body></Card>}
   </Screen>;
 }

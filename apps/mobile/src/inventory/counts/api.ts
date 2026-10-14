@@ -1,15 +1,16 @@
 import { ApiError } from '../../api/client';
-import { MutationIdentity, validId, type Page, type Request, type StockUnit } from '../api';
+import { MutationIdentity, parsePackage, validId, type Package, type Page, type Request, type StockUnit } from '../api';
 
 export interface Count {
   id: string; storeId: number; businessDate: string; state: 'draft' | 'review' | 'posted' | 'cancelled'; version: number;
   startedAt: string; startedBy: string; reviewedAt: string | null; reviewedBy: string | null;
-  postedAt: string | null; postedBy: string | null; totalLines: number; countedLines: number; totalProducts: number;
+  postedAt: string | null; postedBy: string | null; totalLines: number; countedLines: number; totalProducts: number; countedProducts: number;
   configurationChanged?: boolean;
 }
-export interface SnapshotProduct { productId: string; name: string; sku: string; baseUnit: StockUnit; containerAmount: string | null }
+export interface SnapshotProduct { productId: string; name: string; sku: string; baseUnit: StockUnit; containerAmount: string | null; packages?: Package[] }
 export type Entry = { mode: 'total'; amount: string; unit: StockUnit }
-  | { mode: 'containers'; fullContainers: number; partialAmount: string; partialUnit: StockUnit };
+  | { mode: 'containers'; fullContainers: number; partialAmount: string; partialUnit: StockUnit }
+  | { mode: 'packages'; packages: { packageId: string; count: number }[]; partialAmount: string; partialUnit: StockUnit };
 export interface CountLine extends SnapshotProduct {
   id: string; shelfId: string | null; shelfName: string; quantity: string | null; entry: Entry | null;
   version: number; observedAt: string | null; observedBy: string | null;
@@ -32,12 +33,15 @@ function count(value: unknown): Count {
     && optionalTime(value.reviewedAt) && optionalTime(value.postedAt) && typeof value.startedBy === 'string'
     && (value.reviewedBy === null || typeof value.reviewedBy === 'string') && (value.postedBy === null || typeof value.postedBy === 'string')
     && integer(value.totalLines) && integer(value.countedLines) && Number(value.countedLines) <= Number(value.totalLines) && integer(value.totalProducts)
+    && integer(value.countedProducts) && Number(value.countedProducts) <= Number(value.totalProducts)
     && (value.configurationChanged === undefined || typeof value.configurationChanged === 'boolean'));
   return value as unknown as Count;
 }
 function product(value: unknown): asserts value is Record<string, unknown> {
   object(value); verify(validId(value.productId) && typeof value.name === 'string' && typeof value.sku === 'string'
-    && ['each', 'g', 'kg'].includes(String(value.baseUnit)) && quantity(value.containerAmount));
+    && ['each', 'g', 'kg'].includes(String(value.baseUnit)) && quantity(value.containerAmount)
+    && (value.packages === undefined || (Array.isArray(value.packages) && value.packages.length <= 40)));
+  if (Array.isArray(value.packages)) { const packages = value.packages.map(parsePackage); verify(packages.every((item: Package) => item.productId === value.productId)); value.packages = packages; }
 }
 function line(value: unknown): CountLine {
   product(value); verify(validId(value.id) && nullableId(value.shelfId) && typeof value.shelfName === 'string'
@@ -45,8 +49,9 @@ function line(value: unknown): CountLine {
     && (value.observedBy === null || typeof value.observedBy === 'string'));
   if (value.entry !== null) {
     object(value.entry); const e = value.entry;
+    const packages = e.mode === 'packages' && Array.isArray(e.packages) && e.packages.length <= 40 && e.packages.every((row: unknown) => { if (!row || typeof row !== 'object' || Array.isArray(row)) return false; const item = row as Record<string, unknown>; return validId(item.packageId) && integer(item.count) && Number(item.count) <= 1_000_000; }) && new Set(e.packages.map((row: { packageId: string }) => row.packageId)).size === e.packages.length && e.partialAmount !== null && quantity(e.partialAmount) && ['each', 'g', 'kg'].includes(String(e.partialUnit));
     verify((e.mode === 'total' && e.amount !== null && quantity(e.amount) && ['each', 'g', 'kg'].includes(String(e.unit)))
-      || (e.mode === 'containers' && integer(e.fullContainers) && e.partialAmount !== null && quantity(e.partialAmount) && ['each', 'g', 'kg'].includes(String(e.partialUnit))));
+      || (e.mode === 'containers' && integer(e.fullContainers) && e.partialAmount !== null && quantity(e.partialAmount) && ['each', 'g', 'kg'].includes(String(e.partialUnit))) || packages);
   }
   verify((value.quantity === null) === (value.entry === null));
   return value as unknown as CountLine;

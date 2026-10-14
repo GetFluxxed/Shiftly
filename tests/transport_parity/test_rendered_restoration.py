@@ -74,7 +74,7 @@ def test_report_lost_response_requires_acknowledgement_before_another_send(page,
         'Deposit is sealed; verify the safe log before resending.'
     )
     expect(page.get_by_role('button', name='Send shift report', exact=True)).to_be_disabled()
-    page.get_by_role('button', name='I checked — keep editing', exact=True).click()
+    page.get_by_role('button', name='I checked reports — keep editing', exact=True).click()
     expect(page.get_by_role('button', name='Send shift report', exact=True)).to_be_enabled()
 
 
@@ -136,7 +136,7 @@ def test_store_switch_drops_report_draft_from_previous_scope(page, native_accoun
     page.get_by_role('button', name='Switch store', exact=True).click()
     page.once('dialog', lambda dialog: dialog.accept())
     page.get_by_role('button', name='Switch to mobile-second', exact=True).click()
-    expect(page.get_by_role('button', name='View permissions', exact=True)).to_be_visible()
+    expect(page.get_by_role('button', name='Permissions', exact=True)).to_be_visible()
     assert page.evaluate('window.__accountsTest.getSnapshot().actor.storeId') == m.stores[1]
     open_reports(page)
     expect(page.get_by_label('Shift notes', exact=True)).to_have_value('')
@@ -146,7 +146,7 @@ def test_password_never_enters_workspace_checkpoint(page, native_accounts):
     base, _ = native_accounts
     known_password = 'checkpoint-must-never-store-this-password'
     page.goto(base + '/accounts?as=crew')
-    page.get_by_role('button', name='Sign-in & security', exact=True).click()
+    page.get_by_role('button', name='Security', exact=True).click()
     page.get_by_role('button', name='Change password', exact=True).click()
     page.get_by_label('Current password', exact=True).fill(known_password)
     page.get_by_label('New password', exact=True).fill(known_password + '-new')

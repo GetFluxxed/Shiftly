@@ -8,9 +8,14 @@ PAGE_SIZE = 40
 
 
 def product(row):
-    return {'id': str(row['id']), 'name': row['name'], 'sku': row['sku'],
+    result = {'id': str(row['id']), 'name': row['name'], 'sku': row['sku'],
             'baseUnit': row['base_unit'], 'active': row['active'], 'version': row['version'],
-            'containerAmount': decimal_text(row['container_amount']) if row['container_amount'] is not None else None}
+            'containerAmount': decimal_text(row['container_amount']) if row['container_amount'] is not None else None,
+            'containerLabelAmount': decimal_text(row['container_label_amount']) if row['container_label_amount'] is not None else None,
+            'containerLabelUnit': row['container_label_unit']}
+    if row.get('canonical_product_id') is not None:
+        result['canonicalProductId'] = str(row['canonical_product_id'])
+    return result
 
 
 def shelf(row):
@@ -28,12 +33,26 @@ class InventoryRepository:
         after_name, after_id = after if after else (None, None)
         with connection.cursor(row_factory=dict_row) as c:
             c.execute('''SELECT p.* FROM inventory_products p WHERE business_id=%s
+                         AND p.canonical_product_id IS NULL
                          AND (%s='all' OR p.active=(%s='active'))
                          AND (%s::text IS NULL OR (p.name_sort,p.id)>(%s::text COLLATE "C",%s::uuid))
                          AND (strpos(lower(p.name),lower(%s))>0 OR EXISTS (
-                             SELECT 1 FROM inventory_product_skus s WHERE s.business_id=p.business_id
-                             AND s.product_id=p.id AND strpos(s.sku_key,inventory_key(%s))>0))
-                         ORDER BY p.name_sort,p.id LIMIT %s''', (business_id, state, state, after_name, after_name, after_id, query, query, PAGE_SIZE+1))
+                             SELECT 1 FROM inventory_products source
+                             WHERE source.business_id=p.business_id AND source.canonical_product_id=p.id
+                               AND strpos(lower(source.name),lower(%s))>0) OR EXISTS (
+                             SELECT 1 FROM inventory_product_skus s
+                             JOIN inventory_products owner ON owner.business_id=s.business_id AND owner.id=s.product_id
+                             WHERE s.business_id=p.business_id
+                               AND COALESCE(owner.canonical_product_id,owner.id)=p.id
+                               AND strpos(s.sku_key,inventory_key(%s))>0) OR EXISTS (
+                             SELECT 1 FROM inventory_packages k
+                             JOIN inventory_products owner ON owner.business_id=k.business_id AND owner.id=k.product_id
+                             WHERE k.business_id=p.business_id
+                               AND COALESCE(owner.canonical_product_id,owner.id)=p.id
+                               AND strpos(k.name_key,inventory_key(%s))>0))
+                         ORDER BY p.name_sort,p.id LIMIT %s''',
+                      (business_id, state, state, after_name, after_name, after_id,
+                       query, query, query, query, PAGE_SIZE+1))
             rows = c.fetchall()
         return {'items': [product(r) for r in rows[:PAGE_SIZE]],
                 'nextCursor': encode_product_cursor(rows[PAGE_SIZE-1]['name_sort'], rows[PAGE_SIZE-1]['id']) if len(rows)>PAGE_SIZE else None}
@@ -47,6 +66,20 @@ class InventoryRepository:
                          ORDER BY p.id''', (business_id, list(skus)))
             return [product(row) for row in c.fetchall()]
 
+    def lookup_by_skus(self, connection, business_id, skus):
+        with connection.cursor(row_factory=dict_row) as c:
+            c.execute('''SELECT canonical.*,COALESCE(alias_package.redirect_package_id,s.package_id) AS package_id
+                         FROM inventory_product_skus s
+                         JOIN inventory_products source ON source.business_id=s.business_id AND source.id=s.product_id
+                         JOIN inventory_products canonical ON canonical.business_id=source.business_id
+                           AND canonical.id=COALESCE(source.canonical_product_id,source.id)
+                         LEFT JOIN inventory_packages alias_package ON alias_package.business_id=s.business_id
+                           AND alias_package.id=s.package_id
+                         WHERE s.business_id=%s AND s.sku_key=ANY(
+                             SELECT inventory_key(value) FROM unnest(%s::text[]) AS value)
+                         ORDER BY canonical.id,package_id NULLS FIRST''', (business_id, list(skus)))
+            return [(product(row), str(row['package_id']) if row['package_id'] else None) for row in c.fetchall()]
+
     def reserve_sku(self, connection, business_id, product_id, sku):
         row = connection.execute('SELECT product_id FROM inventory_product_skus WHERE business_id=%s AND sku_key=inventory_key(%s)',
                                  (business_id, sku)).fetchone()
@@ -57,12 +90,18 @@ class InventoryRepository:
         return True
 
     def create_product(self, connection, actor, product_id, fields):
-        connection.execute('INSERT INTO inventory_products(id,business_id,sku,name,base_unit,container_amount) VALUES(%s,%s,%s,%s,%s,%s)',
-                           (product_id, actor.business_id, fields['sku'], fields['name'], fields['baseUnit'], fields.get('containerAmount')))
+        connection.execute('''INSERT INTO inventory_products
+            (id,business_id,sku,name,base_unit,container_amount,container_label_amount,container_label_unit)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s)''',
+            (product_id, actor.business_id, fields['sku'], fields['name'], fields['baseUnit'], fields.get('containerAmount'),
+             fields.get('containerLabelAmount'), fields.get('containerLabelUnit')))
 
     def edit_product(self, connection, actor, product_id, fields):
-        connection.execute('UPDATE inventory_products SET name=%s,sku=%s,container_amount=%s,version=version+1,updated_at=NOW() WHERE business_id=%s AND id=%s',
-                           (fields['name'], fields['sku'], fields['containerAmount'], actor.business_id, product_id))
+        connection.execute('''UPDATE inventory_products SET name=%s,sku=%s,container_amount=%s,
+            container_label_amount=%s,container_label_unit=%s,version=version+1,updated_at=NOW()
+            WHERE business_id=%s AND id=%s''',
+            (fields['name'], fields['sku'], fields['containerAmount'], fields.get('containerLabelAmount'),
+             fields.get('containerLabelUnit'), actor.business_id, product_id))
 
     def product_state(self, connection, actor, product_id, active):
         connection.execute('UPDATE inventory_products SET active=%s,version=version+1,updated_at=NOW() WHERE business_id=%s AND id=%s',
@@ -84,13 +123,15 @@ class InventoryRepository:
 
     def placements(self, connection, store_id, shelf_id, after):
         with connection.cursor(row_factory=dict_row) as c:
-            c.execute('''SELECT p.* FROM inventory_shelf_products a JOIN inventory_products p
+            c.execute('''SELECT p.*,b.quantity AS store_quantity FROM inventory_shelf_products a JOIN inventory_products p
                          ON p.business_id=a.business_id AND p.id=a.product_id
+                         LEFT JOIN inventory_stock_balances b
+                           ON b.business_id=a.business_id AND b.store_id=a.store_id AND b.product_id=a.product_id
                          WHERE a.store_id=%s AND a.shelf_id=%s AND a.active
                            AND (%s::uuid IS NULL OR p.id>%s::uuid) ORDER BY p.id LIMIT %s''',
                       (store_id, shelf_id, after, after, PAGE_SIZE+1))
             rows = c.fetchall()
-        return {'items': [product(r) for r in rows[:PAGE_SIZE]],
+        return {'items': [{**product(r), 'storeQuantity': decimal_text(r['store_quantity']) if r['store_quantity'] is not None else None} for r in rows[:PAGE_SIZE]],
                 'nextCursor': str(rows[PAGE_SIZE-1]['id']) if len(rows)>PAGE_SIZE else None}
 
     def create_shelf(self, connection, actor, shelf_id, name):

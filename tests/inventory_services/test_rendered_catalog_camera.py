@@ -42,6 +42,7 @@ def test_saved_milk_repeat_native_scans_show_name_without_creation(page, native_
     url, i = native_inventory
     start_camera(page, url)
     scan(page, '6749118517', 'org.iso.Code39')
+    page.get_by_role('button', name='Create new item', exact=True).click()
     expect(page.get_by_label('SKU', exact=True)).to_have_value('6749118517')
     page.get_by_label('Product name', exact=True).fill('Low-Heat Non-Fat Dry Milk')
     page.get_by_role('button', name='Create product', exact=True).click()
@@ -49,7 +50,7 @@ def test_saved_milk_repeat_native_scans_show_name_without_creation(page, native_
     for kind in ('code39', 'org.iso.Code39'):
         page.get_by_role('button', name='Scan next product', exact=True).click()
         scan(page, '6749118517', kind)
-        expect(page.get_by_text('Low-Heat Non-Fat Dry Milk is already in the catalog.', exact=True)).to_be_visible()
+        expect(page.get_by_text('Low-Heat Non-Fat Dry Milk is already in the catalog as Container.', exact=True)).to_be_visible()
         expect(page.get_by_label('Product name', exact=True)).to_have_count(0)
         expect(page.get_by_role('button', name='Create product', exact=True)).to_have_count(0)
     if directory := os.environ.get('INVENTORY_SCREENSHOT_DIR'):
@@ -76,3 +77,14 @@ def test_existing_padded_gtin_matches_short_native_scan_without_new_product(page
     expect(page.get_by_label('SKU', exact=True)).to_have_value('00072488009455')
     with i.connect() as connection:
         assert connection.execute('SELECT id::text FROM inventory_products').fetchall() == [(product['id'],)]
+
+
+def test_camera_header_back_returns_to_code_entry_before_catalog(page, native_inventory):
+    url, _ = native_inventory
+    start_camera(page, url)
+    expect(page.get_by_label('Barcode camera preview')).to_be_visible()
+    page.get_by_role('button', name='Back to scanner', exact=True).click()
+    expect(page.get_by_label('Barcode or SKU', exact=True)).to_be_visible()
+    expect(page.get_by_label('Barcode camera preview')).to_have_count(0)
+    page.get_by_role('button', name='Back to catalog', exact=True).click()
+    expect(page.get_by_role('button', name='Scan product', exact=True)).to_be_visible()
