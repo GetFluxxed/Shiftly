@@ -47,83 +47,106 @@ When finished, remove the disposable database:
 docker stop shiftly-test-db
 ```
 
-## Coverage
+## Coverage and appropriate checks
 
-- Manager signup, login, session creation and revocation
-- Crew authentication and manager access to crew reporting
-- Malformed login requests and database health/startup failures
-- Report queue processing and job completion
-- Duplicate submissions within and across stores, including concurrent requests
-- Transaction rollback when creating a report's background job fails
-- Fresh schema setup and upgrades that preserve reports, jobs and briefings
-- Test database isolation and refusal to use the application database implicitly
-- Concurrent login reservations, failure-window expiry and successful-login recovery
-- Weekly generation capacity, nonblocking store locks and cleanup after provider failures
-- Weekly cache validation, complete-report coverage counts and source invalidation
-- Weekly endpoint authorization, pending responses and migration 011 upgrades
-- Named crew/manager/owner/admin authentication, lifecycle and scoped permissions
-- Both-transport account request/response, mixed-cookie and stale-store contracts
-- Browser invitations, activation, supervised recovery, password changes,
-  team administration, store selection, logout-all and shared-crew cutover
-- Private state and unfinished drafts cleared after another tab changes identity
-  or store; permission-aware desktop/mobile Accounts and empty Inventory pages
+The suite covers individual invitations/accounts and store scope; both browser
+transports and native API contracts; report submission, durable workers and
+weekly summaries; catalog/barcode/package conversions and measurement correction;
+counts, exact stock/movement history; recipe revisions, production confirmation
+and advisory forecast validation/recovery; native restoration, compact layouts,
+permission loss, stale conflicts and uncertain writes. Retired public signup and
+shared login are tested as denied, not supported user workflows.
 
-GitHub Actions runs the suite with Python 3.12 and a disposable PostgreSQL 16
-service, supplying `TEST_DATABASE_URL` explicitly.
+Choose the checks affected by a change. Relevant commands from the root:
 
-`tests/contracts/` runs unchanged assertions through real HTTP listeners for
-both legacy and FastAPI. Added edge cases cover malformed and oversized bodies,
-unsupported routes/methods, cookie/security attributes, store selection,
-membership scope, revocation and account creation. `tests/browser/` exercises
-Chromium flows on both servers; `tests/transport_parity/` compares health/static
-responses. Existing service, transaction, worker crash/fencing and bounded-resource
-tests remain in the complete suite.
+```sh
+python scripts/verify_dependency_locks.py
+python -m pip check
+python -m compileall -q backend scripts reporting.py
+pnpm --dir apps/mobile check
+pnpm --dir apps/mobile export:native
+```
 
-CI now also runs `scripts/rehearse_release.py` against separate empty source and
-restore databases. It proves fresh/upgrade/repeat/concurrent migrations,
-SIGKILL recovery, stale-worker health, database outage/reconnect, legacy rollback,
-and a real archive restore. Restore checks compare every durable table, sequence
-state and foreign key, then sign in to the restored API. Only transient worker
-observations are excluded from row comparisons. Lease and heartbeat timestamps
-are advanced after an actual worker kill to avoid waiting several minutes.
-All child processes refuse external AI transport. CI uploads JUnit/browser
-artifacts and the release-rehearsal log.
+The native commands require the locked mobile install described in the
+[mobile README](../apps/mobile/README.md). Backend integration and rendered native
+journeys use the explicit disposable `TEST_DATABASE_URL` above; rendered journeys
+also need the mobile dependencies, Node and Playwright Chromium. Physical-device,
+signed-build and real-provider evaluations remain separate release gates.
 
-CI also runs `python -m backend.shiftly.runtime.accounts_rehearsal
---create-databases` using separate disposable `shiftly_accounts_rehearsal` and
-`shiftly_accounts_restore` databases. It verifies migration 013→014, explicit
-synthetic ownership mapping, account/session/credential revocations, named report
-actors and exact restoration of rows, sequences, foreign keys, checks, triggers
-and functions. Its created databases are removed even on failure. The account
-recovery log is uploaded as a separate CI artifact.
+For the engineering adoption changes, the focused regression sets are:
 
-See [focused verification evidence](workstreams/focused-verification.md).
+```sh
+TEST_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:55433/shiftly_test \
+  python -m pytest -q tests/test_worker_recovery.py tests/runtime_services \
+  tests/report_services tests/test_report_duplicates.py tests/test_weekly_overview.py \
+  tests/test_dependency_locks.py
+```
 
-## Coverage requirements for the next modules
+All provider calls in ordinary tests are deterministic or refused; tests must not
+incur AI charges. The modern worker startup test explicitly forbids importing the
+legacy root reporting module. Demo setup tests cover named owner login, zero stock,
+repeat/concurrent refusal, transaction rollback and hidden-input failure handling.
 
-These requirements come from [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
-FastAPI compatibility and worker recovery are exercised by the current suites
-and rehearsal described above. Inventory-specific rows remain future acceptance
-requirements, not implemented-feature claims.
+CI uses Python 3.12.15/PostgreSQL 16 and installs the shared locked runtime. It runs
+the complete Python/browser suite and native type/tests/exports, followed by two
+recovery rehearsals. Release rehearsal covers upgrade/repeat/concurrent migration,
+real worker termination and expired lease recovery, database outage/reconnect,
+compatible legacy reads, and real archive restoration with login. Account rehearsal
+starts at historical migration 013, upgrades through all current migrations and
+verifies ownership, revocations, named actors and restoration of rows, sequences,
+foreign keys, checks, triggers and functions. These are synthetic-data proofs,
+not hosted production recovery evidence.
 
-| Area | Required evidence |
-| --- | --- |
-| FastAPI migration | Old/new transport contract parity, cookies, validation errors, security headers and browser flows |
-| Worker reliability | Restart/lease recovery, nested failures, bounded retries, duplicate delivery and heartbeat alerts |
-| Authorization | Named actor permissions, revocation, selected-store scope and nested cross-store object denial |
-| Stock history | Balance rebuilds, atomic posting, transfers, reversals, idempotency and concurrent conflicts |
-| Partial inventory | Full/tare weights, decimal conversion, invalid measurements, versioned profiles and the 7,000 g worked example |
-| Camera counts | Duplicate/overlapping pictures, unknown items, hidden stock, incomplete coverage and reviewed proposals |
-| Media | Invalid/oversized images, private retrieval, metadata handling, deletion and interrupted upload |
-| Sales/forecasting | Import replay, refunds, recipe/yield mappings, stale inputs, unit consistency and no double usage deduction |
-| Stretch receiving | Barcode pack mappings, legitimate repeat scans, duplicate network events, discrepancies and partial receipts |
-| Mobile app | Real iPhone/Android capture, installation, permission denial, saved drafts, reconnect conflicts and shared-device logout |
+Camera counts, media upload/retention, invoice receipt posting and offline write
+queues remain future acceptance work. Their permission, malformed-input,
+idempotency, overlap/duplicate, accuracy and recovery criteria live in the
+[camera and invoice readiness plan](workstreams/camera-and-invoice-readiness.md).
+The stock and production tests prove their implemented rules, not physical usage
+measurement or forecast accuracy.
 
-Add persistent browser tests to CI during the foundation phase. Separate
-deterministic provider mocks from controlled real-photo/forecast evaluations;
-record pilot ground truth, quality thresholds, correction effort, latency and
-cost before enabling automation broadly. Routine test runs must not incur AI
-charges or access production images.
+## Dependency locks
+
+Use a fresh virtual environment; a developer's global package set is not the
+release input. CI and the Render manifest select Python 3.12.15. The production
+lock contains exact direct **and transitive** runtime pins, including upstream
+platform markers. The development lock includes it and adds test-only packages.
+Input ranges in `requirements.txt` describe permitted updates, not deploy inputs.
+
+```sh
+python3.12 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-dev.lock
+python scripts/verify_dependency_locks.py
+python -m pip check
+```
+
+The verifier reads installed package metadata, checks runtime dependency closure,
+compatible versions/extras, duplicate pins and matching inputs, and rejects a
+stale environment. It is a development tool using the already-pinned `packaging`
+module; production needs only `requirements.lock` and `pip check`.
+
+For a deliberate update:
+
+1. State the requirement and check the dependency's compatibility, license,
+   maintenance/security exposure, operational cost and replacement path. Change
+   only the intended input ranges/pins; preserve unrelated tested versions.
+2. Resolve in a clean Python 3.12 environment, using existing exact pins as
+   constraints for packages not being updated. Review resolver metadata/results;
+   do not overwrite the lock with a global `pip freeze`.
+3. Put the complete runtime closure, including required extras and platform
+   markers, in `requirements.lock`. Keep test/browser-only pins in
+   `requirements-dev.lock`, which must include the runtime lock exactly once.
+4. Create separate fresh runtime-only and development environments. Install their
+   respective locks and run `pip check`; run the verifier in development. Inspect
+   the runtime-only install for unexpected/unpinned packages. Resolve/install the
+   target Linux/Python architecture as well as local development platforms.
+5. Run the relevant application tests/builds and recovery checks, review the exact
+   dependency diff, and record evidence before updating the deployment. A passing
+   resolver is not evidence that authentication, stock or provider behavior works.
+
+Do not upgrade Expo/React Native packages independently of their supported SDK
+combination. Use the frozen pnpm lockfile, and evaluate device/build behavior for
+native dependency changes. Locking and `pip check` are not vulnerability audits.
 
 ## Safety rules
 

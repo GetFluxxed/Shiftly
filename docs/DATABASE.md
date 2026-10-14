@@ -1,166 +1,86 @@
-# Database baseline
+# Shiftly database
 
-Current schema: migrations 001–016, including named accounts, businesses, the
-shared product catalog and store shelves. The broader stock/counting additions
-at the end remain planned.
+Updated 2026-10-11. PostgreSQL is the system of record. The applied schema is
+defined by immutable files in `migrations/`; code and this summary do not replace
+those files.
 
-## Current schema overview
+## Migration history
 
-The app uses PostgreSQL and runs SQL migrations in order. The new runtime uses
-`python -m backend.shiftly.runtime.migrate` as a coordinated release command;
-FastAPI and the standalone worker require the schema to be ready at startup.
-The legacy entry point retains its compatibility migration wrapper.
+Migrations `001` through `024` are present and must run in filename order.
 
-### Core tables
-- reports
-- briefing_jobs
-- briefings
-- stores
-- manager_users
-- store_memberships
-- manager_sessions
-- crew_sessions
-- store_heads_up
-- weekly_overview_cache
-- schema_migrations
-- briefing_job_recovery
-- runtime_worker_status
-- businesses
-- account_users
-- business_memberships
-- account_store_memberships
-- account_sessions
-- account_audit
-- account_invitations
-- account_password_resets
+| Range | Purpose |
+| --- | --- |
+| 001-003 | reports, briefing jobs/results, manager sessions, removal of image submission |
+| 004-010 | stores, legacy manager/crew compatibility, Head's Up, store-scoped report identity |
+| 011-013 | weekly cache, briefing recovery/leases, runtime worker status |
+| 014 | businesses, individual users, memberships, sessions, invitations, recovery and audit |
+| 015-016 | business catalog, SKU history, store products/shelves and container amounts |
+| 017-018 | count sessions/lines, postings, balances, immutable stock movements and versions |
+| 019-020 | recipes/revisions, production logs/requests and production account role |
+| 021-022 | package definitions, package SKU links, canonical product and redirect links |
+| 023 | store forecasts, forecast jobs and idempotent request records |
+| 024 | explicit package/container weight-unit constraints |
 
-### Key relationships
-- reports belong to a store
-- briefing_jobs reference a report
-- briefings reference a report
-- manager_users are linked to stores through store_memberships
-- sessions are associated with a store or manager user depending on role
+Never edit an applied migration. Add the next numbered migration and document
+forward recovery. Back up valuable data before migration and rehearse fresh setup,
+upgrade/data preservation, and recovery with disposable databases.
 
-### Notable constraints
-- reports are keyed by UUID
-- report_hash is unique per store and employee+shift+notes combination
-- briefing_jobs are unique per report
-- store access codes are hashed and unique
-- session expiry is enforced with NOW() checks
+## Ownership and relationships
 
-## Existing migrations
+- `businesses` owns the shared catalog and business-level authority.
+- `stores` belongs to a business and owns operational state.
+- `account_users`, `business_memberships`, and
+  `account_store_memberships` define identity and scope.
+- `account_sessions` stores hashes of opaque credentials; invitations and
+  password-reset records are server-side, expiring, and single use.
+- Reports retain typed display metadata and may reference the verified actor.
+  Briefing jobs/results, weekly cache, Head's Up, and worker status support the
+  reporting runtime.
+- `inventory_products` and `inventory_packages` are business-scoped.
+  Historical SKUs, canonical links, and redirects preserve identity.
+- Store product/shelf placement is configuration; it does not create stock.
+- `inventory_stock_movements` is immutable history.
+  `inventory_stock_balances` is the transactionally updated projection.
+- Counts snapshot product/configuration and baseline versions. A posted count
+  creates stock movement(s); drafts and review do not.
+- Recipe revisions and production log ingredient snapshots preserve what was
+  confirmed. Idempotency request tables prevent duplicate posting.
+- Forecast records, jobs, and request keys are store scoped. Forecast output is
+  advisory and does not mutate balances.
 
-The migration sequence currently includes:
-- 001_initial_schema.sql
-- 002_manager_sessions.sql
-- 003_remove_image_submission.sql
-- 004_multi_tenant_access.sql
-- 005_crew_sessions.sql
-- 006_manager_credentials.sql
-- 007_allow_username_managers.sql
-- 008_store_heads_up.sql
-- 009_manager_last_sign_in.sql
-- 010_store_scoped_report_hash.sql
-- 011_weekly_overview_cache.sql
-- 012_briefing_job_recovery.sql
-- 013_runtime_operations.sql
-- 014_accounts_access.sql
-- 015_inventory_catalog_and_shelves.sql
-- 016_product_container_amounts.sql
+Foreign keys and composite business/store constraints prevent cross-scope links.
+Application authorization remains required; a foreign key alone is not access
+control.
 
-Migration 014 adds existing business/store ownership, named account memberships,
-sessions, invitations/recovery and audit history. Migration 015 reuses these IDs.
-It adds `inventory_products`, `inventory_product_skus` (current and reserved former
-SKUs), `inventory_store_products`, `inventory_shelves`, `inventory_shelf_products`,
-`inventory_changes` (actor and before/after history), and `inventory_requests`
-(scoped mutation replay results). Company/store composite foreign keys reject
-mis-scoped listings and placements. Products have stable UUIDs, fixed base units
-and optimistic versions; shelves are versioned per store. See the
-[inventory foundation](workstreams/inventory-foundation-and-shared-catalog.md).
+## Quantity and history invariants
 
-Migration 010 replaces the original global report-hash uniqueness constraint
-with uniqueness on `(store_id, report_hash)`. Identical reports at different
-stores are allowed; duplicates within the same store are rejected atomically,
-including simultaneous submissions. Legacy reports with no store retain their
-own unique-hash index. Existing report hashes, IDs, jobs and briefings are
-preserved.
+SKUs and barcodes are strings so leading zeros survive. New product base units
+are `each`, `g`, and `kg`. Exact `NUMERIC` arithmetic is authoritative;
+clients send decimal strings. Package/container sizes describe conversion or a
+full container, not current stock.
 
-Migration 011 adds one cached weekly overview per store without changing
-historical reports. Cache fingerprints include the complete reports supplied to
-the model, the total seven-day report count, model, prompt and input limits.
-Invalid provider responses are never cached, and invalid existing cache entries
-are regenerated.
+The first posted count establishes a balance without inventing a prior zero.
+Uncounted differs from explicitly counted zero. All required count lines must be
+complete, and stale balance/configuration versions must fail rather than overwrite
+newer work. Corrections and reversals append linked history; posted rows are not
+silently rewritten or deleted.
 
-Weekly overviews include the newest complete reports that fit both limits:
-50 reports and 20,000 input characters. The response distinguishes the total
-`reportCount` from `includedReportCount` and sets `truncated` when reports are
-omitted. The manager page explicitly labels partial coverage. No report is
-cut off mid-entry.
+Referenced products and packages are archived or redirected instead of erased.
+Historical recipe, count, movement, and production snapshots retain the conversion
+facts used at the time.
 
-## Data governance note
+## Operation and recovery
 
-The current design stores the original employee notes and saves the AI-generated briefing separately. This helps preserve the source report while allowing the generated summary to evolve separately.
+Run migrations as an explicit release step:
 
-## Future migration guidance
+```sh
+python -m backend.shiftly.runtime.migrate
+```
 
-Additive schema changes only. Preserve historical records, avoid rewriting applied migrations, and validate backfills before cutover.
+API/worker startup checks schema readiness and must not race to apply migrations.
+Runtime commands and hosted sequencing are in [DEPLOYMENT.md](DEPLOYMENT.md);
+disposable test/recovery database commands are in [TESTING.md](TESTING.md).
+`TEST_DATABASE_URL` must never fall back to `DATABASE_URL`.
 
-## Product container sizes and catalog order
-
-Migration 016 adds `inventory_products.container_amount` as nullable exact
-`NUMERIC`, with positive/range/precision checks and whole-item validation for
-`each`. Existing products retain unknown sizes (`NULL`); their identity, units,
-versions, SKU reservations and placements are unchanged by the migration.
-`name_sort` is generated from the existing normalized-name function, with an
-index on company/name/ID for alphabetical keyset pagination. Existing volume
-records are preserved for compatibility; the service permits only each/g/kg
-when creating new products. No stock balances are created by this migration.
-
-## Planned inventory schema boundaries
-
-The detailed model and invariants are in [INVENTORY.md](INVENTORY.md). Add these
-groups incrementally in their implementation phases, not as one speculative
-migration:
-
-- Extend existing company products and store listings with decimal quantities,
-  versioned pack/weight/tare conversions and supplier/barcode mappings.
-- Extend existing store shelves and assignments with area/rack/bin hierarchy,
-  par history and optional shelf targets.
-- Append-only stock movement events and transactionally maintained balance
-  projections, with linked reversals and paired transfers.
-- Count sessions, coverage, baseline versions, camera/manual observations,
-  open-container measurements and approval records.
-- Private media metadata, durable analysis jobs and versioned provider results.
-- Deduplicated sales batches, line-item/recipe mappings and forecast snapshots.
-- Invoice/receipt lines, scan events, discrepancies and unique posting references.
-
-Enforce store ownership across relationships, unit compatibility and replay
-uniqueness. Posting a count or receipt must not partially update its movement
-history and current balance. Historical records preserve the conversion and
-configuration versions that produced them; archive referenced catalog entries.
-
-Separate observed physical stock, book balances and sales projections. A photo
-is not a receipt, and a forecast is not a confirmed stock movement. Repeated
-uploads, approval retries and invoice imports must not duplicate quantities.
-
-Retain migrations 001–016 unchanged. Coordinate new migration numbers across
-worktrees and use the existing serialized runtime migration command. Test upgrade,
-repeat migration, compatible rollback and forward recovery against disposable
-PostgreSQL and staging copies.
-
-## Counts, stock movements and production — 2026-09-29
-
-Migration 017 implements reviewed physical counts and immutable count postings.
-Migration 018 adds `inventory_stock_movements`, backfills those postings in count
-lineage order, adds a per-product balance version and latest movement reference,
-and adds count baseline versions. Balance `count_id` still means the last physical
-count; `last_movement_id` identifies the latest stock change. Opening quantities
-remain distinct from changes against a known prior quantity.
-
-Migration 019 adds revisioned/sealed recipes, exact ingredient snapshots, store
-production logs, ingredients, reversals and request replay records. Confirmation
-posts all recipe deductions plus 1% in one authorized transaction. Migration 020
-adds the Production role and scoped capabilities; invitations remain baseline crew.
-Use new migrations rather than modifying an already installed migration. Back up
-before upgrade; the release rehearsal now restores recipe revisions, production
-logs/reversals, stock movements, counts and resumable drafts.
+Hosted backup availability, restore timing, migration rehearsal, and the contents
+of any production database are operational evidence and are not asserted here.

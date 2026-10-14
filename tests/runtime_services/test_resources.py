@@ -166,14 +166,68 @@ assert runtime.resources.pool is None
 
 
 def test_provider_uses_explicit_credentials_and_model(runtime_settings, monkeypatch):
-    import reporting
+    from backend.shiftly.runtime import provider as runtime_provider
     calls = []
-    monkeypatch.setattr(reporting, "call_openai", lambda *args, **kwargs: calls.append((args, kwargs)) or ACCEPTED)
+    monkeypatch.setattr(runtime_provider, "call_openai", lambda *args, **kwargs: calls.append((args, kwargs)) or ACCEPTED)
     monkeypatch.setenv("OPENAI_API_KEY", "unrelated-key")
     provider = make_provider(replace(runtime_settings, openai_api_key="injected-key", openai_model="injected-model"))
     assert not calls
     assert provider({"notes": "example"}, "injected-prompt") == ACCEPTED
     assert calls[0][1] == {"api_key": "injected-key", "model": "injected-model"}
+
+
+def test_modern_provider_and_worker_do_not_import_root_reporting():
+    script = '''
+import builtins
+from threading import Event
+original_import = builtins.__import__
+def checked_import(name, *args, **kwargs):
+    if name == "reporting":
+        raise AssertionError("modern runtime imported root reporting")
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = checked_import
+from backend.shiftly.runtime.provider import make_provider
+from backend.shiftly.jobs import worker
+from config import Settings
+
+class Result:
+    def fetchone(self): return (True,)
+class Ownership:
+    autocommit = False
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def execute(self, *args): return Result()
+class Resources:
+    connection = object()
+    def __init__(self, settings): pass
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def weekly_connection(self): return Ownership()
+class Status:
+    def __init__(self, *args, **kwargs): pass
+    def update(self, *args, **kwargs): pass
+class Forecast:
+    def __init__(self, *args, **kwargs): pass
+    def run_one(self): return False
+
+worker.DatabaseResources = Resources
+worker.require_schema = lambda connection: None
+worker.PersistentWorkerStatus = Status
+worker.ForecastWorker = Forecast
+stop = Event(); stop.set()
+worker.run_worker(
+    Settings(database_url="postgresql://invalid.invalid/unused"),
+    provider=lambda report: {}, forecast_provider=lambda report, prompt=None: {},
+    stop_event=stop,
+)
+assert callable(make_provider)
+'''
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "OPENAI_API_KEY": "", "DATABASE_URL": ""},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_pool_recovers_after_real_connection_loss(runtime_settings):

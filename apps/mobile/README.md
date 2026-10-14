@@ -14,13 +14,15 @@ native Team screens for invitations/reissue, existing-account assignment and
 store permissions/removal/restoration, plus an Owner workspace for business
 delegation, suspension/restoration, ownership transfer and shared-crew cutover.
 Inventory now includes a shared company product/SKU catalog with add, edit,
-archive and restore, plus named store shelves and assignment/removal of existing
-products. Owners or delegated catalog administrators manage shared products;
+archive and restore, package definitions and links, plus named store shelves and
+assignment/removal of existing products. Owners or delegated catalog administrators manage shared products;
 store configuration permission controls shelf changes. Catalog products now
 include an editable full-container amount, exact gram/kilogram equivalents and
 A–Z catalog ordering. New unit choices are each, grams and kilograms. Current stock,
-reviewed counts and confirmed production are implemented. Barcode capture assists
-catalog entry; shelf-photo counting and offline posting remain later phases. This is a development foundation; bundling is not a
+reviewed counts, confirmed production with its 1% ingredient allowance, and
+store-scoped production forecasts are implemented. Barcode capture assists
+catalog/package entry; shelf-photo counting, invoice receiving, and offline posting
+remain later phases. This is a development foundation; bundling is not a
 claim of physical-device or store-release verification.
 
 The [inventory foundation and shared catalog](../../docs/workstreams/inventory-foundation-and-shared-catalog.md)
@@ -35,8 +37,8 @@ session/store invalidation, with conservative fallback for older responses.
 - Expo Go on a compatible phone/tablet for initial development, or separately
   installed iOS/Android simulator tooling.
 - The Shiftly **FastAPI** server reachable from the device, a migrated development
-  PostgreSQL database and a named account with a store membership. Shared crew
-  passwords are browser enrollment compatibility, not native account credentials.
+  PostgreSQL database and a named account with a store membership. Historical
+  shared-credential rows are migration data, not supported account credentials.
 
 Dependencies are pinned in `package.json` and `pnpm-lock.yaml`. Use the committed
 lockfile; do not independently upgrade React or React Native outside the selected
@@ -44,9 +46,11 @@ Expo SDK's supported dependency set.
 
 ## Run the API
 
-From the repository root, install the Python dependencies and configure a private
-`.env` with your development database as described in the root README. Apply
-migrations before starting the API and worker:
+From the repository root, install the pinned Python dependencies. Export
+`DATABASE_URL` and other required backend settings in each terminal (or inject
+them through the documented secret manager). Migration and worker commands do not
+load `.env`; the API retains a compatibility loader, so explicit exports keep all
+processes aligned. Apply migrations before starting the API and worker:
 
 ```sh
 python -m backend.shiftly.runtime.migrate
@@ -65,9 +69,48 @@ the browser/legacy runtime and does not serve `/api/mobile`. Report quality chec
 and briefing generation use the configured backend AI provider; automated API
 tests mock it. Do not put AI keys or database credentials in the Expo environment.
 
-Use the existing account enrollment/operator process for a development named
-account. A fresh database does not imply an owner, and the mobile app does not
-create businesses or grant itself ownership.
+Use the existing account enrollment/operator process for an existing development
+database. The mobile app does not create businesses or grant itself ownership.
+
+### Create a fresh local demo
+
+For a new isolated demo, start a separate PostgreSQL 16 container on loopback.
+This uses port `55438` and database `shiftly_demo_local`; it does not modify or
+remove the Compose database on `55432`, test services on `55433`, or any existing
+database.
+
+```sh
+docker run --name shiftly-demo-postgres --detach \
+  --publish 127.0.0.1:55438:5432 \
+  --env POSTGRES_USER=shiftly \
+  --env POSTGRES_PASSWORD=change-me \
+  --env POSTGRES_DB=shiftly_demo_local \
+  postgres:16-alpine
+docker exec shiftly-demo-postgres \
+  pg_isready --username shiftly --dbname shiftly_demo_local
+```
+
+Choose a different local password if other users can access the development
+machine. Export the new database explicitly, migrate it, and run the guarded
+initializer from the repository root:
+
+```sh
+export DATABASE_URL='postgresql://shiftly:change-me@127.0.0.1:55438/shiftly_demo_local'
+python -m backend.shiftly.runtime.migrate
+DEMO_DATABASE_URL="$DATABASE_URL" \
+  python -m backend.shiftly.runtime.demo --create-empty-workspace
+```
+
+The initializer does not read `DATABASE_URL` or `.env` by itself. It requires an
+explicit `DEMO_DATABASE_URL` with a loopback host, database name beginning with
+`shiftly_demo_`, port, and user. It prompts without echo for a password twice and
+creates username `demo-owner`, business **Demo Company**, and store **Demo Store**.
+It creates no catalog items, recipes, or stock.
+
+The command refuses a database containing any business, store, account, or legacy
+manager and serializes initialization so concurrent runs cannot both succeed.
+Use the resulting `DATABASE_URL` in the API and worker terminals; do not point this
+initializer at an existing local, test, staging, or production database.
 
 ## Run the app
 
@@ -124,6 +167,9 @@ secure storage, network interruptions or remotely revoked access.
 The backend test suite continues to require an explicitly disposable
 `TEST_DATABASE_URL`; see [TESTING.md](../../docs/TESTING.md). Keep the existing
 browser/transport suite alongside native adapter checks.
+
+From the repository root, `pnpm --dir apps/mobile check` runs the type and unit
+checks together. Use the committed lockfile and pinned package manager.
 
 ## Session and data behavior
 
