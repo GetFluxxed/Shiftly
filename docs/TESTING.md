@@ -73,7 +73,7 @@ journeys use the explicit disposable `TEST_DATABASE_URL` above; rendered journey
 also need the mobile dependencies, Node and Playwright Chromium. Physical-device,
 signed-build and real-provider evaluations remain separate release gates.
 
-For the engineering adoption changes, the focused regression sets are:
+Focused runtime, worker and reporting regression set:
 
 ```sh
 TEST_DATABASE_URL=postgresql://shiftly_test:shiftly_test@127.0.0.1:55433/shiftly_test \
@@ -96,6 +96,11 @@ starts at historical migration 013, upgrades through all current migrations and
 verifies ownership, revocations, named actors and restoration of rows, sequences,
 foreign keys, checks, triggers and functions. These are synthetic-data proofs,
 not hosted production recovery evidence.
+
+Latest recorded CI result: [run 38652749388](https://github.com/GetFluxxed/Shiftly/actions/runs/38652749388)
+passed on `df53f98` (main, 2026-10-14). CI results verify only the exact revision
+they ran on. CI uses PostgreSQL 16; the hosted database is reported as PostgreSQL 18
+(see [DEPLOYMENT.md](DEPLOYMENT.md#configuration-drift-and-compatibility-checks)).
 
 Camera counts, media upload/retention, invoice receipt posting and offline write
 queues remain future acceptance work. Their permission, malformed-input,
@@ -188,7 +193,6 @@ fail-closed AI fixture.
 
 `tests/release_rehearsal/test_backup_restore.py` covers missing prerequisites,
 source/target reuse, failed/timed-out backup and restore, sanitized failures and
-the container archive pipeline. The real archive/restore and restored API smoke
-results are recorded in the focused verification handoff. Technical checks must
-be reviewed and merged with green CI to close Gate D. The disposable rehearsal
+the container archive pipeline. Dated real archive/restore results are kept in the
+[archived verification records](archive/README.md). The disposable rehearsal
 does not establish hosted staging or production readiness.

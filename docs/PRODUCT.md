@@ -1,70 +1,112 @@
 # Shiftly product direction
 
-Updated: 2026-09-22. Native client delivery:
-[NATIVE_APP_ROADMAP.md](NATIVE_APP_ROADMAP.md). Domain delivery plan:
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+Reviewed against source revision `df53f98` on 2026-10-21. This document records
+intended users, goals, platform commitments, success criteria and exclusions.
+Delivery order and status live in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md);
+per-platform screens live in [WORKFLOWS.md](WORKFLOWS.md).
 
-## Existing product
+## Purpose
 
-Shiftly supports named accounts with scoped crew/manager/admin/owner access,
-shared crew sign-in during enrollment, shift reports, manager review, AI
-briefings, weekly overviews, and a store Head's Up message. Original notes stay
-available alongside generated summaries. Current inventory functionality is
-not implemented.
+Shiftly is a store-scoped operations system for a small multi-store food business.
+It keeps shift handoffs, the ingredient catalog, physical stock, daily production
+and advisory production planning in one authoritative PostgreSQL record. People
+review and confirm every stock-changing action; AI output and client state never
+change stock by themselves.
 
-## Expanded product
+## Intended users
 
-Shiftly's primary new experience is a native phone and tablet application built
-with React Native, Expo and TypeScript, backed by the existing FastAPI services.
-The existing browser application remains available while native workflows reach
-parity. A separate React browser rewrite is outside this phase.
-
-The manager window will offer two distinct spaces:
-
-- **Operations:** existing reports, briefings, weekly overview, and Head's Up.
-- **Inventory:** a running digital tracker, shelf/location setup, pars, camera
-  counts, partial weights, shortage insights, and eventually invoice receiving.
-
-Both spaces retain the same authenticated account and visible selected store.
-Existing crew reporting remains available while the manager app evolves.
-
-## Inventory capabilities in scope
-
-| Capability | Intended user outcome |
+| Role | Primary needs |
 | --- | --- |
-| Catalog and units | Identify every item and its pack sizes and measurement units |
-| Shelves | Store explicit area/rack/shelf/bin information, assignments and capacity |
-| Par management | Update store-item targets with history; see items below target |
-| Running tracker | See stock, source, freshness, location, and posted changes |
-| Partial stock | Weigh opened inventory using explicit full weights and tare profiles |
-| Phone photos | Review camera-proposed counts of visible stock and reconcile them |
-| Shortage insight | Compare inventory with par and mapped sales demand, with explanations |
-| App experience | Install on a phone, capture conveniently, and recover interrupted drafts |
-| Stretch receiving | Scan codes against invoice lines and post accepted deliveries once |
+| Business owner | Company catalog, recipes, every store, team and ownership administration, final review authority |
+| Delegated administrator | Business administration explicitly delegated by an owner, limited to granted stores and capabilities |
+| Store manager | One store: shift reports and briefings, Heads Up, counts and approval, recipes, production review, forecasts, permitted team invitations |
+| Production staff | One store: record daily production against recipes and view inventory; no shift reports or store administration |
+| Crew | One store: submit shift reports and read Heads Up; optional inventory viewing and count entry when granted |
 
-Partial weights are part of the core inventory scope, not an optional stretch.
-SKU/barcode invoice receiving is the stretch goal. The detailed workflows and
-acceptance examples are in [INVENTORY.md](INVENTORY.md).
+All staff use individual, invitation-activated accounts. Role and capability
+details are in [SECURITY.md](SECURITY.md#roles-and-capabilities).
 
-## Trust and usability rules
+## Current goals
 
-- Clearly distinguish physical observations, book inventory, and estimates.
-- Human review precedes camera-generated stock changes.
-- Open containers and sealed packages must never be counted twice.
-- A repeat count reconciles stock rather than adding the entire count again.
-- Typed employee names do not authorize inventory actions.
-- Missing images or unavailable sales data are visible gaps, not invented values.
-- A manager can inspect and correct history without silently deleting it.
-- Manual counting, weighing, and receiving remain usable if AI is unavailable.
+1. Put a store's real catalog, package definitions, recipes and opening stock into
+   Shiftly and keep them trustworthy through reviewed counts and confirmed
+   production.
+2. Make daily work fast on phones and tablets: shift reports, Heads Up, counts,
+   production recording and their review.
+3. Give managers and owners explainable, advisory production suggestions based on
+   the store's own recorded data, clearly separated from confirmed stock.
+4. Reduce manual counting and receiving effort later through reviewed shelf-photo
+   proposals and invoice receiving, without weakening stock integrity.
+5. Remain operable, recoverable and transferable by a human maintainer, following
+   [ENGINEERING.md](../ENGINEERING.md).
 
-## Delivery boundaries
+## Platform commitments
 
-The next phases explicitly include FastAPI and inventory; the former
-baseline-only exclusions no longer apply. Preserve current data and browser
-contracts throughout the transport migration.
+- **Native app (primary).** React Native/Expo phone and tablet app in `apps/mobile`.
+  New staff workflows, including all inventory work, are built natively. A separate
+  React browser rewrite is not part of the current scope.
+- **Browser (compatibility surface).** The existing HTML pages remain supported for
+  sign-in, activation, crew reporting, the manager dashboard (including Weekly
+  Overview), Accounts & Access, and production recording. Supported browser flows
+  must keep working while they exist. Whether the browser gains further
+  workflows, or loses existing ones after native parity, is an
+  [open decision](IMPLEMENTATION_PLAN.md#open-owner-decisions). A feature existing
+  on only one platform is not, by itself, a parity requirement.
+- **Shared rules.** Both clients use the same server-side accounts, permissions,
+  services and data. Neither client is an authority for access or stock.
 
-The first native slice covers named accounts and daily reporting; full native
-account administration, stock workflows and camera assistance have separate gates.
-Signed native distribution requires real-device verification and a release review.
-Unattended camera stock posting, automatic purchasing, connected-scale hardware
-and automatic invoice OCR remain outside the initial release. Camera quality and forecast claims require real-store pilot evidence.
+## Product rules
+
+- Distinguish physical observations, book stock and estimates. Unknown stock is
+  not zero; an uncounted line is not an explicit zero.
+- Human review precedes every stock change. Drafts, previews, scans, photos and
+  forecasts never post stock.
+- Open containers and sealed packages are never counted twice. A repeat count
+  reconciles stock rather than adding the whole count again.
+- Production deducts each ingredient at recipe quantity × confirmed batches ×
+  1.01. The owner chose this fixed 1% allowance on 2026-09-29, replacing an earlier
+  proposed ±1% measured tolerance. The deduction is an estimate, not a weighed
+  measurement.
+- Forecasts analyze the store's own supplied records for each request. They do not
+  train or fine-tune a model on reports, recipes or photos.
+- Corrections append history; posted records are not silently edited or deleted.
+- Manual counting, production and (later) receiving remain usable when AI or the
+  camera is unavailable.
+
+## Success criteria
+
+| Area | Observable outcome |
+| --- | --- |
+| Data foundation | Every in-scope ingredient has one catalog identity, correct base unit, package definitions and barcodes; every active flavor has a reviewed recipe; a real opening count is posted |
+| Daily operation | A pilot store records shift reports, counts and production for an agreed period with no unexplained stock discrepancy attributable to the software |
+| Integrity | No duplicate posting, cross-store data exposure or unreviewed stock change in pilot evidence |
+| Forecasts | Advisory suggestions are measured against actual production; quality targets are an [open decision](IMPLEMENTATION_PLAN.md#open-owner-decisions) |
+| Operations | A maintainer can deploy, monitor, back up and restore the hosted system using repository documentation alone |
+| Assisted inventory | Shelf-photo and invoice features meet the gates in the [camera and invoice plan](workstreams/camera-and-invoice-readiness.md) before staff use |
+
+## Explicit exclusions
+
+These are outside the current product scope unless the owner explicitly changes it:
+
+- Public signup, shared crew credentials and password-only manager access
+  (retired on 2026-09-24 and not to be restored for compatibility).
+- Unattended camera stock posting, inferring partial weight or hidden stock from
+  a photo, and automatic invoice posting from extracted text.
+- Automatic purchasing or ordering.
+- Training or fine-tuning a model on store records as a prerequisite for any feature.
+- A separate React browser rewrite.
+- Offline stock posting until a server idempotency/conflict design is approved
+  (local draft restoration exists and is not offline submission).
+
+Connected-scale capture is **deferred**, not excluded: it waits for a chosen
+scale model and protocol.
+
+## Approved future capabilities
+
+Approved but not yet scheduled ahead of the [roadmap](IMPLEMENTATION_PLAN.md#roadmap):
+par targets and below-par views; supplier lead times; sales-based usage estimates
+and shortage insights; store-listing deactivation and shelf deletion; an
+area/rack/shelf/bin location hierarchy; waste, transfer and manual adjustment
+movements. CSV import/export and copyable shelf templates are recorded as possible
+later conveniences, not commitments. Their rules are in
+[INVENTORY.md](INVENTORY.md#future-inventory-rules).

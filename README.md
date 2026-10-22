@@ -8,12 +8,14 @@ reporting and selected administration and production workflows.
 
 ## Status and evidence
 
-This document describes the source tree as of 2026-10-11. `604683d` is the clean
-adoption baseline supplied for this review. "Implemented" below means present in
-this checkout. Local or CI verification is evidence only for the revision on
-which it ran. Hosted deployment, production data mapping, physical-device behavior,
-signed builds, and app-store publication are not verified by this documentation
-review.
+This document describes source revision `df53f98` (main, PR #21), reviewed on
+2026-10-21. "Implemented" below means present in that source. CI passed on that
+revision ([run 38652749388](https://github.com/GetFluxxed/Shiftly/actions/runs/38652749388)).
+Hosted deployment of these features, production data mapping, physical-device
+behavior, signed builds and app-store publication are **not** verified. The hosted
+service observed on 2026-10-21 still runs the legacy browser runtime. See the
+[status matrix](docs/IMPLEMENTATION_PLAN.md#status-matrix) for each capability's
+local, CI, device, deployment and operational evidence.
 
 Implemented in the current source:
 
@@ -23,14 +25,15 @@ Implemented in the current source:
 - a business catalog, store shelves, package definitions, barcode lookup/capture,
   stock balances and movement history;
 - reviewed whole-store counts with draft, review, and posting transitions;
-- recipes, confirmed production deductions with a 1% ingredient allowance,
-  reversal rules, and store-scoped production forecasts;
-- durable briefing jobs and a separate worker runtime; and
+- recipes, confirmed production deductions (recipe quantity × batches × 1.01),
+  reversal rules, and store-scoped advisory production forecasts;
+- durable briefing and forecast jobs in a separate worker runtime; and
 - additive PostgreSQL migrations `001` through `024`.
 
-Shelf-photo counting, invoice receiving/OCR, and offline stock posting are planned.
-Camera barcode scanning is implemented and does not save an image. Forecasts are
-store-scoped decision support; they do not bypass reviewed stock operations.
+Shelf-photo counting, invoice receiving and offline stock posting are planned, not
+implemented. Camera barcode scanning is implemented and does not save an image.
+Forecasts analyze the store's own recorded data per request (no model training)
+and never change stock.
 
 Shared crew credentials, password-only manager access, and public signup are
 retired product flows. Existing compatibility data and browser adapters remain
@@ -57,12 +60,8 @@ accounts do not receive Reports or Store navigation.
 | `migrations/` | immutable, ordered PostgreSQL migrations |
 | `tests/` | service, API, migration, recovery, and browser checks |
 
-See [Architecture](docs/ARCHITECTURE.md), [Database](docs/DATABASE.md),
-[Security](docs/SECURITY.md), and the [implementation plan](docs/IMPLEMENTATION_PLAN.md)
-for boundaries and delivery state. The repository adopts the external
-[ENGINEERING.md](ENGINEERING.md) policy through [engineering adoption](docs/workstreams/engineering-adoption.md);
-that workstream records the project-specific baseline and exceptions without
-duplicating the policy.
+The repository adopts [ENGINEERING.md](ENGINEERING.md) (2026-10-11); Shiftly-specific
+agent and contributor rules are in [AGENTS.md](AGENTS.md).
 
 ## Local development
 
@@ -124,18 +123,23 @@ An export proves JavaScript/assets can be bundled; it does not compile or sign a
 native binary and does not prove camera, secure storage, lifecycle, accessibility,
 or network behavior on a real device.
 
-## Delivery documents
+## Documentation
 
-- [Implementation plan](docs/IMPLEMENTATION_PLAN.md) — implemented, active, and
-  planned product phases.
-- [Native roadmap](docs/NATIVE_APP_ROADMAP.md) — native behavior and device gates.
-- [Inventory rules](docs/INVENTORY.md) — quantity, stock, weighing, and evidence
-  invariants.
-- [Individual account release contract](docs/workstreams/individual-accounts-release-2026-09-24.md).
-- [Catalog and shelf contract](docs/workstreams/inventory-foundation-and-shared-catalog.md).
-- [Inventory count contract](docs/workstreams/inventory-counts.md).
-- [Production and assisted inventory contract](docs/workstreams/production-and-assisted-inventory.md).
+| Document | Purpose |
+| --- | --- |
+| [PRODUCT](docs/PRODUCT.md) | Users, goals, platform commitments, success criteria, exclusions |
+| [WORKFLOWS](docs/WORKFLOWS.md) | Browser/mobile workflow matrix, role access, partial implementations |
+| [IMPLEMENTATION_PLAN](docs/IMPLEMENTATION_PLAN.md) | Status matrix, the single roadmap, open owner decisions, accepted deviations |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | Module responsibilities, data flow, known coupling, decisions |
+| [API](docs/API.md) | Implemented routes, authentication, errors, idempotency |
+| [INVENTORY](docs/INVENTORY.md) | Catalog, package, unit, count, stock, production and forecast rules |
+| [DATABASE](docs/DATABASE.md) | Migrations, ownership and history invariants |
+| [SECURITY](docs/SECURITY.md) | Identity, roles/capabilities, tenancy, data handling |
+| [TESTING](docs/TESTING.md) | Local/CI verification, dependency locks, rehearsals |
+| [DEPLOYMENT](docs/DEPLOYMENT.md) | Operation, hosted observations, configuration drift, backup/restore, release gate |
+| [Mobile README](apps/mobile/README.md) | Native setup, behavior and device testing |
+| [Camera and invoice plan](docs/workstreams/camera-and-invoice-readiness.md) | Forward plan for shelf-photo assistance and invoice receiving |
+| [Archive](docs/archive/README.md) | Dated decision and verification records; superseded handoffs and prompts |
 
-Older integration handoffs and parallel-round documents are historical evidence.
-Their branch names, test totals, shared-login transition language, or planned
-feature lists do not override this source tree or the current contracts above.
+Archived records are evidence for their dated revision. Their branch names, test
+totals, sequencing and "planned" lists do not override the maintained documents.

@@ -8,7 +8,8 @@ Read and follow the repository's [ENGINEERING.md](../../ENGINEERING.md) and
 adopted general standards; AGENTS.md defines Shiftly-specific architecture,
 authorization, inventory integrity, verification and collaboration rules.
 
-Use [README.md](../../README.md) for current supported behavior. Historical
-workstream entries describe their own dated revisions. Preserve user work and
+Use [README.md](../../README.md) for current supported behavior and its
+documentation map for the maintained documents. Archived records under
+`docs/archive/` describe their own dated revisions. Preserve user work and
 stock/account history, keep changes bounded, and report observed verification
 without treating a build or AI review as proof of overall correctness.

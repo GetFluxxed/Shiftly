@@ -1,8 +1,11 @@
 # Inventory foundation and shared company catalog
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Updated: 2026-09-30. This describes the implemented catalog and shelf foundation.
 The next approved slice is [native current inventory and reviewed counts](inventory-counts.md).
-It follows the [architecture audit](architecture-bloat-audit-2026-09-23.md) and
+It follows the [architecture audit](https://github.com/GetFluxxed/Shiftly/blob/df53f9852f8856f4ddc943d3212a6bde17379fbe/docs/workstreams/architecture-bloat-audit-2026-09-23.md) and
 supersedes older instructions to repeat F0/F1 or start a mobile-web client.
 
 ## Status and boundaries
@@ -311,7 +314,7 @@ failed-save recovery, and archived product restoration. These renderer checks do
 not establish physical-device acceptance. No database migration or backend change
 was needed for this layout revision.
 
-The subsequent [workspace restoration revision](../NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
+The subsequent [workspace restoration revision](NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
 retains approved catalog/shelf input, filters and page position on this device.
 Save/Cancel remain explicit; record-version changes invalidate old edit drafts.
 
