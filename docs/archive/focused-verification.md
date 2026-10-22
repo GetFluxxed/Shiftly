@@ -1,5 +1,8 @@
 # Focused development-readiness verification
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Verified: 2026-09-21. Branch: `codex/focused-verification`.
 Merged starting point: `e01e84ef629a3d1e04b63dd19455c3ce9b0a558c` (PR #7).
 Tested implementation: `c65d13a2a695bf57d372a4d6b5c1a6cc8320450b`.

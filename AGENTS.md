@@ -24,37 +24,44 @@ directory guidance for more specific conventions.
 
 ## Read the current decisions
 
-Start with the current feature status in [README.md](README.md).
-[Engineering adoption](docs/workstreams/engineering-adoption.md) records the
-baseline, maintenance evidence and outstanding legacy/hosted gaps. Historical
-workstream entries are evidence for their dated revision, not today's feature list.
+Start with the current feature status in [README.md](README.md) and the
+[status matrix](docs/IMPLEMENTATION_PLAN.md#status-matrix). The
+[implementation plan](docs/IMPLEMENTATION_PLAN.md) also holds open owner decisions
+and the accepted legacy-deviation register. [Archived records](docs/archive/README.md)
+are evidence for their dated revision, not today's feature list.
 
 Use these documents as entry points, then inspect the relevant implementation:
 
 | Concern | Source |
 | --- | --- |
-| Domain delivery order | [Implementation plan](docs/IMPLEMENTATION_PLAN.md) |
-| Native client and device acceptance | [Native roadmap](docs/NATIVE_APP_ROADMAP.md), [mobile setup](apps/mobile/README.md) |
-| Individual accounts and invitations | [Account release contract](docs/workstreams/individual-accounts-release-2026-09-24.md) |
-| Company catalog and store shelves | [Inventory foundation](docs/workstreams/inventory-foundation-and-shared-catalog.md) |
-| Current stock and reviewed counts | [Count contract](docs/workstreams/inventory-counts.md) |
-| Broader inventory rules and future phases | [Inventory design](docs/INVENTORY.md) |
-| Module boundaries and known coupling | [Architecture](docs/ARCHITECTURE.md), [bloat audit](docs/workstreams/architecture-bloat-audit-2026-09-23.md) |
+| Product scope, users and exclusions | [Product](docs/PRODUCT.md) |
+| Delivery order, status and open decisions | [Implementation plan](docs/IMPLEMENTATION_PLAN.md) |
+| Browser vs native screens and role access | [Workflows](docs/WORKFLOWS.md) |
+| Native client setup and device testing | [Mobile setup](apps/mobile/README.md) |
+| Accounts, roles, capabilities and invitations | [Security](docs/SECURITY.md), [API](docs/API.md) |
+| Catalog, packages, counts, stock, production and forecasts | [Inventory rules](docs/INVENTORY.md) |
+| Shelf photos and invoice receiving (future) | [Camera and invoice plan](docs/workstreams/camera-and-invoice-readiness.md) |
+| Module boundaries, known coupling and decisions | [Architecture](docs/ARCHITECTURE.md) |
 | Verification and recovery | [Testing](docs/TESTING.md), [CI workflow](.github/workflows/ci.yml) |
 | Schema and deployment | [Database](docs/DATABASE.md), [deployment](docs/DEPLOYMENT.md) |
 
-Dated historical workstreams may describe retired shared-login, web-first and
-earlier inventory sequencing assumptions. Use the current README and maintained
-architecture/security/database documents for supported behavior; retain original
-workstream evidence with its date and revision. Check actual code and migrations before
+Archived records may describe retired shared-login, web-first and earlier
+inventory sequencing assumptions. Use the maintained documents above for supported
+behavior. Check actual code and migrations before
 claiming a feature exists. If code conflicts with an accepted contract, investigate
 and document the discrepancy rather than treating the implementation as permission
 to discard the rule.
 
-Record consequential design decisions and delivery evidence in the relevant
-workstream document. Update plans when scope changes; distinguish implemented,
-locally verified, CI verified, device verified and deployed states. Do not copy
-transient branch names, network addresses or test totals into this instruction file.
+Record consequential design decisions in the maintained document that owns the
+rule. Add a dated row to the [architecture decisions](docs/ARCHITECTURE.md#architectural-decisions)
+when the decision is architectural. A forward plan for a large, not-yet-built
+capability may live in `docs/workstreams/` until delivery. After delivery,
+consolidate its enduring rules into the maintained documents and archive the
+dated record. Record delivery evidence in the pull request, and update the status
+matrix. Update plans when scope changes; distinguish implemented, locally
+verified, CI verified, device verified, deployed and operationally accepted states.
+Do not copy transient branch names, network addresses or test totals into this
+instruction file.
 
 ## Model ownership and delegation
 
@@ -106,7 +113,7 @@ continuing independent work. Avoid repeated retries without new evidence.
 
 1. Understand the request, current implementation, risks and unresolved decisions.
 2. Define the smallest coherent design, acceptance criteria and verification plan;
-   update the relevant workstream if the design changes.
+   update the maintained document (or active forward plan) if the design changes.
 3. Implement within existing boundaries, delegating independent work when useful.
 4. Integrate, verify changed behavior and review failures at their root cause.
 5. Review against the design and the seven pillars in ENGINEERING.md, reconcile
@@ -237,4 +244,5 @@ the already-authorized preparation before requesting approval for a final action
 - Keep routine operation reproducible using repository commands and private
   operator-managed configuration; no required private assistant launchers or state.
 - Track known legacy deviations with impact, disposition, owner and closure evidence
-  in the adoption workstream. Do not label a pending hosted gate as verified.
+  in the [accepted legacy deviations](docs/IMPLEMENTATION_PLAN.md#accepted-legacy-deviations)
+  register. Do not label a pending hosted gate as verified.

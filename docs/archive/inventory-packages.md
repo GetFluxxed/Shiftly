@@ -1,8 +1,11 @@
 # Package options and mixed inventory counts
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Decision: 2026-10-01. Implementation and local verification evidence are recorded
 below; CI, physical-device and hosted-release acceptance remain separate. This extends the existing catalog and count
-boundaries and precedes [camera and invoice readiness](camera-and-invoice-readiness.md).
+boundaries and precedes [camera and invoice readiness](../workstreams/camera-and-invoice-readiness.md).
 
 ## Product and package identities
 

@@ -1,5 +1,8 @@
 # Production, assisted counting and forecasting
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Decision date: 2026-09-29. The user approved these four next capabilities. This
 contract supersedes the older camera-before-production ordering in the broad
 inventory plan. Delivery proceeds in independently verified slices; a listed

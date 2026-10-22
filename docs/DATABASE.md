@@ -1,8 +1,11 @@
 # Shiftly database
 
-Updated 2026-10-11. PostgreSQL is the system of record. The applied schema is
-defined by immutable files in `migrations/`; code and this summary do not replace
-those files.
+Reviewed against source revision `df53f98` on 2026-10-21. PostgreSQL is the system
+of record. The applied schema is defined by immutable files in `migrations/`; code
+and this summary do not replace those files. Local development, CI and rehearsals
+use PostgreSQL 16. The hosted database is owner-reported as PostgreSQL 18, and that
+version has not been rehearsed; see
+[DEPLOYMENT.md](DEPLOYMENT.md#configuration-drift-and-compatibility-checks).
 
 ## Migration history
 
@@ -50,14 +53,16 @@ upgrade/data preservation, and recovery with disposable databases.
 
 Foreign keys and composite business/store constraints prevent cross-scope links.
 Application authorization remains required; a foreign key alone is not access
-control.
+control. Quantity, count and production rules are maintained in
+[INVENTORY.md](INVENTORY.md).
 
 ## Quantity and history invariants
 
 SKUs and barcodes are strings so leading zeros survive. New product base units
-are `each`, `g`, and `kg`. Exact `NUMERIC` arithmetic is authoritative;
-clients send decimal strings. Package/container sizes describe conversion or a
-full container, not current stock.
+are `each`, `g`, and `kg`; package and container labels may also record `lb`
+(migration 024), but stored amounts are canonical base-unit values. Exact `NUMERIC`
+arithmetic is authoritative; clients send decimal strings. Package/container sizes
+describe conversion or a full container, not current stock.
 
 The first posted count establishes a balance without inventing a prior zero.
 Uncounted differs from explicitly counted zero. All required count lines must be
