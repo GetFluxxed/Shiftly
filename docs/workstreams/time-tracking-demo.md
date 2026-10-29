@@ -123,3 +123,10 @@ independent running/completed timers after reload, and 320/390/1024-pixel layout
 and iOS/Android exports containing the compact-roster source. The existing model
 and persistence code were not changed. This is local verification; physical-device
 acceptance of the revised layout and remote CI remain separate.
+
+Commit `ebf2358` was fast-forwarded into the clean checkout serving the existing
+Expo Go session. A fresh LAN fetch confirmed the compact roster and member-modal
+source in the served iOS development bundle, with the existing checkpoint key and
+API origin intact. The mobile account-status endpoint remained HTTP 200. Final
+visual review also covered actual bundled fonts/icons and simultaneous completed
+and running timers. Reload the existing Shiftly project in Expo Go to test it.
