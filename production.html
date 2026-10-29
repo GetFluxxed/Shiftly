@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="theme-color" content="#FBF6EE" /><title>Shiftly — Production</title><link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Newsreader:wght@500;600&family=Work+Sans:wght@400;600;700&display=swap" rel="stylesheet" /><link rel="stylesheet" href="styles.css" /><link rel="stylesheet" href="production.css" /></head>
+<body class="production-page"><main class="shell production-shell" style="visibility:hidden">
+  <header class="topbar"><a class="brand" href="/production.html"><span class="brand-mark" aria-hidden="true">✳</span><span>Shiftly</span></a><nav class="production-nav" aria-label="Production workspace"><button type="button" data-view="run">Today</button><button type="button" data-view="recipes">Recipes</button><button type="button" data-view="history">History</button><a href="/accounts.html">Account</a><button id="production-logout" type="button">Log Out</button></nav></header>
+  <section class="hero production-hero"><p class="eyebrow">Production / <span id="production-store">Your store</span></p><h1>Make today<br /><em>feel easy.</em></h1><p class="intro">Choose each flavor, review exact ingredient use, then confirm the stock deduction.</p></section>
+  <p class="production-notice hidden" id="production-notice" role="status"></p>
+  <section id="run-view" class="production-view">
+    <div class="production-heading"><div><p class="step">01 / WHAT WE MADE</p><h2>Today’s flavors</h2></div><label>Business date <input id="production-date" type="date" /></label></div>
+    <div class="production-tools"><label>Find a recipe <input id="production-search" type="search" maxlength="120" placeholder="Flavor name" /></label><button class="secondary-button" id="production-search-button" type="button">Search</button></div>
+    <p class="production-help">Check a flavor and use + or − to set its batch count. This draft stays with this account and store.</p>
+    <div class="production-grid" id="production-recipes"></div><button class="text-button hidden" id="more-recipes" type="button">More recipes</button>
+    <div class="production-action-card"><p id="production-selection">Choose each flavor the crew made.</p><button class="secondary-button hidden" id="retry-production" type="button">Retry saved submission</button><button class="primary-button" id="review-production" type="button"><span>Review ingredient use</span><span class="button-arrow">→</span></button><button class="text-button" id="clear-production" type="button">Clear draft</button></div>
+  </section>
+  <section id="review-view" class="production-view hidden">
+    <div class="production-heading"><div><p class="step">02 / REVIEW</p><h2>Ingredient deductions</h2></div><button class="text-button" data-view="run" type="button">← Edit flavors</button></div>
+    <div class="production-review-copy"><strong>Nothing moves until you confirm.</strong><p>Every total includes the exact recipe amount plus the 1% production allowance.</p></div>
+    <div id="production-issues"></div><div class="production-grid production-entry-review" id="production-entry-review"></div><div class="production-grid" id="production-deductions"></div>
+    <div class="production-action-card"><label class="confirm-check"><input id="production-confirm-check" type="checkbox" /> I reviewed every deduction and want to update stock.</label><button class="primary-button" id="confirm-production" type="button" disabled><span>Confirm production and deduct stock</span><span class="button-arrow">→</span></button></div>
+  </section>
+  <section id="recipes-view" class="production-view hidden"><div class="production-heading"><div><p class="step">RECIPE BOOK</p><h2>Recipes</h2></div></div><div class="production-grid" id="recipe-book"></div><button class="text-button hidden" id="more-recipe-book" type="button">More recipes</button></section>
+  <section id="history-view" class="production-view hidden"><div class="production-heading"><div><p class="step">PRODUCTION LOG</p><h2>Recent history</h2></div><button class="text-button" id="refresh-history" type="button">Refresh</button></div><div class="production-grid" id="production-history"></div><button class="text-button hidden" id="more-history" type="button">More history</button></section>
+  <footer><span>SHIFTLY / PRODUCTION</span><a href="/accounts.html">Account</a></footer>
+</main><script src="production.js"></script></body></html>

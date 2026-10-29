@@ -1,266 +1,205 @@
 # Shiftly implementation plan
 
-Updated: 2026-09-20. Baseline inspected: `53fdd36` on `main`.
+Reviewed against source revision `df53f98` (main, PR #21) on 2026-10-21. This is
+the single prioritized roadmap. Product intent is in [PRODUCT.md](PRODUCT.md);
+per-client screens in [WORKFLOWS.md](WORKFLOWS.md); rules in
+[INVENTORY.md](INVENTORY.md), [SECURITY.md](SECURITY.md) and
+[ARCHITECTURE.md](ARCHITECTURE.md). Superseded backlogs and handoffs are listed in
+the [archive index](archive/README.md).
 
-This is the authoritative implementation sequence for the next Shiftly release.
-It replaces the earlier baseline-only backlog. It describes planned work, not
-features that already exist. Product rules and worked inventory examples are in
-[INVENTORY.md](INVENTORY.md); technical boundaries are in
-[ARCHITECTURE.md](ARCHITECTURE.md); executable work packages are in
-[TASKS.md](TASKS.md).
+## Status matrix
 
-## 1. Intended outcome
+Each column is separate evidence; one never implies another.
 
-Evolve Shiftly into a modular application backed by FastAPI. Preserve crew
-reporting and manager briefings, and add a separate **Inventory** workspace
-accessible from the manager window, using the same store membership and account.
+- **Source:** present in `df53f98`.
+- **Local:** dated local verification recorded in an [archived delivery record](archive/README.md).
+- **CI:** GitHub Actions [run 38652749388](https://github.com/GetFluxxed/Shiftly/actions/runs/38652749388)
+  passed on `df53f98` (2026-10-14): Python/browser suite, native type checks/tests,
+  iOS/Android JavaScript exports and both recovery rehearsals. It is automated
+  evidence only.
+- **Device:** physical-device evidence recorded in the repository.
+- **Deployed:** running in a named hosted environment.
+- **Operational:** accepted by the owner for real store use.
 
-The inventory workspace will let a manager:
+| Capability | Source | Local | CI | Device | Deployed | Operational |
+| --- | --- | --- | --- | --- | --- | --- |
+| FastAPI runtime, separate worker, explicit migrations | Yes | 2026-10-11 | Yes | n/a | No | No |
+| Individual accounts, invitations, store scope | Yes | 2026-09-24 | Yes | Owner's iPhone via Expo Go confirmed sign-in and account flows, 2026-09-24 | Browser flows: unverified (see note) | No |
+| Native team/owner administration, Store hub | Yes | 2026-09-26 | Yes | iPhone feedback fixed 2026-09-26; re-check after fix not recorded | No | No |
+| Shift reports, briefings, Heads Up (native) | Yes | 2026-09-29 | Yes | Not recorded | No | No |
+| Weekly Overview | Browser only | 2026-09-21 (both transports) | Yes | n/a | Unverified | No |
+| Catalog, shelves, container amounts | Yes | 2026-09-30 | Yes | Not recorded | No | No |
+| Barcode scan-to-catalog | Yes | 2026-10-01 | Yes | iPhone label failures reported 2026-09-30; fixes not yet re-tested on device | No | No |
+| Packages, pounds labels, item combining, unit correction | Yes | 2026-10-02 | Yes | Not recorded | No | No |
+| Reviewed whole-store counts, stock and movements | Yes | 2026-09-29 | Yes | Not recorded | No | No |
+| Recipes and production (1.01 allowance, reversal) | Yes | 2026-09-29 | Yes | Not recorded | No | No |
+| Store production reports and advisory forecast | Yes | 2026-10-01 (fake provider only) | Yes | Not recorded | No | No |
+| Native workspace restoration | Yes | 2026-09-29 | Yes | Not recorded | No | No |
+| Shelf-photo proposals, invoice receiving, offline posting, scale capture | No | — | — | — | — | — |
 
-- Define items, package sizes, measurement units, and explicit shelf locations.
-- Set and update store par levels and optional shelf replenishment targets.
-- Maintain a running digital inventory tracker with quantities, provenance,
-  freshness, change history, and corrections.
-- Photograph shelves with a phone, review suggested items and quantities, and
-  reconcile approved observations into inventory.
-- Weigh open inventory using explicit item-specific weight references and
-  container tare weights, combining partial quantities with unopened stock.
-- See below-par items, estimated days of cover, and potential shortages using
-  available inventory and sales-derived demand where the inputs support it.
-- As a stretch goal, scan item barcodes/SKUs during invoice receiving, match
-  delivered quantities to invoice lines, and post confirmed receipts to the
-  same inventory tracker.
+**Deployment note.** The most recent owner-reported hosted setup (recorded
+2026-10-21, not independently re-verified) is the legacy browser runtime on a free
+Render web service with a paid PostgreSQL 18 database. The revision running there
+is not recorded. No environment serves the native API. Details and configuration
+drift are in [DEPLOYMENT.md](DEPLOYMENT.md#hosted-environment-observations).
 
-## 2. Current baseline and constraints
+## Roadmap
 
-- The backend is split across configuration, database, authentication, security,
-  routes, reporting, and store services. HTTP still uses `ThreadingHTTPServer`;
-  FastAPI is not installed or implemented yet.
-- PostgreSQL migrations 001–011, disposable-database tests, and GitHub Actions
-  exist. The last verified suite passed 78 tests, and CI passed for `53fdd36`.
-- The manager browser UI already includes reports, briefings, weekly overviews,
-  and Head's Up. Inventory, photo storage, sales imports, and receiving do not
-  exist yet.
-- Crew access is shared. Typed employee names are report metadata, not verified
-  identities for inventory approvals.
-- Background briefing processing still runs inside the web process. The
-  reviewed worker error path can terminate processing when recording a failed
-  job also fails; recovery and worker monitoring remain prerequisites.
-- The older `codex/reports-module` worktree contains uncommitted work based on
-  `b289865`. Preserve it, compare useful pieces against current `main`, and port
-  selected changes through review rather than treating it as the new baseline.
+Release tiers:
 
-## 3. Planning decisions
+- **Dev:** development prerequisite.
+- **Pilot:** required before named staff use real data in one store.
+- **Public:** required before broader or public release.
 
-| Decision | Direction |
+Items 1–3 proceed together. Items 4–7 depend on them.
+
+### 1. Real catalog, packages, recipes and opening stock (Dev → Pilot)
+
+**Prerequisites:** none beyond current source.
+
+**Done when:**
+- Every in-scope ingredient has one catalog identity, a correct base unit, package
+  definitions with sourced amounts, and stable barcodes or internal SKUs.
+- Duplicate items are resolved through owner-reviewed combining, or recorded for
+  reconciliation where history exists.
+- Every active flavor has an owner-reviewed recipe whose production preview matches
+  recipe × batches × 1.01.
+- A real whole-store opening count is posted through draft → review → posted.
+- Volume-labelled ingredients have an owner-supplied net weight (see
+  [open decisions](#open-owner-decisions)).
+
+### 2. Physical-device testing and current defects (Pilot)
+
+**Prerequisites:** item 1 data on the pilot devices.
+
+**Done when:** the supported phone/tablet matrix (to be named) passes these
+journeys, with the device model and OS recorded:
+- sign-in, store scope and revocation;
+- barcode scanning: permission, zoom, small labels and the previously failing
+  sugar/milk labels;
+- mixed package/partial counts and count approval;
+- recipe editing and production confirm/reverse;
+- uncertain-write recovery;
+- background/force-close restoration;
+- keyboard, text scaling and VoiceOver/TalkBack basics.
+
+Open inventory/production defects are triaged with owner and severity, and blockers
+are fixed with regression evidence. Re-confirm the 2026-09-26 tab/Back navigation fix.
+
+### 3. Hosted mobile support, recovery, security and release operations (Pilot → Public)
+
+**Prerequisites:** owner approval of hosting cost and access.
+
+**Done when:**
+- A named staging environment runs FastAPI plus the separate worker, with
+  coordinated migrations, at a recorded revision.
+- Health, worker supervision, backup/restore and rollback are rehearsed there and
+  recorded, as described in [DEPLOYMENT.md](DEPLOYMENT.md#hosted-staging-and-release-gate).
+- The [configuration drift](DEPLOYMENT.md#configuration-drift-and-compatibility-checks)
+  is resolved or accepted.
+- Production ownership mapping is rehearsed.
+- The security, permission and recovery review in the
+  [camera and invoice plan](workstreams/camera-and-invoice-readiness.md#read-only-security-and-recovery-gate)
+  has dispositions for every finding.
+- Backup frequency, retention, recovery targets and a secondary operator are
+  confirmed.
+- Signed development builds exist for the pilot devices.
+- **Public:** a production cutover is approved by the owner, plus signed store
+  builds, privacy disclosures and support ownership.
+
+### 4. Native Weekly Overview (Pilot)
+
+**Prerequisites:** none.
+
+**Done when:** managers can read the existing weekly summary in the native Reports
+area with the same store scope, coverage disclosure and pending/failure states as
+the browser. This was recorded as remaining native parity work on 2026-09-22.
+
+### 5. Evaluate advisory forecasts (Pilot)
+
+**Prerequisites:**
+- item 1 data;
+- at least seven recorded production days;
+- a provider key and spend limit approved for evaluation.
+
+**Done when:** forecast suggestions are compared with actual production over an
+agreed period, against quality targets the owner has set. Results, model and
+prompt version are recorded; prompts or rules change only with new evidence. No
+staff decision relies on a forecast before this.
+
+### 6. Reviewed shelf-photo assistance (Pilot → Public)
+
+**Prerequisites:** items 1–3, plus the privacy and operating-policy readiness in the
+[camera and invoice plan](workstreams/camera-and-invoice-readiness.md).
+
+**Done when:** Gate A (private prototype), Gate B (named staff pilot) and Gate C
+(public) pass in order. Proposals never post stock; normal count review applies.
+
+### 7. Invoice receiving (Pilot → Public)
+
+**Prerequisites:**
+- items 1–3;
+- supplier/barcode and package mappings;
+- a receipt posting contract.
+
+**Done when:** the invoice receiving gate in the
+[camera and invoice plan](workstreams/camera-and-invoice-readiness.md#deferred-invoice-photo-receiving)
+passes. Extraction creates proposals only; posting is idempotent and reviewed.
+
+### Deferred
+
+- **Scale-assisted counts:** blocked until the owner selects a scale model,
+  connection type and protocol. Rules are in [INVENTORY.md](INVENTORY.md#future-inventory-rules).
+- **Offline stock posting:** blocked until a server idempotency/conflict design is
+  approved. Local restoration remains the only offline-tolerant feature.
+- **Approved future inventory capabilities** (pars, sales insights, transfers,
+  location hierarchy and others listed in [PRODUCT.md](PRODUCT.md#approved-future-capabilities)):
+  scheduled after items 1–3, ordered by pilot need.
+
+## Open owner decisions
+
+These are unresolved. Documentation does not decide them.
+
+| Decision | Why it matters |
 | --- | --- |
-| Application architecture | One modular application with a FastAPI API and separately supervised durable workers |
-| Existing functionality | Preserve current URLs, cookie behavior, data, and browser workflows during migration |
-| Inventory navigation | Manager window → Inventory; dedicated workspace with a return path to manager operations |
-| First client | Confirmed: installable mobile web app first, with APIs suitable for a later native iPhone/Android client |
-| First stock entry method | Manual counts, receipts, and partial weights establish the trusted workflow before vision automation |
-| Camera results | Proposals that require review; photos cannot directly post stock changes |
-| Partial items | Explicit scale measurements and item-specific conversions; photos alone do not establish remaining weight |
-| Inventory authority | PostgreSQL movement history and approved count reconciliations; the digital sheet is a view of those records |
-| Sales forecasting | Explainable estimates with input freshness and confidence; no silent changes to confirmed inventory |
-| SKU receiving | Stretch goal after item mappings, units, and receipt posting are reliable |
+| Browser commitments | Keep, extend or retire browser pages after native parity? Should `inventory.html` gain workflows or be removed? Is the browser part of public release? |
+| Historical product reconciliation | How to merge duplicate products that already have counts, balances or recipe history (combining is blocked today) |
+| Volume-labelled products | Net weight to record for litre-labelled goods (for example, Heavy Cream used in Stracciatella); no density is assumed |
+| Forecast quality targets | Acceptable error, evaluation period and who reviews results before staff rely on suggestions |
+| Image retention and storage | Retention/deletion for shelf and invoice images, derived data and provider logs; storage provider |
+| Capture permissions | Whether existing `counts.submit` / `receipts.draft` suffice for photo capture or a narrower grant is needed |
+| Privacy and operating policies | Jurisdictions, notices, counsel review and staff procedures (see the camera plan) |
+| Receiving rules | Partial, substitution, damage, return and correction handling; supplier identifier ownership |
+| Hosting and recovery | Staging resources and cost; backup targets; secondary operator; Render database version/plan of record |
+| Device matrix | Which iPhone/Android phone and tablet models define pilot acceptance |
+| Mutation replay retention | Inventory/production replay records currently never expire; choose a retention policy before growth |
 
-These are implementation defaults. Store-specific measurements, sales mappings,
-and acceptance thresholds must be supplied or validated before their phase is
-enabled. Discovery can proceed while the foundation is built.
+## Accepted legacy deviations
 
-## 4. Delivery phases and exit gates
+The engineering adoption on 2026-10-11 ([record](archive/engineering-adoption.md))
+retained these known gaps under [ENGINEERING.md](../ENGINEERING.md#retroactive-adoption-for-existing-projects).
+The owner (Derek) decides each disposition; a maintainer performs the work.
 
-### Phase 0 — Establish the delivery baseline
-
-1. Reconcile the old worktree, update handoff records, and work from current
-   `main` in bounded feature branches. Preserve uncommitted work.
-2. Turn the known worker failure into a regression test and implement recovery,
-   bounded retries, useful logs, and worker progress monitoring.
-3. Capture current API behavior and critical crew/manager browser flows. Include
-   authentication, malformed inputs, partial weekly results, and failures.
-4. Add reproducible dependency versions, automated code/dependency checks, and
-   browser testing to the existing isolated PostgreSQL CI workflow. Verify that
-   required checks and review are enforced on merges.
-5. Establish staging with separate secrets and data. Rehearse backup restoration,
-   migration execution, and application rollback.
-
-**Exit gate:** current workflows pass; worker recovery is demonstrated; staging
-and restore evidence are recorded; useful older work is accounted for.
-
-### Phase 1 — Introduce FastAPI without breaking existing clients
-
-1. Introduce an application package and factory, typed request/response models,
-   shared configuration, and explicit database/authentication dependencies.
-2. Extract domain services from HTTP handlers. Remove route imports of
-   `server.py`; keep SQL and AI calls behind service/repository interfaces.
-3. Add FastAPI compatibility adapters for existing endpoints. Compare status
-   codes, response bodies, cookies, authorization, and security headers against
-   the current implementation. Deliberately map validation errors where FastAPI
-   defaults differ from the existing contract.
-4. Separate web and durable worker entry points. Use application lifespan for
-   resource setup/cleanup; execute migrations once through a coordinated release
-   step, rather than independently from every web or worker instance.
-5. Add bounded database pools, dependency timeouts, liveness/readiness, worker
-   heartbeat/queue-age monitoring, and shared limits before multiple API replicas.
-6. Run the existing browser against FastAPI in staging, then switch the deployed
-   web entry point with a documented rollback path. Avoid introducing inventory
-   data changes in the transport cutover.
-
-**Exit gate:** the existing application passes contract and browser tests on
-FastAPI; service tests run without a live HTTP server; restarts recover jobs;
-staging cutover and rollback both succeed.
-
-### Phase 2 — Manager app workspace, identity, and inventory catalog
-
-1. Add manager navigation between **Operations** and **Inventory**, an explicit
-   selected store, phone-friendly layouts, and persistent deep links.
-2. Require identifiable individual accounts for inventory actions. Move manager
-   authentication toward store + username + password through a documented
-   compatibility transition. Add membership lifecycle, revocation, and an audit
-   trail before permitting stock approvals.
-3. Define inventory view, count, approve, adjust, configure, and receive
-   permissions. Initially grant these to authorized managers; additional stock
-   counters can be added with narrower permissions. Shared crew sessions receive
-   no inventory access by default.
-4. Implement item catalog, base units, pack conversions, required weight
-   references for weighed items, supplier identifiers, and archive/version rules.
-5. Implement store → area → rack → shelf → bin locations, shelf assignments and
-   reference images, capacity, and optional shelf targets.
-6. Implement store-item par settings, change history, and item/location filters.
-   Keep shelf replenishment targets distinct from store purchasing par.
-
-**Exit gate:** a manager can open Inventory, configure a store's real pilot items
-and shelves, and update pars; unauthorized users and other stores are excluded;
-historical records survive configuration edits.
-
-### Phase 3 — Running inventory and partial-weight counts
-
-1. Implement an append-only movement history for opening balances, receipts,
-   usage, waste, transfers, count adjustments, and reversals. Update its balance
-   projection in the same database transaction.
-2. Deliver the digital tracker, showing base quantity, package equivalents,
-   sealed/open breakdown where known, par gap, location, last physical count,
-   last change, and whether a displayed value is measured or estimated.
-3. Add count sessions with explicit scope, complete/partial coverage, draft
-   observations, review, version checks, atomic approval, and correction history.
-4. Add open-container weighing, tare deduction, unit conversion, multiple partial
-   containers, measurement timestamps, and versioned full-content weight profiles.
-5. Add manual receipt entry now; scanning remains a later acceleration of this
-   same receipt service. Add idempotency for retries and concurrent-write tests.
-
-**Exit gate:** the sealed-plus-partial worked example in [INVENTORY.md](INVENTORY.md)
-passes; repeat approval and repeated weighing do not add stock twice; concurrent
-receipts/counts require a safe reconciliation; balances can be rebuilt from history.
-
-### Phase 4 — Phone camera and shelf-assisted counting
-
-1. Enable phone capture and gallery upload inside the Inventory count flow.
-   Associate every image with a store, location, count session, actor, and time.
-2. Add private media storage, upload validation, retention, thumbnail generation,
-   and authorized retrieval. Make upload interruption recoverable.
-3. Run image analysis as a durable job that proposes catalog matches, quantities,
-   packaging, and uncertain regions. Use shelf assignments as context, not as
-   proof of what is present.
-4. Support multiple pictures per shelf, overlap review, missed/hidden items,
-   mixed products, retakes, manual corrections, and links to partial measurements.
-5. Require review of complete packages versus open containers before committing
-   the combined count. Display untouched locations and unresolved coverage.
-6. Evaluate on representative store photos with verified counts. Record count
-   error, item-match accuracy, correction effort, latency, and cost by item type.
-
-**Exit gate:** a phone photo plus weighed open stock produces a reviewable count;
-approval updates the tracker exactly once; overlapping images and open containers
-cannot inflate stock; unresolved images can be completed manually. Pilot quality
-thresholds are agreed and measured before camera counting is enabled broadly.
-
-### Phase 5 — App experience and resilient mobile workflows
-
-Confirmed mobile-web direction: add an installable app shell, focused camera
-and weighing screens, saved drafts, explicit upload/sync status, and reconnect
-handling. Keep final stock posting online and authorized. Revalidate inventory
-versions when an offline draft reconnects; never label unsynced counts as posted.
-
-Test supported iPhone and Android devices, browser and installed-app modes,
-camera denial, device rotation, large images, poor connectivity, and logout on a
-shared phone. Private inventory data and photos must not enter a generic public
-service-worker cache. A later native client will use the same versioned services;
-native packaging, device storage, and authentication remain a later workstream.
-
-**Exit gate:** the agreed device matrix completes capture → weigh → review →
-post, and interruption/retry/logout tests preserve both privacy and stock accuracy.
-Basic mobile camera support ships in Phase 4; app-shell discovery can run earlier.
-
-### Phase 6 — Par, sales, and shortage insights
-
-1. Ship deterministic below-par indicators from Phase 3 balances first.
-2. Introduce a sales-source adapter, beginning with a validated import format if
-   the store's POS integration is not selected. Import identifiers, timestamps,
-   units, refunds/voids, and source freshness; prevent duplicate imports.
-3. Map sold products to inventory items or effective-dated recipes with explicit
-   yields and unit conversions. Total sales dollars alone are insufficient to
-   calculate item consumption without an agreed empirical mapping.
-4. Estimate usage, days of cover, reorder points, and quantities using item
-   demand, pars, lead times, review periods, safety stock, and reliable incoming
-   deliveries. Show explanations and data limitations alongside each result.
-5. Keep projections separate from confirmed stock and historical count evidence.
-   Measure forecast error against later verified counts and actual sales.
-
-**Exit gate:** known sales/recipe examples produce reproducible quantities;
-stale/missing data is visible; forecasts do not double-subtract usage or promise
-unsupported runout dates; a manager can inspect why an item is flagged.
-
-### Phase 7 — Stretch: scan-to-receive invoices
-
-1. Reuse manual receiving and catalog conversions. Map scanned UPC/EAN/GTIN or
-   vendor barcodes to the internal SKU and correct pack size.
-2. Capture/import expected invoice lines, then scan delivered products to advance
-   the receiving checklist. Allow quantity entry and repeated legitimate scans.
-3. Handle unknown codes, substitutions, shortages, damaged goods, over-deliveries,
-   partial deliveries, returns, and corrections without silently closing a line.
-4. On confirmation, post accepted delivered quantities to the movement history
-   once and update the digital tracker. Preserve invoice/receipt evidence.
-5. Start with manual invoice entry or structured import; automatic invoice OCR
-   is a separately evaluated extension and is not required for barcode receiving.
-
-**Exit gate:** replaying an upload or receipt request cannot duplicate inventory;
-case-to-unit conversions are correct; a partial receipt leaves the remainder
-outstanding; checklist status matches actual accepted deliveries.
-
-## 5. Cross-phase rules
-
-- Preserve original reports and migration history; introduce additive migrations
-  and backfills with explicit rollback/forward-recovery plans.
-- Every inventory object and action is scoped to an authorized store. Treat
-  nested object IDs, photos, job IDs, exports, and offline drafts the same way.
-- Photos, sales estimates, and typed names are evidence or inputs; they do not
-  bypass permissions or create verified identities.
-- Human approval records actor, time, source, previous/new values, and reason.
-  Correct posted events through linked reversals, not silent edits/deletions.
-- Store quantities using decimal precision and explicit units; preserve the
-  conversion profile used by each historical event.
-- Gate new modules by store for pilots. Failure in inventory or vision must not
-  prevent crew reporting or manager access to original notes.
-- Bound AI work, retention, payload sizes, retries, and per-store costs. Test
-  provider failures without making paid calls in the normal suite.
-- Each work package includes schema/API/UI implications, acceptance tests,
-  documentation, staging evidence, and migration considerations as applicable.
-
-## 6. Inputs required at each decision gate
-
-| Needed before | Input or decision | Default until settled |
+| Item | Impact | Disposition / closure evidence |
 | --- | --- | --- |
-| Phase 2 client selection | Supported phones and browser versions; frontend tooling | Installable mobile web first is confirmed; native later |
-| Phase 2 catalog | Pilot store, item list, base units, case sizes, shelf layout, pars | No invented store values |
-| Phase 3 weighing | Full net weights, tare profiles, scale precision, partial-item list | Manual scale entry; no assumed weights |
-| Phase 3 approvals | Who may count, approve, adjust, and configure | Identified authorized managers only |
-| Phase 4 media/AI | Consented sample photos, retention policy, provider, cost and accuracy gates | Human review for every proposed count |
-| Phase 6 forecasting | POS/export source, recipes or usage mappings, sales cadence, lead times | Below-par alerts; no unsupported sales forecast |
-| Phase 7 receiving | Supplier SKU/barcode mappings, invoices, case sizes | Manual receiving remains available |
+| No confirmed hosted staging | Local success cannot prove platform supervision, networking or recovery | Close via roadmap item 3 with recorded evidence |
+| Backup schedule, retention, recovery targets and secondary operator unconfirmed | Recovery is not yet an operating commitment | Owner assigns targets and access; verify an actual hosted restore |
+| First production owner is an explicit operator task | An empty production database cannot self-enroll | Keep public signup closed; use the reviewed [operator procedure](DEPLOYMENT.md#accounts-and-operator-procedures) |
+| Legacy browser adapter and test globals remain | Import-time settings and broad fixtures | Retain while browser compatibility is supported; narrow only in scoped work with contract tests |
+| Schema-wide policy lock and broad roster reads | Possible contention as staff/history grow; no outage measured | Measure with representative sizes before changing locks |
+| Dependency license/advisory review incomplete | Pinning does not prove security or distribution rights | Review material dependencies before release and on consequential updates |
+| Hosted manifest still runs the legacy runtime | Native API not hosted; forecast jobs are not processed in embedded mode | Resolve in roadmap item 3; see [DEPLOYMENT.md](DEPLOYMENT.md#configuration-drift-and-compatibility-checks) |
 
-## 7. Immediate next work package
+## Cross-cutting invariants
 
-Begin with **F0: baseline and worker recovery**, followed by **F1: service
-boundaries and FastAPI compatibility tests**. Inventory discovery (pilot item
-catalog, shelf map, weights, pars, and sales samples) can proceed alongside those
-packages. Do not treat the full feature list as one implementation or deployment.
+- Preserve migration and transaction history. Correct posted records through
+  linked movements or reversals.
+- Use decimal strings at APIs and exact database arithmetic. Never silently
+  reinterpret units.
+- Treat nested IDs, jobs, media, retries and restored drafts as scoped resources.
+- Never automatically replay an uncertain stock-affecting write.
+- Keep provider work bounded, observable and mocked in tests. It can never
+  authorize or post inventory.
+- Record source, local, CI, device, deployment and operational evidence separately.
+- Add no new service, framework, identity store or persistence system without an
+  accepted requirement and a documented owner and exit path.

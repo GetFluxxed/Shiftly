@@ -14,7 +14,7 @@ def test_malformed_login_and_invalid_role_are_rejected(api):
         payload={"storeCode": "missing", "role": "owner", "password": "password"},
     )
     assert invalid_role.status == 400
-    assert invalid_role.json()["error"] == "Invalid sign-in role."
+    assert invalid_role.json()["error"] == "Username must be text."
 
 
 def test_login_status_and_logout_preserve_cookie_contract(api, workspace):
@@ -22,7 +22,7 @@ def test_login_status_and_logout_preserve_cookie_contract(api, workspace):
         "POST",
         "/api/auth/login",
         payload={
-            "storeCode": workspace["store_code"],
+            "username": workspace["manager_username"],
             "password": workspace["manager_password"],
         },
     )
@@ -38,6 +38,7 @@ def test_login_status_and_logout_preserve_cookie_contract(api, workspace):
     logout = api.request("POST", "/api/auth/logout", cookie=manager_cookie)
     assert logout.status == 200
     assert {cookie.split("=", 1)[0] for cookie in logout.cookies()} == {
+        "shiftly_account_session",
         "shiftly_manager_session",
         "shiftly_crew_session",
     }
@@ -48,7 +49,7 @@ def test_expired_manager_session_is_denied(api, workspace):
     token = workspace["manager_cookie"].split("=", 1)[1]
     with db_connection() as connection:
         connection.execute(
-            "UPDATE manager_sessions SET expires_at = NOW() - INTERVAL '1 second' WHERE token_hash = %s",
+            "UPDATE account_sessions SET expires_at = NOW() - INTERVAL '1 second' WHERE token_hash = %s",
             (hashlib.sha256(token.encode()).hexdigest(),),
         )
 
@@ -57,25 +58,12 @@ def test_expired_manager_session_is_denied(api, workspace):
 
 
 def test_cross_store_reports_are_not_visible(api, workspace):
-    other = {"store_code": "other-store", "crew_password": "crew-password-123"}
-    signup = api.request(
-        "POST",
-        "/api/auth/signup",
-        payload={
-            "adminKey": "contract-admin-key",
-            "storeName": "Other Store",
-            "storeCode": other["store_code"],
-            "crewPassword": other["crew_password"],
-            "managerUsername": "other-manager",
-            "managerPassword": "other-manager-password-123",
-            "confirmPassword": "other-manager-password-123",
-        },
-    )
-    assert signup.status == 201, signup.body
+    from tests.account_fixtures import seed_workspace
+    other=seed_workspace(store_code='other-store',manager_name='other-manager')
     crew_login = api.request(
         "POST",
         "/api/auth/login",
-        payload={"storeCode": other["store_code"], "role": "crew", "password": other["crew_password"]},
+        payload={"username": other["crew_username"], "password": other["crew_password"]},
     )
     assert crew_login.status == 200
     report = api.request(

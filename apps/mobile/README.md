@@ -1,0 +1,414 @@
+# Shiftly mobile
+
+Native phone and tablet client built with React Native, Expo and TypeScript.
+It uses the existing Python/FastAPI services and PostgreSQL account system. The
+existing browser application remains available. Reviewed against source revision
+`df53f98` on 2026-10-21. Per-screen access is in
+[WORKFLOWS.md](../../docs/WORKFLOWS.md), and release status and device gates in
+the [implementation plan](../../docs/IMPLEMENTATION_PLAN.md).
+
+## Current slice
+
+**Accounts and reporting**
+- Individual sign-in, activation/recovery, store switching for owners/admins,
+  password and sign-out controls.
+- Crew report entry; the manager report inbox with briefings and production
+  reports/forecasts.
+- Heads Up viewing for crew, managers and production, and editing for managers.
+- Team screens for invitations/reissue, existing-account assignment and store
+  permissions.
+- Owner tools for business delegation, suspension/restoration, ownership transfer
+  and the shared-crew cutover review.
+
+**Inventory**
+- A shared company catalog with barcode scanning.
+- Package definitions (including pound labels) and item combining.
+- Named store shelves.
+- Current stock, and reviewed whole-store counts.
+
+**Production**
+- Recipes, and confirmed production with its 1% ingredient allowance.
+
+Shelf-photo counting, invoice receiving, and offline posting are not implemented.
+This is a development foundation; bundling is not a claim of physical-device or
+store-release verification.
+
+Inventory rules are in [INVENTORY.md](../../docs/INVENTORY.md). API paths stay under
+`/api/mobile`, and feature code supplies uncertain-write guidance. Machine-readable
+errors distinguish form conflicts from session/store invalidation, with
+conservative fallback for older responses (see [API.md](../../docs/API.md#errors-and-recovery)).
+
+## Requirements
+
+- Node.js 22.13+ (22.x) or 24.3+ (24.x), matching the selected React Native
+  dependency requirements, and the pinned `pnpm@11.19.0` package manager.
+- Expo Go on a compatible phone/tablet for initial development, or separately
+  installed iOS/Android simulator tooling.
+- The Shiftly **FastAPI** server reachable from the device, a migrated development
+  PostgreSQL database and a named account with a store membership. Historical
+  shared-credential rows are migration data, not supported account credentials.
+
+Dependencies are pinned in `package.json` and `pnpm-lock.yaml`. Use the committed
+lockfile; do not independently upgrade React or React Native outside the selected
+Expo SDK's supported dependency set.
+
+## Run the API
+
+From the repository root, install the pinned Python dependencies. Export
+`DATABASE_URL` and other required backend settings in each terminal (or inject
+them through the documented secret manager). Migration and worker commands do not
+load `.env`; the API retains a compatibility loader, so explicit exports keep all
+processes aligned. Apply migrations before starting the API and worker:
+
+```sh
+python -m backend.shiftly.runtime.migrate
+SHIFTLY_WORKER_MODE=external python -m uvicorn backend.shiftly.app:create_app \
+  --factory --host 0.0.0.0 --port 4174 --workers 1
+```
+
+In a separate terminal with the same backend environment:
+
+```sh
+SHIFTLY_WORKER_MODE=external python -m backend.shiftly.jobs.worker
+```
+
+The mobile routes are available only through FastAPI. `python server.py` retains
+the browser/legacy runtime and does not serve `/api/mobile`. Report quality checks
+and briefing generation use the configured backend AI provider; automated API
+tests mock it. Do not put AI keys or database credentials in the Expo environment.
+
+Use the existing account enrollment/operator process for an existing development
+database. The mobile app does not create businesses or grant itself ownership.
+
+### Create a fresh local demo
+
+For a new isolated demo, start a separate PostgreSQL 16 container on loopback.
+This uses port `55438` and database `shiftly_demo_local`; it does not modify or
+remove the Compose database on `55432`, test services on `55433`, or any existing
+database.
+
+```sh
+docker run --name shiftly-demo-postgres --detach \
+  --publish 127.0.0.1:55438:5432 \
+  --env POSTGRES_USER=shiftly \
+  --env POSTGRES_PASSWORD=change-me \
+  --env POSTGRES_DB=shiftly_demo_local \
+  postgres:16-alpine
+docker exec shiftly-demo-postgres \
+  pg_isready --username shiftly --dbname shiftly_demo_local
+```
+
+Choose a different local password if other users can access the development
+machine. Export the new database explicitly, migrate it, and run the guarded
+initializer from the repository root:
+
+```sh
+export DATABASE_URL='postgresql://shiftly:change-me@127.0.0.1:55438/shiftly_demo_local'
+python -m backend.shiftly.runtime.migrate
+DEMO_DATABASE_URL="$DATABASE_URL" \
+  python -m backend.shiftly.runtime.demo --create-empty-workspace
+```
+
+The initializer does not read `DATABASE_URL` or `.env` by itself. It requires an
+explicit `DEMO_DATABASE_URL` with a loopback host, database name beginning with
+`shiftly_demo_`, port, and user. It prompts without echo for a password twice and
+creates username `demo-owner`, business **Demo Company**, and store **Demo Store**.
+It creates no catalog items, recipes, or stock.
+
+The command refuses a database containing any business, store, account, or legacy
+manager and serializes initialization so concurrent runs cannot both succeed.
+Use the resulting `DATABASE_URL` in the API and worker terminals; do not point this
+initializer at an existing local, test, staging, or production database.
+
+## Run the app
+
+From this directory:
+
+```sh
+pnpm install --frozen-lockfile
+cp .env.example .env.local
+```
+
+Set `EXPO_PUBLIC_API_URL` in `.env.local` to the API **origin**, without `/api/mobile`:
+
+```dotenv
+EXPO_PUBLIC_API_URL=http://127.0.0.1:4174
+```
+
+Then start Expo:
+
+```sh
+pnpm start
+```
+
+Use the development computer's private LAN address for a physical phone/tablet;
+`127.0.0.1` on the phone refers to the phone itself. Both devices must have network
+access to the API. An Android emulator commonly reaches its host through
+`http://10.0.2.2:4174`; choose the address appropriate to your emulator/network.
+Restart Expo after changing configuration. A Metro/Expo tunnel exposes the
+JavaScript development server, not automatically your Python API.
+
+Development configuration permits loopback/private-LAN HTTP. Platform cleartext
+network policies can still block it; use a reachable HTTPS development endpoint
+or an explicitly configured development build. Release configuration requires
+HTTPS. `EXPO_PUBLIC_*` values are embedded in the client and are public, so only
+place the non-secret API origin here.
+
+With simulator tools installed, `pnpm ios` or `pnpm android` starts Expo for that
+platform. These scripts do not create a signed distribution build. The development
+machine used through 2026-10 had no Xcode/Android SDK, so simulator and device
+validation must be recorded separately on a suitable host.
+
+## Checks
+
+```sh
+pnpm typecheck
+pnpm test
+pnpm export:native
+```
+
+The export command generates the iOS and Android JavaScript/assets bundle. It does
+not compile or sign a native binary. TypeScript and unit/API checks do not replace
+real-device tests of keyboard, safe areas, accessibility, tablet layout, lifecycle,
+secure storage, network interruptions or remotely revoked access.
+
+The backend test suite continues to require an explicitly disposable
+`TEST_DATABASE_URL`; see [TESTING.md](../../docs/TESTING.md). Keep the existing
+browser/transport suite alongside native adapter checks.
+
+From the repository root, `pnpm --dir apps/mobile check` runs the type and unit
+checks together. Use the committed lockfile and pinned package manager.
+
+## Session and data behavior
+
+The app authenticates through `/api/mobile/accounts/*`. Login, activation and
+store switching return an opaque `sessionToken` plus `expiresIn` (seconds). The
+current session lifetime is eight hours; this foundation has no refresh token,
+so expiry requires sign-in again. Store the session token in Expo SecureStore
+and send it as a bearer token. Approved UI checkpoints use separate encrypted
+SecureStore keys; see workspace restoration below. No JWT, browser
+cookie sharing or second identity store is introduced. The server rejects mixed
+browser/native credentials and validates the session and current permissions on
+protected requests.
+
+Protected writes carry the rendered `expectedStoreId`; store switching rotates
+the token. After a rejected session or changed account/store context, private
+content and drafts must be cleared. Foreground refresh rechecks access before
+enabling actions. While the app remains active, access is checked every 60 seconds;
+unchanged access preserves the screen/draft, while changed permissions or authorized
+stores replace the workspace and invalidate older responses. A network failure
+during that check pauses private access until the server can verify it again.
+The report inbox shows the selected store only and labels each report with that
+store; switch stores (owners/admins) to see another store. Failed or uncertain
+writes must not be silently queued/replayed: offline outbox support requires
+future server idempotency and conflict handling.
+
+Invitation/recovery codes are entered explicitly. Do not persist them, passwords,
+report bodies or account rosters in ordinary device storage, links or diagnostics.
+SecureStore is local credential protection; expiry, suspension and revocation are
+enforced by the backend. If sign-out cannot delete the saved device credential,
+the app stays locked and retries cleanup rather than reopening that session.
+A failed cleanup must be completed before treating the device as signed out; the
+message directs the user to reconnect and retry before closing the app.
+
+## Native account administration
+
+**Where to find team administration**
+- Managers and owners: **Store → Build team** to invite someone or add an
+  existing account by their Account ID (shown on their own Account screen).
+- **Store → Team members** to view or change a store membership. **Today → Manage
+  team** also opens the team.
+- Delegated admins have no Store tab and use **Account → Team administration**.
+
+**Invitations and activation codes**
+- Invited people activate their own account and choose their own password.
+- Codes appear only on the issuing screen and expire after 24 hours by default.
+  They are discarded on navigation or backgrounding and never put in routes or
+  storage.
+- Reissuing invalidates the earlier code. Editing a pending membership also
+  invalidates its invitation, so reissue after saving if that membership remains
+  active.
+
+**Owner tools** are reached from **Today → Owner tools** or **Store → Owner tools**.
+They cover business roles, account suspension/restoration, ownership transfer and
+the store sign-in cutover review.
+- Administrator permissions require matching store grants and active business
+  delegation.
+- An ownership transfer ends the current owner's business sessions and clears the
+  native credential.
+- Global suspension is offered only when the owner has authority across the
+  target's complete account history.
+
+`GET /api/mobile/accounts/management` returns selected-store members, form choices
+derived from Python policy, and eligible row actions. Only owners receive the
+business directory and owner controls. These choices are presentation hints:
+every write still uses the existing service's transaction-level authorization.
+The original browser/native roster response remains unchanged. No migration or
+second permission model was added.
+
+Account changes require explicit confirmation showing scope and effects. Unknown
+network outcomes are never replayed automatically: refresh the team or sign in
+again before retrying, and reissue an activation code if its delivery was lost.
+
+Before a release, exercise the actual iPhone/Android screens for keyboard and
+text scaling, back navigation, backgrounding while an invitation code is visible,
+manager denial, store switches during edits, and transfer/sign-out cleanup.
+Bundle and automated service checks do not replace those device checks.
+
+## Visual theme
+
+The native client uses a cocoa, cream and rose theme inspired by
+[baciodilatte.us](https://baciodilatte.us/): cocoa `#6B4124`, rose `#F08183`,
+cream `#FBF6EE`, and pale blush selections. Shared tokens live in
+`src/ui/theme.ts`; use semantic colors for all new screens. Error and success
+messages keep separate colors and icons. The checked normal-text/background
+pairs exceed 4.5:1 contrast, including secondary text on the cream surfaces.
+
+Newsreader headings and Work Sans body/controls are bundled from the pinned
+open-source Expo Google Fonts packages; loading works in Expo Go. The shared
+`Typography` component selects actual bundled weights and uses native fallbacks
+while fonts load or if loading fails. Fonts are not fetched from a third-party
+font service while the app runs. Layout review used the real screen components
+in a temporary browser renderer at 390-pixel phone and 1024-pixel tablet widths;
+this is not a substitute for final native device accessibility/keyboard checks.
+
+## Workspace restoration
+
+Minimize and reopen the app to return to your last screen after access is checked.
+Restarting restores the last complete local checkpoint, including searches, page
+position and unfinished inventory, report and Heads Up input. Counts still need
+Save and final approval; restoring a draft does not change running inventory.
+Use Cancel/Discard to remove a draft. Successful saves remove it automatically.
+
+Drafts stay on this device, expire after seven days, and clear on sign-out or a
+changed user/store/access context. Passwords, invitation codes and pending account
+permission edits are never restored. A changed product, shelf, count line or
+message baseline loads the current server version instead of the stale draft.
+Interrupted report sends require checking the inbox/manager before another send.
+
+Checkpoint failure is shown on screen. Force-closing can interrupt the newest
+write; server-saved data remains authoritative. This is not offline submission.
+
+| Area | Restored | Deliberately transient |
+| --- | --- | --- |
+| All signed-in screens | Last allowed route, safe record IDs, return destination, scroll offset | API responses, request tasks, server errors, confirmation dialogs |
+| Catalog and shelves | Searches, filters, page cursor, product/shelf drafts, assignment picker | Create, assign, remove or archive actions |
+| Current inventory and counts | Searches, shelf selection, count date, unsaved measurements and units | Stock changes and count submission/finalization |
+| Reports | Inbox/composer choice, selected report ID, shift and unsent notes | Fetched report bodies and briefings |
+| Heads Up | Unfinished manager message against the last fetched message | Automatic publication |
+| Recipes and production | Recipe drafts, daily flavor/batch selection, list searches/cursors | Confirmation and recipe saves |
+| Team, Owner and Account | Team selector/search, owner search, permissions/store panel | Passwords, invitation/recovery codes, role/grant/reason edits, ownership transfer and sign-out confirmations |
+
+**Storage**
+- Checkpoints use Expo SecureStore. They are scoped to the API origin and the
+  verified user, business, store, role, capabilities and authorized stores.
+- They are versioned, expire after seven days, and are bounded in size and entry
+  count. A commit-last manifest prevents a partial write replacing a usable
+  checkpoint.
+- Sign-out or any change to account, store or access clears them.
+
+**Restoring**
+- Restoring still requires a valid sign-in and a connection to verify access.
+- A changed server baseline (record version, count state or message) loads the
+  current server value instead of the stale draft.
+- Report sends checkpoint an unconfirmed marker first. A lost response blocks
+  resubmission until the person checks the inbox and acknowledges it.
+
+Pilot acceptance should cover minimize/return and force-close/relaunch on both
+supported device platforms.
+
+
+## Recipes and production
+
+**Creating a recipe** (accounts with `recipes.manage`, normally managers and owners)
+- Open **Today → Production → New recipe**, or **Recipe book → New recipe**.
+- The editor opens as a sheet on phones and a centered window on tablets.
+- Enter a flavor name, choose **4.5 kg** or **6 kg** for its yield, and optionally
+  add instructions.
+- Find ingredients in the company catalog. **+** adds an ingredient and **−**
+  removes it; each ingredient has an amount and unit. Mass ingredients accept g/kg.
+  Recipes keep the original entry and convert it to the catalog base unit exactly.
+- **Save Recipe** creates a recipe revision without changing inventory. **Cancel**
+  closes the editor and discards unsaved changes.
+- Saved recipes show a summary; **Edit Recipe** opens their fields.
+- Choosing a yield does not rescale ingredient amounts, and earlier yields stay
+  unchanged until explicitly edited.
+
+**Production staff** have a separate Production tab and no Reports or Store tab.
+An authorized administrator or owner assigns this role after normal crew
+invitation activation. Managers cannot change a crew member to Production
+themselves.
+
+**Recording production**
+- Open **Production → Record today's production**, check flavors and use the
+  batch counters.
+- Review shows recipe quantities plus a 1% allowance for each ingredient
+  (recipe × batches × 1.01).
+- Only explicit confirmation deducts stock. Missing or insufficient inventory
+  blocks the entire submission.
+- Production history keeps the recipes used at the time. Accounts with
+  `production.manage` can reverse a log with a reason, unless a later physical
+  count supersedes it.
+
+Recipe and daily production drafts use the existing private workspace restoration.
+If a save result is uncertain, inputs stay locked: check the original log or retry
+the exact saved submission. This prevents duplicate deductions after a lost
+connection. This is not offline stock posting.
+
+Rules are in [INVENTORY.md](../../docs/INVENTORY.md#recipes-and-production).
+
+
+## Scan products into the catalog
+
+Open **Inventory → Catalog → Scan product → Open camera** in Expo Go. Allow camera
+access, then scan the printed barcode on a package. Existing or archived codes
+show the product name with **is already in the catalog** and a **View product**
+action; archived matches explain how to review or restore them. Equivalent padded
+retail barcode forms resolve to the same existing item. For a new code, enter the
+product name, choose each/g/kg
+and optionally its full-container amount, then tap **Create product**. Use
+**Scan next product** for the next ingredient. You can type a code manually when
+camera access or the label is unavailable. Only owners/delegated catalog managers
+can create products; inventory viewers can look them up.
+
+This uses Expo Camera's bundled barcode scanner, not AI. No photo is saved or
+uploaded, no microphone is requested, and stock stays unchanged. Old SKU aliases
+are recognized. UPC-A and equivalent EAN-13 scans share one product identity;
+leading zeros remain strings. Draft names/units survive interruption through the
+existing workspace checkpoint; the camera itself requires reopening/resuming.
+
+Use **Zoom in / Zoom out** for small labels after moving back until the bars are
+sharp. A failed lookup shows the received code with **Scan again** and **Change
+code**. Supported native format names and iOS's shortened EAN-13 values are
+normalized by the API, with retail check-digit validation retained. Code 93 joins
+the existing linear barcode formats. Delivery stickers may identify a shipment;
+use a manufacturer barcode or stable internal SKU when the code changes by delivery.
+
+Physical device checks are still required for scanning, permissions, zoom, torch and
+background return. The browser-rendered test client uses manual code entry; this
+does not add camera scanning to the existing hosted browser portal.
+
+## Device testing
+
+Exports, unit tests and browser-rendered journeys do not establish device behavior.
+Record each physical test with the device model, OS version, app build or Expo
+session, API revision and date. The pilot device matrix is an
+[open decision](../../docs/IMPLEMENTATION_PLAN.md#open-owner-decisions).
+
+**Exercise on each supported phone and tablet**
+- Sign-in and store scope; a revoked session or changed permission while the app
+  is open.
+- Barcode scanning: permission prompt and denial, zoom, small labels, the
+  previously failing labels, and background/return.
+- Mixed package/partial counts, count review and posting.
+- Recipe editing; production review, confirmation and reversal.
+- A lost connection during a save, followed by recovery.
+- Minimize/return and force-close/relaunch with unsaved drafts.
+- Keyboard, text scaling, screen reader basics and tablet landscape.
+
+**Recording results**
+- Expo Go on the LAN is a development delivery, not a release artifact.
+- Signed development or store builds are a separate gate
+  ([DEPLOYMENT.md](../../docs/DEPLOYMENT.md#hosted-staging-and-release-gate)).
+- Record results in the pull request or release notes for the exact revision
+  tested.

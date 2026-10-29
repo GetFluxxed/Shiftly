@@ -1,85 +1,118 @@
-# Shiftly security model and planned inventory controls
+# Shiftly security model
 
-Updated: 2026-09-20. Current behavior and future controls are separated below.
+Reviewed against source revision `df53f98` on 2026-10-21. This records implemented
+controls in the current source. Hosted configuration and operational verification
+remain separate evidence; see [DEPLOYMENT.md](DEPLOYMENT.md).
 
-## Implemented baseline
+## Identity and sessions
 
-The current application uses shared store crew credentials, individual manager
-records, store memberships, hashed session tokens, expiry checks, parameterized
-SQL, and cookie/security headers. Cookies are HttpOnly and SameSite=Strict;
-Secure behavior depends on configured deployment settings.
+Supported staff access uses individual username/password accounts activated by a
+single-use, expiring invitation. Invitation activation starts with baseline crew
+authority. Elevated roles are assigned later by an authorized owner or
+administrator; there is no public manager/admin/owner signup.
 
-Login failures and in-flight attempts share a normalized client/store budget.
-Weekly generation is bounded. These admission controls are process-local and
-must be coordinated before deploying multiple API processes.
+Credentials use salted password hashes. Browser and native sessions are opaque,
+random, stored server-side as hashes, expiring, revocable, and tied to credential
+version. Native bearer tokens live in SecureStore; browser sessions use protected
+cookies. The server rejects mixed credential forms. Password reset and invitation
+tokens are never trusted for role or store claims.
 
-Manager login currently accepts store code, role and password and searches the
-store's candidate manager credentials. A stored username is not yet an explicit
-login selector. Typed crew names remain self-reported metadata, not proof of
-identity. Inventory permissions, an inventory audit log, and media storage are
-not implemented yet.
+Shared crew login, password-only manager login, and public signup were retired on
+2026-09-24. `/api/auth/signup` and `/api/auth/add-manager` always return 403, and
+public request authentication rejects shared/legacy cookies. Compatibility tables
+and adapters preserve existing data during migration but do not authorize new
+feature access.
 
-## Identity transition
+Invitation links carry only an opaque secret in the URL fragment, never role,
+store or username claims. Opening a link previews the bound username and store
+without consuming it. Activation rechecks the issuer's current authority under the
+policy lock and consumes the token, creates the account and opens the session in
+one transaction. Expired, revoked, replaced or used tokens cannot activate.
+Reissuing invalidates the earlier code. Older unaccepted invitations that carried
+elevated roles or extra grants cannot activate.
 
-For inventory, use an explicit individual account and authorized store
-membership. Introduce store + username + password selection and account/session
-lifecycle through a documented client transition. Preserve existing report
-sessions during transport migration; do not silently treat an ambiguous legacy
-login as sufficient identity for new audited approvals.
+## Roles and capabilities
 
-Store context must be validated server-side for every operation. The current
-report list spans authorized memberships, while several other manager views use
-the selected store; define and test the inventory contract as one explicit store.
-Review role and membership revocation, account recovery and shared-device logout.
+Defined in `backend/shiftly/identity/accounts_policy.py`. Capability strings:
+`reports.submit`, `reports.view`, `reports.manage`, `inventory.view`,
+`counts.submit`, `counts.approve`, `receipts.draft`, `receipts.post`,
+`stock.adjust`, `configuration.manage`, `catalog.propose`, `catalog.manage`,
+`memberships.manage`, `production.view`, `production.submit`, `production.manage`,
+`recipes.manage`, `forecasts.view`.
 
-## Planned permission model
+| Role | Effective capabilities | Administration limits |
+| --- | --- | --- |
+| Owner | All capabilities in the owned business, every store | Appoints owners/admins, transfers ownership, suspends accounts (only with authority over the target's whole account history) |
+| Admin | Exactly the explicit business delegation intersected with store grants | Assigns roles within its delegation; cannot appoint admins |
+| Manager | Crew capabilities plus `reports.view`, `reports.manage`, `counts.approve`, `receipts.post`, `stock.adjust`, `configuration.manage`, all production capabilities, `recipes.manage`, `forecasts.view`; optional `memberships.manage` | With `memberships.manage`, may invite baseline crew only; cannot edit memberships or promote anyone. Never receives `catalog.manage` through a store grant |
+| Production | `inventory.view`, `counts.submit`, `receipts.draft`, `catalog.propose`, `production.view`, `production.submit` | No reporting, Store workspace, account management or store switching |
+| Crew | `reports.submit`; optional `inventory.view`, `counts.submit`, `receipts.draft`, `catalog.propose` | No approval, posting, adjustment or administration |
 
-| Actor | Inventory access |
-| --- | --- |
-| Shared crew session | None by default; existing reporting remains available |
-| Identified authorized manager | View/count/approve/adjust/configure/receive within granted stores |
-| Optional named stock counter | View and submit draft observations only where explicitly granted; no automatic approval or configuration rights |
-| Store administrator capability | Manage store memberships and inventory grants with an audit record |
+Stores not yet enabled for accounts expose only reporting capabilities.
+Self-escalation and removing or suspending the last active owner are denied.
+Removing one store membership keeps the person's other stores. Heads Up reads are
+limited to manager, crew and production roles, and writes to managers; owners and
+admins have no Heads Up access.
 
-Implement action permissions such as inventory view, count, approve, adjust,
-configure, and receive, even if the pilot grants them together to managers.
-Hiding a navigation link is not authorization. Retain server checks on nested
-items, locations, photos, jobs, invoice lines, exports, idempotent replays and
-reconnected drafts. Reject mismatched store relationships at the database layer
-where possible.
+## Authorization and tenancy
 
-## Planned stock and evidence controls
+The server derives the actor, business, selected store, role, and capabilities.
+Crew, production, and managers have one active store. Owners and delegated
+administrators may switch only inside their authorized scope. Production lacks
+reporting capabilities and the native Reports/Store surfaces.
 
-- Record actor, store, action, occurrence/recording times, source, old/new values
-  and reason for approvals, par changes, adjustments, receipts and corrections.
-- Apply stock-posting idempotency and version checks in the same transaction as
-  the movement and balance update. Recheck permission on retry.
-- Preserve original measurements, image evidence references and conversion
-  versions. Correct posted history through linked events.
-- Keep image objects private. Validate uploaded bytes/type/dimensions, restrict
-  retention, strip unnecessary location metadata, and authorize each retrieval.
-- Treat photos, OCR text, barcodes, invoice contents and provider output as
-  untrusted input. Require validated proposals and authorized stock approval.
-- Keep AI/storage credentials server-side. Do not log credentials, signed URLs,
-  or unnecessary report/photo content. Document which evidence reaches providers.
-- Define limits for payloads, per-store jobs, retries and provider spend.
+Every protected write revalidates the selected store and capability inside the
+same database transaction as the mutation. Policy mutations, session issuance and
+revocation, and privileged writes share one schema-scoped PostgreSQL advisory
+transaction lock, which serializes them across processes. This includes
+last-owner races and revocation racing a write. Nested product, package, shelf, count,
+movement, recipe, log, forecast, membership, and report IDs are checked against
+that scope. Submitted roles, client-side visibility, and object IDs do not grant
+access.
 
-## Planned application controls
+Account and inventory changes produce scoped audit/change history. Invitation,
+membership, ownership-transfer, suspension, count posting, production posting,
+and reversal paths preserve actor and reason where their contracts require it.
 
-Preserve current cookie/security behavior through FastAPI contract tests. Define
-origin/CSRF checks for state-changing browser requests and use an explicit CORS
-allowlist if a later client requires cross-origin access. Validate trusted proxy
-configuration before relying on forwarded client-address headers.
+## Data integrity and sensitive data
 
-Enable same-origin camera access only for inventory capture surfaces; do not
-enable microphone access as a side effect. HTTPS and a usable denied-permission
-fallback are part of the camera acceptance gate.
+- Reports commit original notes and a durable briefing job together. Provider
+  failure cannot erase the original report.
+- Durable job leases are recoverable and fenced against stale completion.
+  Diagnostics are sanitized; external provider execution is not exactly once.
+- Count posting and production posting use idempotency/version checks and update
+  movement history plus balance projection atomically.
+- Decimal quantities and explicit units prevent floating-point stock changes.
+- Barcode camera capture saves no photo. Shelf-photo analysis and invoice
+  extraction are not implemented, so there is no image storage or retention to
+  claim. Their required controls are in the
+  [camera and invoice plan](workstreams/camera-and-invoice-readiness.md#read-only-security-and-recovery-gate).
+- Forecast output is advisory, store scoped and cannot post stock. Provider
+  requests use `store: false`; nothing trains a model on company records.
+- Private native checkpoints exclude passwords, invitation/recovery codes, and
+  ordinary account rosters; access changes invalidate stored private state.
 
-The installable app caches public application assets, not authenticated API
-responses or private photos by default. Saved drafts have explicit retention,
-clear device ownership/sync state, and a logout cleanup policy; reconnect always
-revalidates authorization and inventory versions. Native device authentication
-and secure storage require their own later design.
+## HTTP, input, and provider controls
 
-See [INVENTORY.md](INVENTORY.md) for evidence, weighing and receiving rules and
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for the delivery gates.
+FastAPI applies security headers, bounded request parsing, same-origin checks for
+browser writes, and explicit native credential handling. Secure cookies and HTTPS
+are required for hosted use. Local cleartext HTTP is limited to loopback/private
+LAN development. `EXPO_PUBLIC_*` values are public and may contain only the API
+origin, never credentials.
+
+Provider keys, database URLs, admin keys, session tokens, account codes, report
+bodies, and private inventory data must not enter source control or logs. Automated
+tests mock provider calls and fail unexpected paid requests. Provider output does
+not grant authority and must pass domain validation before use.
+
+## Remaining release evidence
+
+Before a production claim, verify the exact deployed revision, HTTPS/cookie
+configuration, allowed origins, real account/business mapping, database backup and
+restore, migration/rollback procedure, log redaction, worker supervision, rate
+limits, and provider budgets. Physical-device checks must cover secure storage,
+revocation, backgrounding, camera permission, and private-state clearing.
+
+Account endpoints are listed in [API.md](API.md#accounts-apiaccounts). Inventory
+integrity rules are in [INVENTORY.md](INVENTORY.md). Release security gates are in
+the [implementation plan](IMPLEMENTATION_PLAN.md#roadmap).

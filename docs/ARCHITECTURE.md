@@ -1,140 +1,153 @@
-# Shiftly architecture: current baseline and target
+# Shiftly architecture
 
-Updated: 2026-09-20. Delivery authority: [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
+Reviewed against source revision `df53f98` on 2026-10-21. This is the current
+source boundary. Delivery order lives in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md),
+operational topology in [DEPLOYMENT.md](DEPLOYMENT.md), and accepted legacy
+deviations in the [implementation plan](IMPLEMENTATION_PLAN.md#accepted-legacy-deviations).
 
-## Current runtime
+## Runtime and clients
 
-At baseline `53fdd36`, Shiftly is a Python application with extracted modules:
-`config.py`, `database.py`, `auth.py`, `security.py`, `store_service.py`,
-`reporting.py`, and `routes.py`. `server.py` still owns HTTP dispatch, static
-assets, migration startup, and an in-process worker thread. Routes still depend
-on server globals, so module boundaries are incomplete.
+FastAPI is the supported API for the Expo/React Native client and also serves
+compatibility browser pages and routes. PostgreSQL is the transaction authority.
+A separately supervised worker processes durable briefings and production forecasts. The supported
+initial topology is one API process and one worker; admission controls remain
+process-local, so API replicas require a shared limit design first.
 
-PostgreSQL stores accounts, sessions, memberships, reports, briefing jobs,
-briefings, Head's Up, and the weekly cache. The existing client is HTML/CSS/JS.
-Tests and CI exist; FastAPI, inventory, media storage, sales ingestion, and a
-separate worker deployment do not yet exist.
+`backend/shiftly/app.py` builds the FastAPI application without applying
+migrations. Its lifespan opens bounded resources and checks schema readiness.
+`backend/shiftly/runtime/` composes services, database resources, settings, and
+provider adapters. `python server.py` remains a legacy browser runtime and does
+not expose `/api/mobile`. In its default `embedded` mode it applies migrations at
+startup and runs only the briefing worker in-process. Forecast jobs need the
+separate worker (`python -m backend.shiftly.jobs.worker`), which processes both
+briefings and forecasts. With `SHIFTLY_WORKER_MODE=external` the legacy server
+only checks the schema and reads shared worker health. Never run both worker modes
+against one queue.
 
-## Target application
+The native application lives in `apps/mobile`. Browser HTML/CSS/JavaScript at
+the repository root is a compatibility surface, not a second product authority.
+Both clients use the same server policy and domain services.
 
-One Shiftly application will expose a FastAPI backend and an installable mobile
-web client. A separately supervised worker processes durable jobs. PostgreSQL
-remains the transaction authority; private object storage holds inventory images.
-
-The manager app has Operations and Inventory spaces. Both use the same account
-and selected-store context. A later native client uses the versioned API rather
-than reimplementing stock calculations or permissions.
-
-FastAPI routers will group module endpoints, with shared authorization and
-resource dependencies. This follows its supported [router/dependency structure](https://fastapi.tiangolo.com/tutorial/bigger-applications/).
-
-Proposed organization, to be introduced incrementally:
+## Implemented domain boundaries
 
 ```text
 backend/shiftly/
-  app.py                  application factory and router registration
-  core/                   settings, database resources, errors, logging
-  identity/               accounts, sessions, memberships, permissions
-  stores/                 store configuration and selected-store context
-  reports/                existing report and briefing workflows
-  inventory/
-    catalog/              items, conversions, weights and pars
-    locations/            areas, shelves, bins and assignments
-    ledger/               movements, balances, transfers and reversals
-    counts/               sessions, observations, weighing and approval
-  media/                  private uploads, evidence and retention
-  vision/                 count proposals, provider adapters and evaluation
-  sales/                  ingestion, recipes and usage mappings
-  forecasting/            shortage estimates and explanations
-  receiving/              invoices, scans and receipt posting
-  jobs/                   durable queue, handlers and worker entry point
-web/
-  app-shell/              routing, navigation, installation and sync status
-  operations/             existing manager workflows
-  inventory/              tracker, shelves, count review and receiving
-  shared/                 authenticated API client and reusable controls
+  api/          HTTP parsing, credentials, authorization entry, response mapping
+  core/         transport-neutral settings, errors, request and security helpers
+  identity/     users, sessions, invitations, memberships and capabilities
+  stores/       store lookup and selected-store behavior
+  reports/      reports, briefings and weekly overview workflows/repositories
+  inventory/    catalog, packages, shelves, quantities, movements and counts
+  production/   recipes, production posting and reversal
+  forecasts/    store forecast workflow, persistence and provider boundary
+  jobs/         durable job ownership, status and worker entry point
+  runtime/      composition, migrations, database resources and provider setup
+apps/mobile/
+  app/          Expo Router entry and navigation
+  src/          API/session code, feature screens, state and shared UI
 ```
 
-These directories are a target, not a claim that they are present. Choose client
-build tooling in the app-shell work package; preserve existing pages while
-introducing feature modules and a consistent API client.
+The reporting boundary preserves old imports through a facade:
+root `reporting.py` is a compatibility facade; the real OpenAI transport and
+factory belong to `backend/shiftly/runtime/provider.py`; durable briefing claim,
+lease fencing, completion/failure, diagnostics, and loop behavior belong to
+`backend/shiftly/jobs/reporting.py`; and the worker consumes those package
+modules directly.
 
-## Boundary rules
+## Responsibility rules
 
-- HTTP adapters parse requests, authorize, and translate responses. Business
-  services own workflows; repositories own SQL.
-- Domain services do not import HTTP handlers or `server.py`. Inject settings,
-  the authenticated actor/store context, database resources, clock, and provider
-  interfaces where required.
-- Inventory owns stock posting. Vision, receiving, and forecasting cannot write
-  balances directly; they submit reviewed observations or approved movement
-  commands through inventory services.
-- The ledger records one atomic posting and updates its balance projection in
-  the same transaction. Jobs can run more than once; commands remain idempotent.
-- Keep existing psycopg/SQL and migrations initially. A new web framework does
-  not require a simultaneous ORM or database rewrite.
-- Do not call blocking database/AI work directly inside an async event loop.
-  Use bounded synchronous execution initially or deliberately adopt compatible
-  async clients; image processing belongs in durable workers.
-- Store-level authorization applies to nested IDs, media, jobs, count approval,
-  invoice lines, exports, and all retry/sync paths.
+- API adapters parse bounded input, authenticate, call public services, and map
+  domain failures. They do not own business transactions.
+- Services own workflows and transactions. Repositories own SQL and use the
+  caller's connection where atomic policy and data changes must stay together.
+- Every protected write rechecks actor and expected store inside its transaction.
+  A client role, hidden control, object ID, or `storeId` is never authority.
+- Inventory owns authoritative stock posting. Counts and production create
+  immutable movements and update the balance projection atomically. Forecasts,
+  camera input, and future receiving cannot write balances directly.
+- PostgreSQL migrations are additive and ordered. No ORM or second identity/store
+  system is planned.
+- Durable commands are idempotent. A reclaimed worker lease is fenced so a stale
+  worker cannot overwrite a newer result. External provider calls may repeat
+  after a crash and are not exactly once.
+- Blocking database and provider work must stay off the async event loop. Heavy
+  or retryable work belongs in the durable worker rather than request-lifetime
+  background tasks.
 
-## FastAPI transition
+## Accounts and scope
 
-1. Extract services and capture the current behavior in contract tests.
-2. Introduce the app factory and routers alongside the current server for
-   development/staging. The old `BaseHTTPRequestHandler` is not an ASGI app;
-   port its adapters rather than pretending it can be mounted unchanged.
-3. Keep current `/api/...` routes and static entry pages during migration.
-   Explicitly map validation/status/cookie differences. New modules use
-   `/api/v1/...`; document compatibility and deprecation separately.
-4. Use FastAPI [lifespan](https://fastapi.tiangolo.com/advanced/events/) to open
-   and close application resources. Run a coordinated migration command before
-   web and worker startup, with compatible additive migrations.
-5. Move durable work into an independently started, supervised process using
-   the existing PostgreSQL queue as the initial foundation. Image analysis,
-   imports, and stock-affecting work are not request-lifetime background tasks.
-   FastAPI's [background-task guidance](https://fastapi.tiangolo.com/tutorial/background-tasks/)
-   distinguishes lightweight in-process tasks from heavier work.
-6. Preserve data, sessions, and route contracts through staging verification,
-   cutover, and a rehearsed rollback. Retire the old transport only after parity.
+All supported staff flows use individual accounts. Invitation activation grants
+baseline crew authority; later role assignment is an authorized administrative
+operation. Crew, production, and manager accounts have one active store. Owners
+and authorized administrators may switch only within their business scope.
+Production has production/inventory capabilities and no reporting capability.
 
-## Runtime and failure behavior
+Opaque native bearer sessions and browser cookies are transport forms over the
+same server-side, hashed, expiring, revocable session model. Native clients clear
+private state after identity or scope changes; they do not implement a parallel
+permission model.
 
-Use liveness for process availability, readiness for required dependencies and
-schema compatibility, and separate worker heartbeat/queue-age indicators. A
-healthy database alone does not prove jobs are being processed.
+## Inventory and production flow
 
-Workers need bounded attempts, delayed retry, lease recovery, dead-letter/manual
-retry controls, and exception handling that survives failure to record another
-failure. Save sanitized diagnostics and correlation IDs without credentials or
-unnecessary report/photo content. Preserve original notes during AI outages.
+A business owns the shared product catalog. Stores own shelf placements, balances,
+counts, movements, production logs, and forecasts. Product/package identities are
+stable; archived or redirected records preserve references. Exact decimal strings
+cross the API boundary and PostgreSQL `NUMERIC` values remain authoritative.
 
-The current login budget and weekly concurrency cap are process-local. Before
-adding web replicas, introduce coordinated admission and shared limits. Keep
-database pool sizes and worker concurrency within a documented deployment budget.
-Migration locking and queue ownership must work across processes.
+A whole-store count progresses draft -> review -> posted. Posting checks versions,
+scope, completeness, and authorization, then writes movements and balances in one
+transaction. Production confirmation snapshots recipe inputs, deducts recipe
+quantity × batches × 1.01, and posts atomically. Reversal is explicit and
+constrained by later physical counts. Forecasts read a bounded store snapshot,
+compute exact facts, and ask the configured provider for structured advisory
+suggestions in the durable worker. Output is validated and cannot write stock or
+recipes. Full rules are in [INVENTORY.md](INVENTORY.md).
 
-## Client and media behavior
+Barcode camera capture performs a lookup/catalog workflow without saving a photo.
+Shelf-photo proposals, invoice receiving and offline stock posting are future
+boundaries and must enter stock through reviewed inventory commands.
 
-The confirmed first app is an installable mobile web app. Add an app manifest,
-same-origin HTTPS delivery, an asset-only service-worker cache policy, explicit
-draft/sync states, and refresh/version handling. Keep final inventory posting
-online; saved drafts recheck authorization and versions on reconnect.
+## Known coupling
 
-Use phone capture with an upload fallback. Private image storage, validation,
-limited retention, evidence links, and provider isolation belong to the media
-and vision modules. Camera permission policy changes are scoped to capture
-surfaces. Native app packaging, device credentials, and push integrations are
-later work using the same backend.
+Open findings from the 2026-09-23 architecture audit, still present in `df53f98`:
 
-## Data ownership
+- **Identity internals.** `AccountsService` composes mixins that call each other's
+  private helpers.
+  - The report repository takes the account policy lock directly.
+  - The store repository calls the private `accounts._audit`.
+  - New modules must use the public `require_selected_store(...)` boundary and own
+    their audit records instead of copying this pattern.
+  - Identity value types already moved to `identity/contracts.py`.
+- **Broad reads under a global lock.** The account management projection, the
+  authorized-store evaluation and the unpaginated selected-store report inbox run
+  under the schema-wide policy lock.
+  - This is a measured-later scaling risk, not an observed outage.
+  - Measure before narrowing the lock, and keep concurrent revocation guarantees.
 
-Current store IDs remain the authorization boundary. Decide whether a future
-organization groups multiple stores before introducing shared catalogs; do not
-invent an organization migration as a prerequisite for a single-store pilot.
-Inventory IDs and relationships remain store-scoped either way.
+The audit's provider/worker dependency finding was resolved on 2026-10-11. The
+provider transport now lives in `runtime/provider.py`, durable jobs in
+`jobs/reporting.py`, and root `reporting.py` is a facade.
 
-See [INVENTORY.md](INVENTORY.md) for measurement rules, count reconciliation,
-movement history, forecasts, and receiving. See [DATABASE.md](DATABASE.md) for
-implemented schema versus proposed additions.
+## Architectural decisions
+
+| Date | Decision |
+| --- | --- |
+| 2026-09-22 | React Native/Expo is the primary phone/tablet client. The browser remains a compatibility surface; no separate React web rewrite. |
+| 2026-09-22 | Native clients get opaque bearer tokens over the existing session records; no JWT or second identity store. |
+| 2026-09-23 | Keep the modular Python backend; no rewrite or microservice split. Inventory gets its own service/router boundary. |
+| 2026-09-24 | Individual accounts only; shared crew, password-only manager login and public signup retired. |
+| 2026-09-29 | A single movement ledger plus balance projection serves counts and production; production uses a fixed 1% allowance. |
+| 2026-10-01 | Forecasts run as durable jobs analyzing supplied records with strict structured output; no model training. |
+| 2026-10-02 | Canonical stock units stay `each`/`g`/`kg`; package labels may use pounds; volume needs an explicit net weight. |
+| 2026-10-11 | [ENGINEERING.md](../ENGINEERING.md) adopted. Provider/job implementation moved out of the legacy facade. `psycopg-pool` remains the only runtime pool dependency. |
+
+## Failure and release boundaries
+
+Health must distinguish process/database readiness from worker progress. Private
+responses use no-store behavior and security headers; logs and stored failure
+diagnostics must omit credentials and private report bodies.
+
+Local tests, browser rendering, and native exports are distinct evidence. None
+proves hosted cutover, production ownership mapping, physical-device behavior,
+signed-build readiness, or store publication. Preserve the browser fallback and
+migration compatibility until hosted parity and rollback have been rehearsed.

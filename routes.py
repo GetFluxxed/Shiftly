@@ -1,287 +1,93 @@
-import hashlib
-import hmac
+"""Legacy HTTP adapters with explicit, replaceable service composition."""
+
 import json
-import secrets
 from urllib.parse import urlparse
 
 import psycopg
 
 import reporting
+from backend.shiftly.identity import IdentityError, IdentityRepository, IdentityService
 from backend.shiftly.reports import ReportRejected, ReportSubmission
-from auth import is_manager, session_store_id
+from backend.shiftly.stores import StoresRepository, StoresService
+from auth import is_manager, session_store_id, request_principal
+from config import load_settings
 from database import db_connection
-from security import clean, finish_login_attempt, hash_store_code, parse_json, password_hash, rate_limited, reserve_login_attempt
+from security import admission_control, clean, client_key, cookie_token, named_account_token, parse_json, password_hash, rate_limited
 from store_service import heads_up, is_crew, manager_username, store_for_code
 
+# Retired test-injection hook. No route calls it or discovers server globals.
+_server_module = None
 
-def _server_module():
-    import server
-    return server
-
-
-def login(handler, store_code=None, role=None, password=None):
-    if store_code is None or role is None or password is None:
-        try:
-            payload = parse_json(handler, max_body=10_000)
-            raw_store_code = payload.get("storeCode")
-            if raw_store_code is not None and not isinstance(raw_store_code, str):
-                raise ValueError("Store code must be text.")
-            store_code = clean(raw_store_code, 40)
-            role = str(payload.get("role", "auto")).strip().casefold()
-            password = str(payload.get("password", ""))
-        except (ValueError, TypeError, UnicodeError):
-            handler.send_json(400, {"error": "Invalid login request."})
-            return
-    if role not in {"auto", "crew", "manager"}:
-        handler.send_json(400, {"error": "Invalid sign-in role."})
-        return
-    if not reserve_login_attempt(handler, store_code):
-        handler.send_json(429, {"error": "Too many failed sign-in attempts. Try again later."})
-        return
-    authenticated = False
-    try:
-        authenticated = _login_reserved(handler, store_code, role, password)
-    finally:
-        finish_login_attempt(handler, store_code, failed=not authenticated)
+IDENTITY_STATUS = {"invalid": 400, "unauthenticated": 401, "forbidden": 403,
+                   "not_found": 404, "conflict": 409, "limited": 429, "unavailable": 503}
 
 
-def _login_reserved(handler, store_code, role, password):
-    server = _server_module()
-    store = store_for_code(store_code)
-    if not store or not password:
-        handler.send_json(401, {"error": "Incorrect store code or password."})
-        return
-    store_id, store_name = store
-    if role == "auto":
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT m.password_salt, m.password_hash
-                    FROM manager_users m
-                    JOIN store_memberships sm ON sm.manager_user_id = m.id
-                    WHERE sm.store_id = %s AND m.active
-                    """,
-                    (store_id,),
-                )
-                manager_credentials = cursor.fetchall()
-        if any(
-            hmac.compare_digest(candidate_hash, password_hash(password, salt))
-            for salt, candidate_hash in manager_credentials
-        ):
-            role = "manager"
-        else:
-            role = "crew"
-    if role == "crew":
-        candidate_hash = password_hash(password, f"shiftly-crew:{hash_store_code(store_code)}")
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1 FROM stores WHERE id = %s AND crew_password_hash = %s AND active", (store_id, candidate_hash))
-                authenticated = cursor.fetchone() is not None
-        if not authenticated:
-            handler.send_json(401, {"error": "Incorrect store code or password."})
-            return
-        token = secrets.token_urlsafe(32)
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO crew_sessions (token_hash, store_id, expires_at) VALUES (%s, %s, NOW() + (%s * INTERVAL '1 second'))",
-                    (hashlib.sha256(token.encode()).hexdigest(), store_id, server.SESSION_TTL),
-                )
-            connection.commit()
-        cookie_name = "shiftly_crew_session"
-        response = {"authenticated": True, "role": "crew", "storeName": store_name}
-    elif role == "manager":
-        password_candidates = []
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT m.id, m.password_salt, m.password_hash
-                    FROM manager_users m
-                    JOIN store_memberships sm ON sm.manager_user_id = m.id
-                    WHERE sm.store_id = %s AND m.active
-                    """,
-                    (store_id,),
-                )
-                password_candidates = cursor.fetchall()
-        manager = next(
-            (candidate for candidate in password_candidates if hmac.compare_digest(candidate[2], password_hash(password, candidate[1]))),
-            None,
-        )
-        if not manager:
-            handler.send_json(401, {"error": "Incorrect store code or password."})
-            return
-        token = secrets.token_urlsafe(32)
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
-                    (hashlib.sha256(token.encode()).hexdigest(), manager[0], store_id, server.SESSION_TTL),
-                )
-                cursor.execute("UPDATE manager_users SET last_sign_in_at = NOW() WHERE id = %s", (manager[0],))
-            connection.commit()
-        cookie_name = "shiftly_manager_session"
-        response = {"authenticated": True, "role": "manager", "managerName": manager_username(manager[0]), "storeName": store_name}
+def make_identity_service(*, admin_key=None, session_ttl=28800):
+    if admin_key is None:
+        admin_key = load_settings().admin_signup_key
+    return IdentityService(
+        IdentityRepository(db_connection), StoresService(StoresRepository(db_connection)),
+        admin_key=admin_key, session_ttl=session_ttl, admission=admission_control(),
+        password_hasher=password_hash, store_lookup=store_for_code, username_lookup=manager_username,
+    )
+
+
+def _identity_error(handler, error):
+    handler.send_json(IDENTITY_STATUS[error.code], {"error": str(error)})
+
+
+def _session_response(handler, result, status, secure_cookies):
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json")
+    secure = "; Secure" if secure_cookies else ""
+    cookie_name = ("shiftly_account_session" if result.role == "account" else
+                   "shiftly_manager_session" if result.role == "manager" else "shiftly_crew_session")
+    handler.send_header("Set-Cookie", f"{cookie_name}={result.token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={result.ttl}")
+    if result.role == "account":
+        for old_cookie in ("shiftly_manager_session", "shiftly_crew_session"):
+            handler.send_header("Set-Cookie", f"{old_cookie}=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
     else:
-        handler.send_json(400, {"error": "Invalid sign-in role."})
-        return
-    handler.send_response(200)
-    handler.send_header("Content-Type", "application/json")
-    secure = "; Secure" if server.SECURE_COOKIES else ""
-    handler.send_header("Set-Cookie", f"{cookie_name}={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={server.SESSION_TTL}")
+        # Explicit sign-in replaces stale cookies while preserving the original
+        # single-cookie response when no conflicting credential was supplied.
+        for old_cookie in ('shiftly_account_session', 'shiftly_manager_session', 'shiftly_crew_session'):
+            present = named_account_token(handler) is not None if old_cookie == 'shiftly_account_session' else bool(cookie_token(handler, old_cookie))
+            if old_cookie != cookie_name and present:
+                handler.send_header('Set-Cookie', f'{old_cookie}=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0')
+    handler.send_header("Cache-Control", "no-store")
     handler.end_headers()
-    handler.wfile.write(json.dumps(response, ensure_ascii=False).encode("utf-8"))
-    return True
+    handler.wfile.write(json.dumps(result.response, ensure_ascii=False).encode("utf-8"))
 
 
-def signup(handler):
-    server = _server_module()
-    if not server.ADMIN_SIGNUP_KEY:
-        handler.send_json(503, {"error": "Workspace creation is not configured."})
-        return
-    if server.signup_rate_limited(handler):
-        handler.send_json(429, {"error": "Too many sign-up attempts. Try again later."})
-        return
-    server.record_signup_attempt(handler)
+def login(handler, store_code=None, role=None, password=None, *, identity=None, secure_cookies=None):
+    identity = identity if identity is not None else make_identity_service()
+    if secure_cookies is None:
+        secure_cookies = load_settings().secure_cookies
     try:
-        payload = parse_json(handler)
-        store_name = clean(payload.get("storeName"), 120)
-        store_code = clean(payload.get("storeCode"), 40)
-        crew_password = str(payload.get("crewPassword", ""))
-        manager_name = clean(payload.get("managerUsername"), 80)
-        manager_password = str(payload.get("managerPassword", ""))
-        confirm_password = str(payload.get("confirmPassword", ""))
-        admin_key = str(payload.get("adminKey", ""))
-    except ValueError as error:
-        handler.send_json(400, {"error": str(error)})
+        if store_code is None or role is None or password is None:
+            try:
+                payload = parse_json(handler, max_body=10_000)
+            except (ValueError, TypeError, UnicodeError):
+                handler.send_json(400, {"error": "Invalid login request."})
+                return
+            result = identity.login_payload(payload, client_key=client_key(handler))
+        else:
+            result = identity.login(store_code, role, password, client_key=client_key(handler))
+    except IdentityError as error:
+        _identity_error(handler, error)
         return
-    if not hmac.compare_digest(admin_key, server.ADMIN_SIGNUP_KEY):
-        handler.send_json(403, {"error": "The admin key is incorrect."})
-        return
-    if not store_name or not store_code or not manager_name:
-        handler.send_json(400, {"error": "Store name, store code, and manager name are required."})
-        return
-    if len(store_code) < 2 or len(crew_password) < 8:
-        handler.send_json(400, {"error": "Store code must be at least 2 characters and the crew password at least 8 characters."})
-        return
-    if len(manager_name) < 2 or len(manager_password) < 8:
-        handler.send_json(400, {"error": "Manager name must be at least 2 characters and the manager password at least 8 characters."})
-        return
-    if manager_password != confirm_password:
-        handler.send_json(400, {"error": "Manager passwords do not match."})
-        return
-    code_hash = hash_store_code(store_code)
-    crew_hash = password_hash(crew_password, f"shiftly-crew:{code_hash}")
-    manager_salt = secrets.token_urlsafe(24)
-    manager_hash = password_hash(manager_password, manager_salt)
-    try:
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO stores (name, access_code_hash, crew_password_hash) VALUES (%s, %s, %s) RETURNING id",
-                    (store_name, code_hash, crew_hash),
-                )
-                store_id = cursor.fetchone()[0]
-                cursor.execute(
-                    "INSERT INTO manager_users (username, email, password_salt, password_hash) VALUES (%s, NULL, %s, %s) RETURNING id",
-                    (manager_name, manager_salt, manager_hash),
-                )
-                manager_id = cursor.fetchone()[0]
-                cursor.execute(
-                    "INSERT INTO store_memberships (manager_user_id, store_id, role) VALUES (%s, %s, 'manager')",
-                    (manager_id, store_id),
-                )
-            connection.commit()
-    except psycopg.errors.UniqueViolation:
-        handler.send_json(409, {"error": "That store code or manager name is already in use."})
-        return
-    token = secrets.token_urlsafe(32)
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
-                (hashlib.sha256(token.encode()).hexdigest(), manager_id, store_id, server.SESSION_TTL),
-            )
-            cursor.execute("UPDATE manager_users SET last_sign_in_at = NOW() WHERE id = %s", (manager_id,))
-        connection.commit()
-    secure = "; Secure" if server.SECURE_COOKIES else ""
-    handler.send_response(201)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={server.SESSION_TTL}")
-    handler.end_headers()
-    handler.wfile.write(json.dumps({"authenticated": True, "role": "manager", "managerName": manager_name, "storeName": store_name}, ensure_ascii=False).encode("utf-8"))
+    _session_response(handler, result, 200, secure_cookies)
 
 
-def add_manager(handler):
-    server = _server_module()
-    if not server.ADMIN_SIGNUP_KEY:
-        handler.send_json(503, {"error": "Manager creation is not configured."})
-        return
-    if server.signup_rate_limited(handler):
-        handler.send_json(429, {"error": "Too many account creation attempts. Try again later."})
-        return
-    server.record_signup_attempt(handler)
-    try:
-        payload = parse_json(handler)
-        admin_key = str(payload.get("adminKey", ""))
-        store_code = clean(payload.get("storeCode"), 40)
-        manager_name = clean(payload.get("managerUsername"), 80)
-        manager_password = str(payload.get("managerPassword", ""))
-        confirm_password = str(payload.get("confirmPassword", ""))
-    except ValueError as error:
-        handler.send_json(400, {"error": str(error)})
-        return
-    if not hmac.compare_digest(admin_key, server.ADMIN_SIGNUP_KEY):
-        handler.send_json(403, {"error": "The admin key is incorrect."})
-        return
-    if not store_code or not manager_name:
-        handler.send_json(400, {"error": "Store code and manager name are required."})
-        return
-    if len(manager_name) < 2 or len(manager_password) < 8:
-        handler.send_json(400, {"error": "Manager name must be at least 2 characters and the manager password at least 8 characters."})
-        return
-    if manager_password != confirm_password:
-        handler.send_json(400, {"error": "Manager passwords do not match."})
-        return
-    store = store_for_code(store_code)
-    if not store:
-        handler.send_json(404, {"error": "That store could not be found."})
-        return
-    store_id, store_name = store
-    manager_salt = secrets.token_urlsafe(24)
-    manager_hash = password_hash(manager_password, manager_salt)
-    try:
-        with db_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO manager_users (username, email, password_salt, password_hash) VALUES (%s, NULL, %s, %s) RETURNING id",
-                    (manager_name, manager_salt, manager_hash),
-                )
-                manager_id = cursor.fetchone()[0]
-                cursor.execute(
-                    "INSERT INTO store_memberships (manager_user_id, store_id, role) VALUES (%s, %s, 'manager')",
-                    (manager_id, store_id),
-                )
-            connection.commit()
-    except psycopg.errors.UniqueViolation:
-        handler.send_json(409, {"error": "That manager name is already in use."})
-        return
-    token = secrets.token_urlsafe(32)
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO manager_sessions (token_hash, manager_user_id, store_id, expires_at) VALUES (%s, %s, %s, NOW() + (%s * INTERVAL '1 second'))",
-                (hashlib.sha256(token.encode()).hexdigest(), manager_id, store_id, server.SESSION_TTL),
-            )
-            cursor.execute("UPDATE manager_users SET last_sign_in_at = NOW() WHERE id = %s", (manager_id,))
-        connection.commit()
-    secure = "; Secure" if server.SECURE_COOKIES else ""
-    handler.send_response(201)
-    handler.send_header("Content-Type", "application/json")
-    handler.send_header("Set-Cookie", f"shiftly_manager_session={token}; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age={server.SESSION_TTL}")
-    handler.end_headers()
-    handler.wfile.write(json.dumps({"authenticated": True, "role": "manager", "managerName": manager_name, "storeName": store_name}, ensure_ascii=False).encode("utf-8"))
+def _create_account(handler, *, identity, secure_cookies, action):
+    handler.send_json(403, {"error": "Accounts require an invitation. Ask your store administrator."})
+
+
+def signup(handler, *, identity=None, secure_cookies=None):
+    return _create_account(handler, identity=identity, secure_cookies=secure_cookies, action="signup")
+
+
+def add_manager(handler, *, identity=None, secure_cookies=None):
+    return _create_account(handler, identity=identity, secure_cookies=secure_cookies, action="add_manager")
 
 
 def save_heads_up(handler):
@@ -290,13 +96,30 @@ def save_heads_up(handler):
     if not store_id:
         handler.send_json(401, {"error": "Manager sign-in required."})
         return
-    message = clean(parse_json(handler).get("message"), 1000)
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM store_heads_up WHERE store_id = %s", (store_id,))
-            cursor.execute("INSERT INTO store_heads_up (store_id, message, updated_at) VALUES (%s, %s, NOW())", (store_id, message))
-        connection.commit()
-    handler.send_json(200, heads_up(store_id))
+    stores = StoresService(StoresRepository(db_connection))
+    try:
+        account_token = named_account_token(handler)
+        fields = parse_json(handler)
+        if account_token:
+            _same_origin_account_mutation(handler)
+            _check_account_context(fields, store_id)
+            result = stores.save_heads_up(store_id, fields.get("message"), actor_token=account_token,
+                                          accounts=make_identity_service().accounts)
+        else:
+            result = stores.save_heads_up(store_id, fields.get("message"), legacy_credentials={
+                "manager_token": cookie_token(handler, "shiftly_manager_session"),
+                "crew_token": cookie_token(handler, "shiftly_crew_session"),
+            })
+    except IdentityError as error:
+        _identity_error(handler, error)
+        return
+    except ValueError as error:
+        handler.send_json(400, {"error": str(error)})
+        return
+    except RuntimeError as error:
+        handler.send_json(503, {"error": str(error)})
+        return
+    handler.send_json(200, result)
 
 
 def submit_report(handler, *, submission=None, resolve_store=None):
@@ -320,8 +143,25 @@ def submit_report(handler, *, submission=None, resolve_store=None):
                 ensure_allowed=reporting.ensure_submission_allowed,
                 quality_gate=reporting.validate_report, enqueue=reporting.queue_report,
             )
-        _, created_at = submission.submit(store_id, fields)
+        account_token = named_account_token(handler)
+        if account_token:
+            _same_origin_account_mutation(handler)
+            principal = request_principal(handler, strict=True)
+            if not principal or not principal.named:
+                raise IdentityError("unauthenticated", "Named sign-in required.")
+            _check_account_context(fields, principal.store_id)
+            _, created_at = submission.submit(store_id, fields, actor_token=account_token,
+                                               accounts=make_identity_service().accounts)
+        else:
+            credentials = {"manager_token": cookie_token(handler, "shiftly_manager_session"),
+                           "crew_token": cookie_token(handler, "shiftly_crew_session")}
+            if any(credentials.values()):
+                _, created_at = submission.submit(store_id, fields, legacy_credentials=credentials)
+            else:
+                _, created_at = submission.submit(store_id, fields)
         handler.send_json(202, {"date": created_at.isoformat(), "status": "pending"})
+    except IdentityError as error:
+        _identity_error(handler, error)
     except ReportRejected as error:
         handler.send_json(422, {"error": error.reason})
     except ValueError as error:
@@ -330,3 +170,145 @@ def submit_report(handler, *, submission=None, resolve_store=None):
         handler.send_json(503, {"error": str(error)})
     except (json.JSONDecodeError, UnicodeError):
         handler.send_json(400, {"error": "The report format was invalid."})
+
+
+ACCOUNT_COOKIES = ('shiftly_account_session', 'shiftly_manager_session', 'shiftly_crew_session')
+
+
+def _account_json(handler, value, *, clear=False, secure_cookies=False, status=200):
+    body = json.dumps(value, ensure_ascii=False).encode('utf-8')
+    handler.send_response(status)
+    handler.send_header('Content-Type', 'application/json')
+    handler.send_header('Content-Length', str(len(body)))
+    handler.send_header('Cache-Control', 'no-store')
+    if clear:
+        secure = '; Secure' if secure_cookies else ''
+        for name in ACCOUNT_COOKIES:
+            handler.send_header('Set-Cookie', f'{name}=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0')
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _same_origin_account_mutation(handler):
+    origin = handler.headers.get('Origin')
+    if origin:
+        parsed = urlparse(origin)
+        if parsed.scheme not in {'http', 'https'} or parsed.netloc != handler.headers.get('Host'):
+            raise IdentityError('forbidden', 'Cross-origin account changes are not permitted.')
+    if handler.headers.get('Sec-Fetch-Site') == 'cross-site':
+        raise IdentityError('forbidden', 'Cross-origin account changes are not permitted.')
+
+
+def _check_account_context(fields, store_id):
+    """Bind a rendered form to its selected store; this never grants authority."""
+    if 'expectedStoreId' not in fields:
+        return
+    expected = fields['expectedStoreId']
+    if isinstance(expected, bool) or not isinstance(expected, int) or expected <= 0:
+        raise IdentityError('invalid', 'Expected store ID must be a positive integer.')
+    if expected != store_id:
+        raise IdentityError('conflict', 'The selected store changed. Refresh and try again.')
+
+
+def account_route(handler, *, method, identity=None, secure_cookies=False):
+    """Legacy adapter contract for the named accounts namespace; no policy SQL."""
+    path = urlparse(handler.path).path
+    if not path.startswith('/api/accounts/'):
+        return False
+    identity = identity if identity is not None else make_identity_service()
+    accounts = identity.accounts
+    token = named_account_token(handler)
+    try:
+        if method == 'POST':
+            _same_origin_account_mutation(handler)
+        if path == '/api/accounts/status' and method == 'GET':
+            principal = identity.resolve_principal(
+                account_token=token, manager_token=cookie_token(handler, 'shiftly_manager_session'),
+                crew_token=cookie_token(handler, 'shiftly_crew_session'))
+            if not principal or not principal.named:
+                _account_json(handler, {'authenticated': False, 'reauthenticationRequired': bool(principal)})
+            else:
+                _account_json(handler, {'authenticated': True, 'actor': principal.actor.as_dict(),
+                                        'stores': accounts.authorized_stores(token)})
+            return True
+        if path == '/api/accounts/team' and method == 'GET':
+            principal = request_principal(handler, strict=True)
+            if not principal or not principal.named:
+                raise IdentityError('unauthenticated', 'Named sign-in required.')
+            _account_json(handler, accounts.roster(token))
+            return True
+        if method != 'POST':
+            handler.send_json(404, {'error': 'Not found.'})
+            return True
+        if path == '/api/accounts/logout':
+            accounts.logout(token)
+            identity.logout(cookie_token(handler, 'shiftly_manager_session'), cookie_token(handler, 'shiftly_crew_session'))
+            _account_json(handler, {'authenticated': False}, clear=True, secure_cookies=secure_cookies)
+            return True
+        fields = parse_json(handler, max_body=20_000)
+        if path == '/api/accounts/login':
+            result = accounts.login_payload(fields, client_key=client_key(handler))
+            _session_response(handler, result, 200, secure_cookies)
+            return True
+        if path == '/api/accounts/invitation-details':
+            handler.send_json(200, accounts.invitation_details(fields.get('token'), client_key=client_key(handler)))
+            return True
+        if path == '/api/accounts/activate':
+            result = accounts.activate_invitation(fields.get('token'), fields.get('password'), client_key=client_key(handler))
+            _session_response(handler, result, 200, secure_cookies)
+            return True
+        if path == '/api/accounts/reset-password':
+            result = accounts.reset_password(fields.get('token'), fields.get('password'), client_key=client_key(handler))
+            _account_json(handler, result, clear=True, secure_cookies=secure_cookies)
+            return True
+        principal = request_principal(handler, strict=True)
+        if not principal or not principal.named:
+            raise IdentityError('unauthenticated', 'Named sign-in required.')
+        _check_account_context(fields, principal.store_id)
+        clear = False
+        reason = fields.get('reason', '')
+        if path == '/api/accounts/logout-all':
+            result = accounts.logout_all(token)
+            clear = True
+        elif path == '/api/accounts/switch-store':
+            result = accounts.switch_store(token, fields.get('storeId'))
+            if hasattr(result, 'token'):
+                _session_response(handler, result, 200, secure_cookies)
+                return True
+        elif path == '/api/accounts/invitations':
+            result = accounts.invite(token, username=fields.get('username'), display_name=fields.get('displayName', ''),
+                                     role=fields.get('role', 'crew'), capabilities=fields.get('capabilities', []),
+                                     store_id=fields.get('storeId'), expires_in=fields.get('expiresIn', 86400), reason=reason)
+        elif path == '/api/accounts/invitations/reissue':
+            result = accounts.reissue_invitation(token, user_id=fields.get('userId'),
+                                                  expires_in=fields.get('expiresIn', 86400),
+                                                  store_id=fields.get('storeId'), reason=reason)
+        elif path == '/api/accounts/memberships':
+            result = accounts.set_membership(token, user_id=fields.get('userId'), role=fields.get('role'),
+                                              capabilities=fields.get('capabilities', []), active=fields.get('active', True),
+                                              store_id=fields.get('storeId'), reason=reason)
+        elif path == '/api/accounts/business-memberships':
+            result = accounts.set_business_membership(token, user_id=fields.get('userId'), role=fields.get('role'),
+                                                      capabilities=fields.get('capabilities', []),
+                                                      active=fields.get('active', True), reason=reason)
+        elif path == '/api/accounts/transfer-ownership':
+            result = accounts.transfer_ownership(token, user_id=fields.get('userId'), reason=reason)
+            clear = True
+        elif path == '/api/accounts/suspend':
+            result = accounts.suspend_user(token, user_id=fields.get('userId'), suspended=fields.get('suspended', True), reason=reason)
+        elif path == '/api/accounts/password':
+            result = accounts.change_password(token, current_password=fields.get('currentPassword'), new_password=fields.get('newPassword'))
+            clear = True
+        elif path == '/api/accounts/cutover':
+            result = accounts.cutover_store(token, store_id=fields.get('storeId'), reason=reason)
+        else:
+            handler.send_json(404, {'error': 'Not found.'})
+            return True
+        _account_json(handler, result, clear=clear, secure_cookies=secure_cookies)
+    except IdentityError as error:
+        _identity_error(handler, error)
+    except (ValueError, TypeError, UnicodeError):
+        handler.send_json(400, {'error': 'Invalid account request.'})
+    except (psycopg.Error, RuntimeError):
+        handler.send_json(503, {'error': 'Account service is temporarily unavailable.'})
+    return True

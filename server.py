@@ -13,7 +13,9 @@ from urllib.parse import urlparse
 import psycopg
 
 from backend.shiftly.reports import ReportSubmission
-from auth import is_manager, session_store_id
+from backend.shiftly.api.legacy_production import handle as production_route
+from backend.shiftly.identity import IdentityError
+from auth import is_manager, session_store_id, request_principal
 from config import load_settings
 from database import db_connection
 from reporting import (
@@ -23,6 +25,7 @@ from reporting import (
     SYSTEM_PROMPT,
     call_openai,
     database_reports,
+    account_reports,
     ensure_submission_allowed,
     fail_job,
     json_bytes,
@@ -35,11 +38,12 @@ from reporting import (
     claim_job,
     complete_job,
 )
-from routes import add_manager as routes_add_manager, login as routes_login, save_heads_up as routes_save_heads_up, signup as routes_signup, submit_report as report_submission_route
+from routes import add_manager as add_manager_route, login as login_route, save_heads_up as routes_save_heads_up, signup as signup_route, submit_report as report_submission_route, make_identity_service, account_route
 from security import (
     clean,
     client_key,
     cookie_token,
+    named_account_token,
     login_rate_limited,
     parse_json,
     password_hash,
@@ -77,6 +81,28 @@ except ImportError:
     certifi = None
 
 
+_embedded_worker_status = worker_status
+
+
+def worker_status():
+    if SETTINGS.worker_mode == "external":
+        from backend.shiftly.jobs.status import DatabaseWorkerStatus
+        return DatabaseWorkerStatus(db_connection, stale_seconds=SETTINGS.worker_stale_seconds)()
+    return _embedded_worker_status()
+
+
+def routes_login(handler, *args):
+    return login_route(handler, *args, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
+def routes_signup(handler):
+    return signup_route(handler, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
+def routes_add_manager(handler):
+    return add_manager_route(handler, identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL), secure_cookies=SECURE_COOKIES)
+
+
 def routes_submit_report(handler):
     # Preserve server's public replacement points while making dependencies
     # explicit at the HTTP boundary. Construction has no I/O or shared state.
@@ -88,17 +114,8 @@ def routes_submit_report(handler):
 
 
 def initialize_database():
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
-            for migration in sorted((ROOT / "migrations").glob("*.sql")):
-                cursor.execute("SELECT 1 FROM schema_migrations WHERE version = %s", (migration.name,))
-                if cursor.fetchone():
-                    continue
-                cursor.execute(migration.read_text(encoding="utf-8"))
-                cursor.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (migration.name,))
-        connection.commit()
-
+    from backend.shiftly.runtime.migrate import migrate
+    return migrate(db_connection, directory=ROOT / "migrations", lock_timeout_ms=SETTINGS.db_lock_timeout_ms)
 
 
 
@@ -128,6 +145,12 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if production_route(self, method="GET", connect=db_connection,
+                            accounts=make_identity_service(admin_key=ADMIN_SIGNUP_KEY).accounts,
+                            token=named_account_token(self), parse_body=parse_json):
+            return
+        if account_route(self, method="GET", identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY), secure_cookies=SECURE_COOKIES):
+            return
         if path == "/api/health":
             database_ok = False
             try:
@@ -152,6 +175,16 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             self.send_json(200 if status["status"] == "ok" else 503, status)
             return
         if path == "/api/auth/status":
+            if named_account_token(self) is not None:
+                principal = request_principal(self)
+                actor = principal.actor if principal and principal.named else None
+                self.send_json(200, {
+                    "authenticated": bool(actor),
+                    "role": ("crew" if actor.role in {"crew", "production"} else "manager") if actor else None,
+                    "managerName": actor.display_name if actor and actor.role not in {"crew", "production"} else None,
+                    "actor": actor.as_dict() if actor else None,
+                })
+                return
             manager_id = is_manager(self)
             crew_store_id = is_crew(self)
             self.send_json(200, {
@@ -166,17 +199,29 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 self.send_json(401, {"error": "Manager authentication required."})
                 return
             try:
-                self.send_json(200, {"reports": database_reports(manager_id)})
+                if hasattr(manager_id, "user_id"):
+                    reports = account_reports(cookie_token(self, "shiftly_account_session"), make_identity_service().accounts)
+                else:
+                    reports = database_reports(manager_id)
+                self.send_json(200, {"reports": reports})
+            except IdentityError as error:
+                self.send_json(401 if error.code == "unauthenticated" else 403, {"error": str(error)})
             except RuntimeError as error:
                 self.send_json(503, {"error": str(error)})
             return
         if path == "/api/heads-up":
-            manager_id = is_manager(self)
-            store_id = session_store_id(self, manager_id) if manager_id else is_crew(self)
+            principal = request_principal(self)
+            store_id = principal.store_id if principal and principal.named else None
             if not store_id:
                 self.send_json(401, {"error": "Sign-in required."})
                 return
-            self.send_json(200, heads_up(store_id))
+            try:
+                self.send_json(200, heads_up(store_id, actor_token=named_account_token(self),
+                                             accounts=make_identity_service().accounts))
+            except IdentityError as error:
+                self.send_json(401 if error.code == "unauthenticated" else 403, {"error": str(error)})
+            except (psycopg.Error, RuntimeError):
+                self.send_json(503, {"error": "Service is temporarily unavailable."})
             return
         if path == "/api/managers":
             manager_id = is_manager(self)
@@ -184,7 +229,12 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
             if not store_id:
                 self.send_json(401, {"error": "Manager sign-in required."})
                 return
-            self.send_json(200, {"managers": manager_accounts(store_id)})
+            try:
+                self.send_json(200, {"managers": make_identity_service().accounts.report_managers(named_account_token(self))})
+            except IdentityError as error:
+                self.send_json(401, {"error": str(error)})
+            except (psycopg.Error, RuntimeError):
+                self.send_json(503, {"error": "Service is temporarily unavailable."})
             return
         if path == "/api/weekly-overview":
             manager_id = is_manager(self)
@@ -208,6 +258,19 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             file_path = ROOT / "crew.html"
+        elif path in {"/accounts.html", "/inventory.html", "/production.html"}:
+            principal = request_principal(self)
+            allowed = bool(principal and principal.named)
+            if path == "/inventory.html":
+                allowed = allowed and "inventory.view" in principal.actor.capabilities
+            if path == "/production.html":
+                allowed = allowed and "production.view" in principal.actor.capabilities
+            if not allowed:
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+            file_path = ROOT / path.lstrip("/")
         elif path == "/manager.html":
             if not is_manager(self):
                 self.send_response(302)
@@ -224,6 +287,12 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
                 "/manager.js": ROOT / "manager.js",
                 "/manager.html": ROOT / "manager.html",
                 "/styles.css": ROOT / "styles.css",
+                "/accounts.js": ROOT / "accounts.js",
+                "/inventory.js": ROOT / "inventory.js",
+                "/production.js": ROOT / "production.js",
+                "/production.css": ROOT / "production.css",
+                "/activate.html": ROOT / "activate.html",
+                "/activate.js": ROOT / "activate.js",
             }
             file_path = public_files.get(path)
             if file_path is None:
@@ -242,6 +311,12 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if production_route(self, method="POST", connect=db_connection,
+                            accounts=make_identity_service(admin_key=ADMIN_SIGNUP_KEY).accounts,
+                            token=named_account_token(self), parse_body=parse_json):
+            return
+        if account_route(self, method="POST", identity=make_identity_service(admin_key=ADMIN_SIGNUP_KEY), secure_cookies=SECURE_COOKIES):
+            return
         if path == "/api/auth/login":
             routes_login(self)
             return
@@ -254,18 +329,18 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
         if path == "/api/auth/logout":
             manager_token = cookie_token(self, "shiftly_manager_session")
             crew_token = cookie_token(self, "shiftly_crew_session")
-            with db_connection() as connection:
-                with connection.cursor() as cursor:
-                    if manager_token:
-                        cursor.execute("DELETE FROM manager_sessions WHERE token_hash = %s", (hashlib.sha256(manager_token.encode()).hexdigest(),))
-                    if crew_token:
-                        cursor.execute("DELETE FROM crew_sessions WHERE token_hash = %s", (hashlib.sha256(crew_token.encode()).hexdigest(),))
-                connection.commit()
+            account_token = named_account_token(self)
+            identity = make_identity_service(admin_key=ADMIN_SIGNUP_KEY, session_ttl=SESSION_TTL)
+            identity.logout(manager_token, crew_token)
+            if account_token is not None:
+                identity.accounts.logout(account_token)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             secure = "; Secure" if SECURE_COOKIES else ""
             self.send_header("Set-Cookie", f"shiftly_manager_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
             self.send_header("Set-Cookie", f"shiftly_crew_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
+            if account_token is not None:
+                self.send_header("Set-Cookie", f"shiftly_account_session=; Path=/; HttpOnly; SameSite=Strict{secure}; Max-Age=0")
             body = json_bytes({"authenticated": False})
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -298,8 +373,14 @@ class ShiftlyHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     if not DB_URL:
         raise SystemExit("DATABASE_URL is missing. Add it to .env before starting Shiftly.")
+    from backend.shiftly.runtime.settings import validate_runtime_settings
+    validate_runtime_settings(SETTINGS)
     try:
-        initialize_database()
+        if SETTINGS.worker_mode == "embedded":
+            initialize_database()
+        else:
+            from backend.shiftly.runtime.migrate import require_schema
+            require_schema(db_connection)
     except RuntimeError as error:
         raise SystemExit(str(error)) from error
     except psycopg.OperationalError as error:
@@ -311,8 +392,10 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer((HOST, PORT), ShiftlyHandler)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     worker_stop = Event()
-    worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
-    worker.start()
+    worker = None
+    if SETTINGS.worker_mode == "embedded":
+        worker = Thread(target=worker_loop, kwargs={"stop_event": worker_stop}, name="briefing-worker", daemon=True)
+        worker.start()
     print(f"Shiftly is running at http://{HOST}:{PORT}/", flush=True)
     print("Leave this terminal open while using the app. Press Ctrl+C to stop.", flush=True)
     try:
@@ -320,5 +403,6 @@ if __name__ == "__main__":
     finally:
         worker_stop.set()
         JOB_WAKE.set()
-        worker.join(timeout=5)
+        if worker is not None:
+            worker.join(timeout=SETTINGS.shutdown_timeout)
         server.server_close()

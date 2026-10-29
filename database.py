@@ -9,4 +9,7 @@ def db_connection():
         raise RuntimeError("psycopg is not installed. Run: python3 -m pip install -r requirements.txt")
     if not database_url:
         raise RuntimeError("DATABASE_URL is not configured.")
-    return psycopg.connect(database_url)
+    from config import load_settings
+    from backend.shiftly.runtime.database import connect_dedicated
+    # Keep the existing factory's environment lookup and dedicated-close contract.
+    return connect_dedicated(load_settings(load_env=False))

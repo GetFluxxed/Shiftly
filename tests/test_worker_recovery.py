@@ -56,6 +56,31 @@ def test_nested_failure_does_not_terminate_worker(monkeypatch):
     assert waits and all(delay >= 2 for delay in waits)
 
 
+def test_legacy_worker_logging_uses_replaced_logger_and_sanitizes(monkeypatch):
+    records = []
+
+    class Logger:
+        def log(self, level, message):
+            records.append((level, json.loads(message)))
+
+    monkeypatch.setattr(reporting, "WORKER_LOG", Logger())
+    reporting._worker_log("job_failed", reporting.ClaimedJobId(7, uuid.uuid4(), 2),
+                          TimeoutError("private report notes"))
+    assert records == [(logging.WARNING, {
+        "event": "job_failed", "jobId": 7, "attempt": 2,
+        "errorCode": "provider_unavailable", "retryable": True,
+    })]
+
+
+def test_package_provider_configuration_error_is_terminal():
+    from backend.shiftly.jobs import reporting as briefing_jobs
+    from backend.shiftly.runtime.provider import ProviderConfigurationError
+
+    assert briefing_jobs.failure_kind(ProviderConfigurationError("private key state")) == (
+        "terminal_job_error", False,
+    )
+
+
 ACCEPTED = {"status": "accepted", "summary": "Freezer restocked.", "wins": ["Restocked"], "risks": [], "follow_up": "None."}
 
 

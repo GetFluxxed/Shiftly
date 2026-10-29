@@ -1,69 +1,35 @@
-import hashlib
-
+"""Legacy request adapters using the same principal rules as named services."""
+from backend.shiftly.identity import IdentityError, IdentityRepository, IdentityService
+from backend.shiftly.stores import StoresRepository, StoresService
 from database import db_connection
-from security import cookie_token
+from security import cookie_token, named_account_token
+
+
+def request_principal(handler, *, strict=False):
+    identity = IdentityService(IdentityRepository(db_connection), StoresService(StoresRepository(db_connection)))
+    try:
+        return identity.resolve_principal(
+            account_token=named_account_token(handler),
+            manager_token=cookie_token(handler, 'shiftly_manager_session'),
+            crew_token=cookie_token(handler, 'shiftly_crew_session'),
+        )
+    except IdentityError:
+        if strict:
+            raise
+        return None
+
 
 def is_manager(handler):
-    cookie = cookie_token(handler, "shiftly_manager_session")
-    if not cookie:
-        return False
-    token_hash = hashlib.sha256(cookie.encode()).hexdigest()
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM manager_sessions WHERE expires_at <= NOW()")
-            cursor.execute(
-                """
-                SELECT ms.manager_user_id
-                FROM manager_sessions ms
-                JOIN manager_users m ON m.id = ms.manager_user_id AND m.active
-                JOIN LATERAL (
-                    SELECT sm.store_id
-                    FROM store_memberships sm
-                    JOIN stores s ON s.id = sm.store_id AND s.active
-                    WHERE sm.manager_user_id = m.id
-                      AND (ms.store_id IS NULL OR sm.store_id = ms.store_id)
-                    ORDER BY sm.store_id
-                    LIMIT 1
-                ) active_membership ON TRUE
-                WHERE ms.token_hash = %s AND ms.expires_at > NOW()
-                """,
-                (token_hash,),
-            )
-            row = cursor.fetchone()
-        connection.commit()
-    return row[0] if row else None
+    principal = request_principal(handler)
+    if not principal or not principal.can_manage:
+        return None
+    return principal.actor if principal.named else principal.manager_id
 
 
 def session_store_id(handler, manager_id):
-    if not manager_id:
+    principal = request_principal(handler)
+    if not principal or not principal.can_manage:
         return None
-    cookie = cookie_token(handler, "shiftly_manager_session")
-    token_hash = hashlib.sha256(cookie.encode()).hexdigest()
-    with db_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT membership.store_id
-                FROM manager_sessions ms
-                JOIN manager_users m ON m.id = ms.manager_user_id AND m.active
-                LEFT JOIN LATERAL (
-                    SELECT store_id
-                    FROM store_memberships
-                    WHERE manager_user_id = ms.manager_user_id
-                      AND (ms.store_id IS NULL OR store_id = ms.store_id)
-                    ORDER BY store_id
-                    LIMIT 1
-                ) membership ON TRUE
-                JOIN stores s ON s.id = membership.store_id AND s.active
-                WHERE ms.token_hash = %s AND ms.manager_user_id = %s AND ms.expires_at > NOW()
-                """,
-                (token_hash, manager_id),
-            )
-            row = cursor.fetchone()
-            if row and row[0]:
-                cursor.execute(
-                    "UPDATE manager_sessions SET store_id = %s WHERE token_hash = %s",
-                    (row[0], token_hash),
-                )
-        connection.commit()
-    return row[0] if row else None
+    if principal.named:
+        return principal.store_id if manager_id == principal.actor else None
+    return principal.store_id if manager_id == principal.manager_id else None
