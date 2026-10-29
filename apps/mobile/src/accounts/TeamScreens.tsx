@@ -2,7 +2,7 @@ import { accountChangeUncertain } from './requests';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Text } from '@/src/ui/Typography';
 import { ActionGrid, ActionTile } from '@/src/ui/ActionGrid';
 import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Notice, Pill, layout } from '@/src/ui/components';
@@ -13,17 +13,19 @@ import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 import { AdministrationScreen, confirmChange, InvitationResult, Permissions, Reason, Roles, type AdminContext } from './AdminComponents';
 import { accountId, accountState, roleGrants, type Invitation, type TeamMember } from './types';
 import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 
 function memberName(member: TeamMember) {
   return member.displayName || member.username;
 }
 
 export function TeamScreen() {
-  return <AdministrationScreen title="Team members">{context => <TeamMemberSelector {...context} />}</AdministrationScreen>;
+  const { actor } = useSession();
+  return <AdministrationScreen title="Team members" backTo={actor?.role === 'admin' ? '/accounts' : '/today'}>{context => <TeamMemberSelector {...context} />}</AdministrationScreen>;
 }
 
 function TeamMemberSelector({ data, changed }: AdminContext) {
-  const router = useRouter();
+  const navigation = useAppNavigation();
   const { actor } = useSession();
   const [expanded, setExpanded] = useRememberedState('team.selector.expanded', false);
   const [search, setSearch] = useRememberedState('team.selector.search', '');
@@ -39,7 +41,7 @@ function TeamMemberSelector({ data, changed }: AdminContext) {
 
   return <View style={layout.gap}>
     {actor?.capabilities.includes('memberships.manage') ? <Button title="Build your team" icon="person-add-outline" variant="secondary"
-      onPress={() => router.push('/team/build')} /> : null}
+      onPress={() => navigation.open('/team/build')} /> : null}
     <Button title="Refresh team" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Team refreshed.'); }} />
     {!members.length ? <Card><EmptyState icon="people-outline" title="No team members" description="Invite someone or add an existing account." /></Card> : <>
       <View style={styles.selector}>
@@ -72,7 +74,7 @@ function TeamMemberSelector({ data, changed }: AdminContext) {
         <View style={layout.wrap}><Pill label={accountState(selected, selected.membershipState)} /></View>
         <Body muted>{selected.lastSignInAt ? `Last signed in here ${friendlyDate(selected.lastSignInAt)}` : 'No sign-in recorded here'}</Body>
         {selected.canEdit ? <Button title={`Manage ${memberName(selected)}`} variant="secondary"
-          onPress={() => router.push({ pathname: '/team/[userId]', params: { userId: selected.userId } })} />
+          onPress={() => navigation.open({ pathname: '/team/[userId]', params: { userId: selected.userId } })} />
           : <Body muted>View only.</Body>}
       </Card> : <Notice message="Choose a team member to view their store access." />}
     </>}
@@ -80,11 +82,11 @@ function TeamMemberSelector({ data, changed }: AdminContext) {
 }
 
 export function BuildTeamScreen() {
-  return <AdministrationScreen title="Build team">{context => <BuildTeamActions {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Build team" backTo="/team">{context => <BuildTeamActions {...context} />}</AdministrationScreen>;
 }
 
 function BuildTeamActions({ data }: AdminContext) {
-  const router = useRouter();
+  const navigation = useAppNavigation();
   const { actor } = useSession();
   const canInvite = data.roles.some(choice => choice.role === 'crew');
   const canAssignRole = ['owner', 'admin'].includes(actor?.role || '');
@@ -92,20 +94,20 @@ function BuildTeamActions({ data }: AdminContext) {
   const assignmentRestriction = canAssignRole ? 'Permission required' : 'Administrator or owner only';
   return <><ActionGrid>
     <ActionTile title="Invite a new person" label={canInvite ? 'Invite a new person' : 'Invite a new person. Permission required.'}
-      icon="person-add-outline" disabled={!canInvite} onPress={() => router.push('/team/invite')}
+      icon="person-add-outline" disabled={!canInvite} onPress={() => navigation.open('/team/invite')}
       footer={!canInvite ? <Text style={styles.tileFooter}>Invitation unavailable</Text> : undefined} />
     <ActionTile title="Add an existing account" label={canAssignExisting ? 'Add an existing account' : `Add an existing account. ${assignmentRestriction}.`}
-      icon="person-add-outline" disabled={!canAssignExisting} onPress={() => router.push('/team/assign')}
+      icon="person-add-outline" disabled={!canAssignExisting} onPress={() => navigation.open('/team/assign')}
       footer={!canAssignExisting ? <Text style={styles.tileFooter}>{assignmentRestriction}</Text> : undefined} />
   </ActionGrid></>;
 }
 
 export function InviteScreen() {
-  return <AdministrationScreen title="Invite a new person">{context => <InviteForm {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Invite a new person" backTo="/team/build">{context => <InviteForm {...context} />}</AdministrationScreen>;
 }
 function InviteForm({ data, storeName }: AdminContext) {
   const { request } = useSession();
-  const router = useRouter();
+  const navigation = useAppNavigation();
   const task = useTask();
   const choices = data.roles.filter(choice => choice.role === 'crew');
   const [username, setUsername] = useState('');
@@ -120,7 +122,7 @@ function InviteForm({ data, storeName }: AdminContext) {
       username: username.trim(), displayName: name.trim(), role: 'crew', capabilities: [], storeId: data.storeId, expiresIn: 86400, reason,
     } }), setInvitation);
   });
-  if (invitation) return <InvitationResult invitation={invitation} username={username.trim()} onDismiss={() => { setInvitation(null); router.replace('/team'); }} />;
+  if (invitation) return <InvitationResult invitation={invitation} username={username.trim()} onDismiss={() => { setInvitation(null); navigation.replace('/team', { dropParents: 1 }); }} />;
   return <><Notice message={task.error} kind="error" /><Columns><Column><Card>
     <Heading>Personal sign-in</Heading><Body>They choose a password during activation.</Body>
     <Field label="Username" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} maxLength={80} editable={!task.pending} />
@@ -133,11 +135,11 @@ function InviteForm({ data, storeName }: AdminContext) {
 }
 
 export function AssignScreen() {
-  return <AdministrationScreen title="Add an existing account">{context => <MembershipForm {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Add an existing account" backTo="/team/build">{context => <MembershipForm {...context} />}</AdministrationScreen>;
 }
 export function MemberScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  return <AdministrationScreen title="Team member access">{context => {
+  return <AdministrationScreen title="Team member access" backTo="/team">{context => {
     const member = context.data.members.find(item => item.userId === accountId(userId || ''));
     return member?.canEdit ? <MembershipForm key={member.userId} {...context} member={member} />
       : <Card><Heading>This membership is unavailable</Heading><Body>Return to the team to see the people you can manage.</Body></Card>;

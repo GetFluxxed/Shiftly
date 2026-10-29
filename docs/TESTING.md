@@ -73,6 +73,20 @@ journeys use the explicit disposable `TEST_DATABASE_URL` above; rendered journey
 also need the mobile dependencies, Node and Playwright Chromium. Physical-device,
 signed-build and real-provider evaluations remain separate release gates.
 
+The full navigation fixture runs the real Expo Router and screen modules against
+synthetic records, without a database or a live API:
+
+```sh
+python -m pytest -q tests/inventory_services/test_rendered_full_navigation.py
+```
+
+Its route context is generated from the app directory, so route additions cannot
+silently disappear from the fixture. It checks forward/Back journeys, direct-link
+fallbacks, public account entry, access restrictions, and restored return context.
+The mobile unit suite also tests native Back callbacks with mocked platform
+boundaries. These checks do not prove physical Android Back or iOS swipe behavior;
+verify those on a device, including nested scanner steps and pending forms.
+
 Focused runtime, worker and reporting regression set:
 
 ```sh

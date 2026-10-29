@@ -1,10 +1,9 @@
 import { Text } from '@/src/ui/Typography';
 import React from 'react';
-import { useRouter } from 'expo-router';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
-import { useInventoryNavigation } from '@/src/inventory/shared';
 import { Card, Pill, Screen, layout } from '@/src/ui/components';
 import { colors, fonts, roleLabels } from '@/src/ui/theme';
 import { HeadsUpCard } from '@/src/headsUp/HeadsUpCard';
@@ -12,8 +11,7 @@ import { ActionGrid, ActionTile } from '@/src/ui/ActionGrid';
 
 export function TodayScreen() {
   const { actor, stores } = useSession();
-  const router = useRouter();
-  const inventoryNavigation = useInventoryNavigation();
+  const nav = useAppNavigation();
   const can = (permission: string) => Boolean(actor?.capabilities.includes(permission));
   const reports = can('reports.view') || can('reports.submit');
   const showHeadsUp = actor?.role === 'crew' || actor?.role === 'manager' || actor?.role === 'production';
@@ -32,33 +30,33 @@ export function TodayScreen() {
         <Text style={styles.storeDescription}>{actor?.displayName || actor?.username}</Text>
         <Pill label={roleLabels[actor?.role || ''] || 'Team member'} />
       </View>
-      {stores.length > 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Change your store" onPress={() => router.push('/accounts')}
+      {stores.length > 1 ? <Pressable accessibilityRole="button" accessibilityLabel="Change your store" onPress={() => nav.open('/accounts')}
         style={({ pressed }) => [styles.storeSwitch, pressed && { opacity: 0.7 }]}>
         <Text style={styles.storeSwitchText}>Change store</Text><Ionicons name="swap-horizontal" size={20} color={colors.onPrimary} />
       </Pressable> : null}
     </Card>
     <ActionGrid>
       {reports ? <ActionTile title={can('reports.view') ? 'Shift reports' : 'Write shift report'}
-        icon={can('reports.view') ? 'reader-outline' : 'create-outline'} onPress={() => router.push('/reports')} /> : null}
+        icon={can('reports.view') ? 'reader-outline' : 'create-outline'} onPress={() => nav.open('/reports')} /> : null}
       {can('inventory.view') ? <ActionTile title="Inventory" icon="cube-outline"
-        onPress={() => router.push('/inventory')} /> : null}
+        onPress={() => nav.open('/inventory')} /> : null}
       {can('production.view') ? <ActionTile title="Production" icon="restaurant-outline"
-        onPress={() => router.push('/production')} /> : null}
+        onPress={() => nav.open('/production')} /> : null}
       {can('memberships.manage') || actor?.role === 'manager' ? <ActionTile
         title={actor?.role === 'owner' ? 'Owner tools' : 'Manage team'}
         label={can('memberships.manage') ? (actor?.role === 'owner' ? 'Owner tools' : 'Manage team') : 'Manage team. Permission required.'}
         icon="people-outline" disabled={!can('memberships.manage')}
         footer={actor?.role === 'owner' ? <Pressable accessibilityRole="button" accessibilityLabel="Time Tracking"
-          onPress={() => router.push('/time-tracking')}
+          onPress={() => nav.open('/time-tracking')}
           style={({ pressed }) => [styles.timeTracking, pressed && { backgroundColor: colors.blush }]}>
           <Ionicons name="time-outline" size={19} color={colors.primary} />
           <Text style={styles.timeTrackingText}>Time Tracking</Text>
           <Ionicons name="chevron-forward" size={16} color={colors.muted} />
         </Pressable> : undefined}
-        onPress={() => router.push(actor?.role === 'owner' ? '/owner' : '/team')} /> : null}
+        onPress={() => nav.open(actor?.role === 'owner' ? '/owner' : '/team')} /> : null}
       {['manager', 'owner'].includes(actor?.role || '') && ['inventory.view', 'receipts.draft', 'receipts.post'].every(can)
-        ? <ActionTile title="Invoices" icon="receipt-outline" onPress={() => inventoryNavigation.open('/invoices')} /> : null}
-      <ActionTile title="Account" icon="person-circle-outline" onPress={() => router.push('/accounts')} />
+        ? <ActionTile title="Invoices" icon="receipt-outline" onPress={() => nav.open('/invoices')} /> : null}
+      <ActionTile title="Account" icon="person-circle-outline" onPress={() => nav.open('/accounts')} />
     </ActionGrid>
   </Screen>;
 }

@@ -30,6 +30,17 @@ requirement only where the [implementation plan](IMPLEMENTATION_PLAN.md) says so
 
 ### Mobile tab visibility
 
+Feature Back controls return to the immediate page that opened them. This includes
+cross-section links such as Owner tools → Team or Time Tracking and Incoming →
+Invoices. Direct links use a feature's canonical parent; Production Review returns
+to the production run. Completed production opens its log with Production History
+as the return destination. At a top-level tab, native Back returns to Today.
+
+Android system Back and iOS stack Back use the same page action, including local
+scanner steps, report details, settings panels, and pending-action guards. Modal
+close handlers retain their existing unsaved-change checks. Return context is
+bounded device UI state, revalidated during restoration, and grants no access.
+
 | Tab | Shown to |
 | --- | --- |
 | Today | Everyone |

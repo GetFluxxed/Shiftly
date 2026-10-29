@@ -1,5 +1,6 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 import React, { useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View, type TextInputInstance } from 'react-native';
 
@@ -16,7 +17,7 @@ type Panel = 'store' | 'permissions' | 'security' | 'signOut' | null;
 type RememberedPanel = Extract<Panel, 'store' | 'permissions'> | null;
 
 export function AccountsScreen() {
-  const router = useRouter();
+  const nav = useAppNavigation();
   const { actor, stores, switchStore, changePassword, signOut, busy } = useSession();
   const task = useTask();
   const [rememberedPanel, setRememberedPanel] = useRememberedState<RememberedPanel>('account.panel', null);
@@ -59,6 +60,7 @@ export function AccountsScreen() {
     task.setError(null);
     setSensitivePanel(null); setRememberedPanel(null);
   };
+  usePageBack(() => { if (!unavailable) closePanel(); }, panel !== null);
   const chooseStore = (storeId: number, storeName: string) => {
     if (!canSwitchStore || storeId === actor?.storeId) return;
     Alert.alert(`Switch to ${storeName}?`, 'Switching stores clears unsent notes.', [
@@ -119,7 +121,7 @@ export function AccountsScreen() {
           onPress={() => openPanel('signOut')} disabled={unavailable} />
       </ActionGrid>
       {canAdministerTeam ? <Pressable accessibilityRole="link" accessibilityLabel="Team administration"
-        disabled={unavailable} onPress={() => router.push('/team')}
+        disabled={unavailable} onPress={() => nav.open('/team')}
         style={({ pressed }) => [styles.adminLink, unavailable && styles.disabled, pressed && styles.pressed]}>
         <Ionicons name="people-outline" color={colors.primary} size={20} />
         <Text style={styles.adminLinkText}>Team administration</Text>

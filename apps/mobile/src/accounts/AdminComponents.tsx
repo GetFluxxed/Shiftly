@@ -3,29 +3,31 @@ import React, { useState } from 'react';
 import { Alert, Pressable, Share, StyleSheet, View } from 'react-native';
 import { createURL } from 'expo-linking';
 import { invitationLink } from './invitations';
-import { useRouter } from 'expo-router';
+import type { Href } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
 import { Body, Button, Card, Field, Heading, Loading, Notice, Screen, layout } from '@/src/ui/components';
 import { colors, permissionLabels, roleLabels } from '@/src/ui/theme';
 import { useResource } from '@/src/ui/useResource';
 import type { Invitation, Management, RoleChoice } from './types';
-import { canViewStore } from './navigation';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
+import { usePageBack } from '@/src/navigation/usePageBack';
 
 export type AdminContext = { data: Management; storeName: string; changed: (message: string) => Promise<void> };
-export function AdministrationScreen({ title, ownerOnly = false, children }: {
-  title: string; ownerOnly?: boolean; children: (context: AdminContext) => React.ReactNode;
+export function AdministrationScreen({ title, ownerOnly = false, backTo, children }: {
+  title: string; ownerOnly?: boolean; backTo: Href; children: (context: AdminContext) => React.ReactNode;
 }) {
   const { actor, stores } = useSession();
-  const router = useRouter();
+  const navigation = useAppNavigation();
   const allowed = Boolean(actor?.capabilities.includes('memberships.manage') && (!ownerOnly || actor.role === 'owner'));
   const resource = useResource<Management>('/accounts/management', allowed);
   const [notice, setNotice] = useState<string | null>(null);
   const storeName = stores.find(store => store.storeId === actor?.storeId)?.storeName || 'Current store';
   const mismatch = resource.data && (resource.data.storeId !== actor?.storeId || (ownerOnly && !resource.data.isOwner));
+  const parent = navigation.parent(backTo);
+  usePageBack(() => navigation.back(backTo));
   return <Screen title={title} eyebrow={ownerOnly ? 'Owner workspace' : 'Team & access'} subtitle={storeName}>
-    <Button title={canViewStore(actor?.role) ? 'Back to store' : 'Back to account'} icon="arrow-back" variant="quiet"
-      onPress={() => router.replace(canViewStore(actor?.role) ? '/store' : '/accounts')} />
+    <Button title={parent.label} icon="arrow-back" variant="quiet" onPress={() => navigation.back(backTo)} />
     <Notice message={notice} kind="success" />
     {!allowed ? <Card><Heading>Access is limited</Heading><Body>You do not have permission to manage this area.</Body></Card>
       : resource.loading ? <Loading label="Checking team access…" />

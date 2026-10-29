@@ -15,6 +15,7 @@ import { useOfflineCount } from './OfflineCountsProvider';
 import { CountSyncControl } from './CountSyncControl';
 import { CountEntrySheet } from './CountEntrySheet';
 import { CountShelfPicker, type CountShelfChoice } from './CountShelfPicker';
+import { usePageBack } from '@/src/navigation/usePageBack';
 
 const countStates = { draft: 'Draft', review: 'Awaiting approval', posted: 'Finalized', cancelled: 'Cancelled' } as const;
 
@@ -31,6 +32,11 @@ export function CountWorkspaceScreen({ id, returnTo, offlineMode = false, onOffl
   const count = offline.count?.id === id && offline.count.storeId === actor?.storeId ? offline.count : null;
   const storeName = stores.find(store => store.storeId === actor?.storeId)?.storeName || 'Current store';
   const backTo = { pathname: '/counts', params: countRouteParams(returnTo) } as const;
+  const back = () => {
+    if (offlineMode) void retry();
+    else nav.back(backTo);
+  };
+  usePageBack(back);
   const pending = offline.pendingLineIds.length > 0;
   const reviewDisabled = status !== 'ready' || pending || offline.syncing || offline.status !== 'ready'
     || !!offline.error || !!count?.catalogProductsAvailable || !!(count && count.totalLines > offline.lines.length);
@@ -42,7 +48,7 @@ export function CountWorkspaceScreen({ id, returnTo, offlineMode = false, onOffl
   return <Screen title="Count" compact header={<View style={styles.header}>
     <View style={styles.headerTop}>
       <Pressable accessibilityRole="button" accessibilityLabel={offlineMode ? 'Reconnect to Shiftly' : nav.parent(backTo).label}
-        onPress={() => { if (offlineMode) void retry(); else nav.back(backTo); }} style={styles.back}>
+        onPress={back} style={styles.back}>
         <Ionicons name={offlineMode ? 'refresh-outline' : 'arrow-back'} size={20} color={colors.primary} />
         <Text style={styles.backLabel}>{offlineMode ? 'Reconnect' : 'Back'}</Text>
       </Pressable>
@@ -63,7 +69,7 @@ export function CountWorkspaceScreen({ id, returnTo, offlineMode = false, onOffl
     {!allowed ? <Notice message="Your account does not have access to this count." kind="error" />
        : !count && offline.error ? <>
         <LoadError error={offline.error} refresh={() => controller.open(id)} />
-        {offline.count && pending ? <Button title="Open saved count" onPress={() => nav.open({ pathname: '/counts/[countId]', params: { countId: offline.count!.id } })} /> : null}
+        {offline.count && pending ? <Button title="Open saved count" onPress={() => nav.open({ pathname: '/counts/[countId]', params: { countId: offline.count!.id, ...countRouteParams(returnTo) } })} /> : null}
       </>
         : !count || offline.status === 'loading' ? <Loading label="Preparing count on this device…" />
           : <CountWorkspace count={count} />}

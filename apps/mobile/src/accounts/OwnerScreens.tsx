@@ -1,6 +1,6 @@
 import { accountChangeUncertain } from './requests';
 import React, { useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Notice, Pill } from '@/src/ui/components';
 import { useSession } from '@/src/session/SessionProvider';
 import { useTask } from '@/src/ui/useTask';
@@ -8,23 +8,24 @@ import { useSensitiveForm } from '@/src/ui/useSensitiveForm';
 import { AdministrationScreen, Choice, confirmChange, Permissions, Reason, type AdminContext } from './AdminComponents';
 import { accountId, accountState, type BusinessMember } from './types';
 import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 
 export function OwnerScreen() {
-  return <AdministrationScreen title="Owner tools" ownerOnly>{context => <OwnerList {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Owner tools" ownerOnly backTo="/today">{context => <OwnerList {...context} />}</AdministrationScreen>;
 }
 function OwnerList({ data, changed }: AdminContext) {
-  const router = useRouter();
+  const navigation = useAppNavigation();
   const { actor } = useSession();
   const [search, setSearch] = useRememberedState('owner.people.search', '');
   const people = data.directory.filter(member => `${member.displayName} ${member.username}`.toLowerCase().includes(search.toLowerCase()));
   return <><Columns><Column><Card><Heading>People & authority</Heading>
     <Body>Manage administrators, owners, account status, and ownership.</Body>
-    <Button title="Manage this store's team" variant="secondary" icon="people-outline" onPress={() => router.push('/team')} />
-    <Button title="Time Tracking" variant="quiet" icon="time-outline" onPress={() => router.push('/time-tracking')} />
+    <Button title="Manage this store's team" variant="secondary" icon="people-outline" onPress={() => navigation.open('/team')} />
+    <Button title="Time Tracking" variant="quiet" icon="time-outline" onPress={() => navigation.open('/time-tracking')} />
   </Card></Column><Column><Card><Heading>Individual sign-in</Heading>
     <Pill label="Individual sign-in required" />
     <Body>Everyone joins by invitation and uses their own username and password.</Body>
-    <Button title="Review store sign-in" variant="secondary" icon="key-outline" onPress={() => router.push('/owner/cutover')} />
+    <Button title="Review store sign-in" variant="secondary" icon="key-outline" onPress={() => navigation.open('/owner/cutover')} />
   </Card></Column></Columns>
     <Button title="Refresh owner access" icon="refresh-outline" variant="quiet" onPress={() => { void changed('Owner access refreshed.'); }} />
   <Field label="Find a person" value={search} onChangeText={setSearch} autoCorrect={false} />
@@ -32,13 +33,13 @@ function OwnerList({ data, changed }: AdminContext) {
   {people.map(person => <Card key={person.userId}><Heading>{person.displayName || person.username}{person.userId === actor?.userId ? ' (you)' : ''}</Heading>
     <Body muted>@{person.username} · {person.businessState === 'active' ? person.businessRole === 'owner' ? 'Business owner' : 'Delegated administrator' : 'Store memberships only'}</Body>
     <Pill label={accountState(person)} />
-    {person.userId !== actor?.userId ? <Button title={`Review ${person.displayName || person.username}`} variant="secondary" onPress={() => router.push({ pathname: '/owner/[userId]', params: { userId: person.userId } })} />
+    {person.userId !== actor?.userId ? <Button title={`Review ${person.displayName || person.username}`} variant="secondary" onPress={() => navigation.open({ pathname: '/owner/[userId]', params: { userId: person.userId } })} />
       : <Body muted>To transfer your ownership, choose another active person below.</Body>}
   </Card>)}</>;
 }
 export function BusinessMemberScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  return <AdministrationScreen title="Business access" ownerOnly>{context => {
+  return <AdministrationScreen title="Business access" ownerOnly backTo="/owner">{context => {
     const member = context.data.directory.find(person => person.userId === accountId(userId || ''));
     return member ? <BusinessMemberForm key={member.userId} {...context} member={member} />
       : <Card><Heading>Account unavailable</Heading><Body>Return to the owner workspace to select someone in this business.</Body></Card>;
@@ -89,7 +90,7 @@ function BusinessMemberForm({ data, member, changed }: AdminContext & { member: 
   </Card> : null}</Column></Columns></>;
 }
 export function CutoverScreen() {
-  return <AdministrationScreen title="Store sign-in" ownerOnly>{context => <CutoverForm {...context} />}</AdministrationScreen>;
+  return <AdministrationScreen title="Store sign-in" ownerOnly backTo="/owner">{context => <CutoverForm {...context} />}</AdministrationScreen>;
 }
 function CutoverForm({ storeName }: AdminContext) {
   return <Card><Heading>{storeName}</Heading><Pill label="Individual sign-in required" />

@@ -1,7 +1,8 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import React from 'react';
 import { AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/src/ui/Typography';
 import { Body, Button, Card, EmptyState, Field, Heading, Notice, Screen } from '@/src/ui/components';
@@ -31,7 +32,8 @@ function safeMessage(error: unknown, fallback: string) { return error instanceof
 
 export function TimeTrackingScreen() {
   const { actor } = useSession();
-  const router = useRouter();
+  const nav = useAppNavigation();
+  usePageBack(() => nav.back('/today'));
   const checkpoint = useWorkspaceCheckpoint();
   const [tracking, setTracking] = useRememberedState('timeTracking.demo', emptyState, 'v1', isTrackingState);
   const [now, setNow] = React.useState(Date.now);
@@ -69,14 +71,14 @@ export function TimeTrackingScreen() {
 
   if (actor?.role !== 'owner') return <Screen title="Time Tracking" eyebrow="Owner tools">
     <Notice message="Time tracking is available to business owners." kind="error" />
-    <Button title="Back to Today" variant="secondary" icon="arrow-back" onPress={() => router.replace('/today')} />
+    <Button title={nav.parent('/today').label} variant="secondary" icon="arrow-back" onPress={() => nav.back('/today')} />
   </Screen>;
 
   const selectedMember = editor && editor.kind !== 'add' ? tracking.members.find(member => member.id === editor.memberId) : undefined;
   const compactRoster = tracking.members.length >= 4;
   const editorKey = editor?.kind === 'add' ? 'add' : editor ? `${editor.kind}:${editor.memberId}:${editor.timerId || ''}` : '';
   return <Screen title="Time Tracking" eyebrow="Owner tools" subtitle="Run simple, device-only shift clocks for your crew." compact
-    trailing={width < 520 ? <Pressable accessibilityRole="button" accessibilityLabel="Back to Today" onPress={() => router.replace('/today')} style={styles.headerBackIcon}><Ionicons name="arrow-back" size={24} color={colors.primary} /></Pressable> : <View style={styles.back}><Button title="Back to Today" variant="quiet" icon="arrow-back" onPress={() => router.replace('/today')} /></View>}>
+    trailing={width < 520 ? <Pressable accessibilityRole="button" accessibilityLabel={nav.parent('/today').label} onPress={() => nav.back('/today')} style={styles.headerBackIcon}><Ionicons name="arrow-back" size={24} color={colors.primary} /></Pressable> : <View style={styles.back}><Button title={nav.parent('/today').label} variant="quiet" icon="arrow-back" onPress={() => nav.back('/today')} /></View>}>
     <Notice message={error} kind="error" />
     <Notice message={deviceNotice} kind="error" />
     <Notice message={completion} kind="success" />

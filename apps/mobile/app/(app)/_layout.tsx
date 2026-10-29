@@ -40,7 +40,9 @@ export default function AppLayout() {
   const hasProduction = actor.capabilities.includes('production.view');
   const canReceive = ['manager', 'owner'].includes(actor.role)
     && ['inventory.view', 'receipts.draft', 'receipts.post'].every(permission => actor.capabilities.includes(permission));
-  return <Tabs key={`${revision}:${actor.userId}:${actor.storeId}:${actor.capabilities.join(',')}`}
+  // Feature pages own their contextual Back action. Tab roots return home rather
+  // than revisiting a hidden feature tab that the user has already closed.
+  return <Tabs backBehavior="firstRoute" key={`${revision}:${actor.userId}:${actor.storeId}:${actor.capabilities.join(',')}`}
     screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.paper },
       tabBarActiveTintColor: colors.primary, tabBarInactiveTintColor: colors.muted,
       tabBarHideOnKeyboard: true,

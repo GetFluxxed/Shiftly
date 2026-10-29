@@ -325,6 +325,21 @@ test('inventory checkpoints preserve safe immediate origins and drop inaccessibl
   assert.equal(savedRoute('/stock', { inventoryTrail }, actor({ capabilities: [] })), null);
 });
 
+test('generic app checkpoints preserve only role-authorized return parents', () => {
+  const owner = actor({ role: 'owner', capabilities: ['inventory.view', 'catalog.manage', 'production.view', 'production.submit'] });
+  const appTrail = JSON.stringify([{ pathname: '/today' }, { pathname: '/time-tracking' },
+    { pathname: '/production/run' }, { pathname: '/catalog/new' }]);
+  assert.deepEqual(savedRoute(`/catalog/${UUID_A}`, { appTrail, token: 'secret' }, owner), {
+    pathname: `/catalog/${UUID_A}`, params: { appTrail },
+  });
+  assert.deepEqual(savedRoute(`/catalog/${UUID_A}`, { appTrail }, actor()), {
+    pathname: `/catalog/${UUID_A}`, params: { appTrail: JSON.stringify([{ pathname: '/today' }]) },
+  });
+  assert.deepEqual(savedRoute('/reports', { appTrail: JSON.stringify([{ pathname: '/team/7' }, { pathname: '/today' }]) }, actor()), {
+    pathname: '/reports', params: { appTrail: JSON.stringify([{ pathname: '/today' }]) },
+  });
+});
+
 
 test('sixty invoice lines persist with retry identity while other entry and total limits remain bounded', async () => {
   const storage = new MemoryStorage();

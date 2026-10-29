@@ -23,9 +23,11 @@ export function Redirect({href}:{href:string}) { const {go}=React.useContext(Rou
 export function Tabs({children}:React.PropsWithChildren<Record<string,unknown>>) {
   return <nav aria-label="Main navigation" style={{display:'flex',gap:8}}>{children}</nav>;
 }
-Tabs.Screen=function TabScreen({name,options}:{name:string;options?:{title?:string;href?:string|null}}) {
+Tabs.Screen=function TabScreen({name,options}:{name:string;options?:{
+  title?:string;href?:string|null;tabBarButton?:()=>React.ReactNode;tabBarItemStyle?:{display?:string};
+}}) {
   const {go}=React.useContext(RouterContext);
-  if(options?.href===null)return null;
+  if(options?.href===null || options?.tabBarButton?.()===null || options?.tabBarItemStyle?.display==='none')return null;
   return <button onClick={()=>go(options?.href||'/'+name)}>{options?.title||name}</button>;
 };
 

@@ -7,6 +7,7 @@ import { ScanLookup } from '../CatalogScanScreen';
 import { InventoryItem, InventoryList } from '../InventoryItem';
 import { useInventoryNavigation } from '../shared';
 import { useSavedScans, type SavedScan, type ScanInput } from './SavedScansProvider';
+import { usePageBack } from '@/src/navigation/usePageBack';
 
 const emptyInput: ScanInput = {
   code: '', barcodeType: '', name: '', baseUnit: 'each', containerAmount: '', containerUnit: 'each',
@@ -35,6 +36,9 @@ export function SavedScansScreen({ offlineMode = false, onBack }: { offlineMode?
   }, [prepareOffline, session.status]);
 
   const back = onBack || (() => navigation.back('/catalog/scan'));
+  usePageBack(() => {
+    if (!pending) back();
+  }, !reviewing && (!offlineMode || !!onBack));
   const recover = async () => { if (status === 'error') await prepareOffline(); };
   const beginMetadata = (saved: SavedScan) => {
     setEditing(saved);

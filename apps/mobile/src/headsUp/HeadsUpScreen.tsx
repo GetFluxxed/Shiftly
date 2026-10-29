@@ -1,5 +1,6 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import React from 'react';
-import { useRouter } from 'expo-router';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 import { headsUpPath, headsUpSaveUncertain, type HeadsUp } from './api';
 import { useSession } from '@/src/session/SessionProvider';
 import { Body, Button, Card, EmptyState, Field, Heading, Loading, Notice, Screen } from '@/src/ui/components';
@@ -10,19 +11,21 @@ import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 
 export function HeadsUpScreen() {
   const { actor, request, busy } = useSession();
-  const router = useRouter();
+  const nav = useAppNavigation();
   const allowed = actor?.role === 'manager' || actor?.role === 'crew' || actor?.role === 'production';
   const canEdit = actor?.role === 'manager';
   const resource = useResource<HeadsUp>(headsUpPath, allowed);
-  const back = () => router.replace(canEdit ? '/store' : '/today');
+  const backTo = canEdit ? '/store' : '/today';
+  const back = () => nav.back(backTo);
+  usePageBack(back);
 
   if (!allowed) return <Screen title="Heads Up" eyebrow="Store update">
-    <Button title="Back to today" icon="arrow-back" variant="quiet" onPress={() => router.replace('/today')} />
+    <Button title="Back to today" icon="arrow-back" variant="quiet" onPress={() => nav.back('/today')} />
     <Card><Heading>Heads Up is unavailable</Heading><Body>This update is for store managers, production, and crew members.</Body></Card>
   </Screen>;
 
   return <Screen title="Heads Up" eyebrow="Store update" subtitle={canEdit ? 'Write one update for this store.' : undefined}>
-    <Button title={canEdit ? 'Back to store' : 'Back to today'} icon="arrow-back" variant="quiet" onPress={back} />
+    <Button title={nav.parent(backTo).label} icon="arrow-back" variant="quiet" onPress={back} />
     {resource.loading ? <Card><Loading label="Getting the latest update…" /></Card> : resource.error ? <Card>
       <Notice message={resource.error} kind="error" /><Button title="Retry update" variant="secondary" onPress={() => { void resource.refresh(); }} />
     </Card> : resource.data ? <HeadsUpContent current={resource.data} canEdit={canEdit} busy={busy}

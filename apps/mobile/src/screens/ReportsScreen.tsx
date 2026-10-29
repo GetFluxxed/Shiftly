@@ -1,6 +1,8 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import { Text } from '@/src/ui/Typography';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useAppNavigation } from '@/src/navigation/useAppNavigation';
 import { useSession } from '@/src/session/SessionProvider';
 import { Body, Button, Card, Column, Columns, EmptyState, Field, Heading, Notice, Pill, Screen, layout } from '@/src/ui/components';
 import { colors, friendlyDate } from '@/src/ui/theme';
@@ -15,17 +17,20 @@ type Inbox = 'shift' | 'production';
 
 export function ReportsScreen() {
   const { actor, stores } = useSession();
+  const nav = useAppNavigation();
   const canRead = Boolean(actor?.capabilities.includes('reports.view'));
   const canSubmit = Boolean(actor?.capabilities.includes('reports.submit'));
   const canReadProduction = canRead && Boolean(actor?.capabilities.includes('production.view'));
   const [rememberedWriting, setWriting] = useRememberedState('reports.writing', !canRead);
-  const writing = canSubmit && rememberedWriting;
+  const writing = canSubmit && (!canRead || rememberedWriting);
+  const back = () => canRead ? setWriting(false) : nav.back('/today');
+  usePageBack(back, writing);
   const [inbox, setInbox] = useRememberedState<Inbox>('reports.inbox', 'shift');
   const store = stores.find(item => item.storeId === actor?.storeId);
   if (!canRead && !canSubmit) return <Screen title="Reports"><Notice message="Your account does not have reporting access for this store." /></Screen>;
   return <Screen title={writing ? 'Write a report' : 'Reports'} eyebrow="Reports"
     subtitle={store?.storeName || 'Current store'}>
-    {writing ? <Button title="Back to reports" variant="quiet" icon="arrow-back" onPress={() => setWriting(false)} />
+    {writing ? <Button title={canRead ? 'Back to reports' : nav.parent('/today').label} variant="quiet" icon="arrow-back" onPress={back} />
       : canSubmit ? <Button title="Write a report" onPress={() => setWriting(true)} icon="create-outline" /> : null}
     {writing ? <ReportComposer /> : canRead ? <>
       <Card><Heading>Report type</Heading>

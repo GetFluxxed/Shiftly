@@ -140,6 +140,7 @@ provider transport now lives in `runtime/provider.py`, durable jobs in
 | 2026-10-01 | Forecasts run as durable jobs analyzing supplied records with strict structured output; no model training. |
 | 2026-10-02 | Canonical stock units stay `each`/`g`/`kg`; package labels may use pounds; volume needs an explicit net weight. |
 | 2026-10-11 | [ENGINEERING.md](../ENGINEERING.md) adopted. Provider/job implementation moved out of the legacy facade. `psycopg-pool` remains the only runtime pool dependency. |
+| 2026-10-29 | Extend the existing inventory return trail across native feature routes. One bounded, allowlisted navigation boundary preserves immediate origins across hidden tabs; restoration rechecks each parent against current access. Page Back controls and native Back share callbacks, while completed flows can select a canonical return parent. |
 
 ## Failure and release boundaries
 

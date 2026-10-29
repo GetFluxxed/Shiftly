@@ -1,3 +1,4 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import React, { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -27,6 +28,7 @@ export function ShiftReports() {
   const [limit, setLimit] = useRememberedState('reports.shift.limit', 30);
   const reports = resource.data?.reports || [];
   const report = reports.find(item => item.id === selected);
+  usePageBack(() => setSelected(null), !wide && !!report);
   useEffect(() => { if (!resource.loading && selected && !report) setSelected(null); }, [resource.loading, selected, report, setSelected]);
   return <View style={layout.gap}>
     <Button title="Refresh shift reports" variant="secondary" icon="refresh-outline" loading={resource.loading} onPress={() => { void resource.refresh(); }} />

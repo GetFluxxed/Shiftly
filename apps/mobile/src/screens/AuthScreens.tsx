@@ -1,3 +1,4 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import React, { useEffect, useRef, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { View, type TextInputInstance } from 'react-native';
@@ -76,6 +77,12 @@ export function ActivateScreen() {
   const passwordInput = useRef<TextInputInstance>(null);
   const confirmationInput = useRef<TextInputInstance>(null);
   useSensitiveForm(() => { setToken(''); setPassword(''); setConfirmation(''); setDetails(null); });
+  const returnToSignIn = () => { if (!task.pending && !busy) router.dismissTo('/sign-in'); };
+  usePageBack(() => {
+    if (task.pending || busy) return;
+    if (status === 'ready' || status === 'locked' || status === 'offline') router.replace('/today');
+    else returnToSignIn();
+  });
   if (status === 'ready' && (complete || task.pending)) return <Redirect href="/today" />;
   if (status === 'ready' || status === 'locked' || status === 'offline') return <Screen title="An invitation for a new account">
     <Card><Body>Sign out of your current account before activating this invitation.</Body>
@@ -102,7 +109,7 @@ export function ActivateScreen() {
         <Button title="Reset password" variant={mode === 'recover' ? 'primary' : 'secondary'} onPress={() => changeMode('recover')} disabled={task.pending || busy} />
       </View>
       {complete ? <><Notice kind="success" message={mode === 'activate' ? 'Your account is ready. Sign in with your username and password.' : 'Your password has been reset. Sign in with your new password.'} />
-        <Button title="Back to sign in" onPress={() => router.replace('/sign-in')} /></> : <>
+        <Button title="Back to sign in" disabled={task.pending || busy} onPress={returnToSignIn} /></> : <>
         <Notice message={task.error} kind="error" />
         {details ? <Notice message={`Join ${details.storeName} as @${details.username}. Your account starts as crew.`} /> : null}
         <Field label={mode === 'activate' ? 'Invitation code' : 'Recovery code'} value={token} onChangeText={setToken}
@@ -117,7 +124,7 @@ export function ActivateScreen() {
           returnKeyType="done" onSubmitEditing={submit} inputRef={confirmationInput} />
         <Button title={mode === 'activate' ? 'Activate my account' : 'Save new password'} onPress={submit}
           loading={task.pending || busy} disabled={!token.trim() || password.length < 8 || !confirmation} />
-        <Button title="Back to sign in" variant="quiet" onPress={() => router.replace('/sign-in')} />
+        <Button title="Back to sign in" variant="quiet" disabled={task.pending || busy} onPress={returnToSignIn} />
       </>}
     </Card></Column><Column><Card style={{ backgroundColor: colors.soft, borderColor: colors.soft }}>
       <Heading>Keep your code private</Heading><Body>Codes work once and expire. If needed, ask {mode === 'activate' ? 'your manager' : 'your administrator or operator'} for a new one.</Body>

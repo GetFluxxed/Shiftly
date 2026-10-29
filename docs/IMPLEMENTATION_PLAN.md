@@ -42,6 +42,7 @@ recorded below. Each column is separate evidence; one never implies another.
 | Recipes and production (1.01 allowance, reversal) | Yes | 2026-09-29 | Yes | Not recorded | No | No |
 | Store production reports and advisory forecast | Yes | 2026-10-01 (fake provider only) | Yes | Not recorded | No | No |
 | Native workspace restoration | Yes | 2026-09-29 | Yes | Not recorded | No | No |
+| Contextual native route returns and Back controls | Yes | 2026-10-29: unit and real-router fixture journeys | Not yet verified | Android hardware/iOS gesture re-check pending | No | No |
 | Shelf-photo proposals, invoice receiving, offline posting, scale capture | No | — | — | — | — | — |
 
 **Deployment note.** The most recent owner-reported hosted setup (recorded

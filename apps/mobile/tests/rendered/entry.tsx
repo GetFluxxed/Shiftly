@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { Alert, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { InventoryScreen } from '../../src/screens/InventoryScreen';
+import { TodayScreen } from '../../src/screens/TodayScreen';
 import { ReportsScreen } from '../../src/screens/ReportsScreen';
 import { CatalogScreen, NewProductScreen, ProductScreen } from '../../src/inventory/CatalogScreens';
 import { CatalogScanScreen } from '../../src/inventory/CatalogScanScreen';
@@ -67,13 +68,17 @@ window.__inventoryTest=controller;
 Alert.alert=(_title,message,buttons)=>{ if(window.confirm(message ?? undefined)) buttons?.at(-1)?.onPress?.(); };
 function App() {
  const snapshot=React.useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
- const [route,setRoute]=React.useState(() => destination(location.pathname === '/' ? '/today' : location.pathname));
+ // Fresh workbench journeys begin in Inventory. A cold restart passes through
+ // Today so the real WorkspaceNavigation can restore the saved feature route.
+ const [route,setRoute]=React.useState(() => destination(location.pathname === '/'
+   ? localStorage.getItem('test.workspace') ? '/today' : '/inventory'
+   : location.pathname));
  React.useEffect(()=>{void controller.restore();},[]);
  const go=React.useCallback((value:unknown)=>{
    setRoute(destination(value));
  },[]);
  const ctx=React.useMemo(()=>({go,path:route.path,params:route.params,setParams:()=>{}}),[go,route]);
- const Screen=({'/today':InventoryScreen,'/reports':ReportsScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,'/catalog/saved-scans':SavedScansScreen,
+ const Screen=({'/today':TodayScreen,'/reports':ReportsScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,'/catalog/saved-scans':SavedScansScreen,
    '/stock':StockScreen,'/stock/[productId]':StockDetailScreen,'/counts':CountsScreen,
    '/counts/[countId]':CountSessionScreen,'/counts/[countId]/review':CountReviewScreen,'/counts/history':CountHistoryScreen,
    '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/catalog/packages/[productId]':PackagesScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen,

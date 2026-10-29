@@ -1,3 +1,4 @@
+import { usePageBack } from '@/src/navigation/usePageBack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -21,6 +22,7 @@ export function ProductionReports() {
   const scrollToTop = useScrollToTop();
   const previous = useRef(selected);
   useEffect(() => { if (!wide && previous.current !== selected) scrollToTop(); previous.current = selected; }, [selected, wide, scrollToTop]);
+  usePageBack(() => setSelected(null), !wide && !!selected);
   const selectedSummary = resource.data?.items.find(item => item.id === selected);
   useEffect(() => { if (!resource.loading && selected && !selectedSummary && !cursor) setSelected(null); }, [resource.loading, selected, selectedSummary, cursor, setSelected]);
   if (!actor?.capabilities.includes('production.view')) return <Notice message="Your account cannot view production reports for this store." kind="error" />;
