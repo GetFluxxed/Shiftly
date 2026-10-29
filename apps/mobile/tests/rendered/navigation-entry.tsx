@@ -6,11 +6,17 @@ import { Pressable, Text, View } from 'react-native';
 import AppLayout from '../../app/(app)/_layout';
 import { TodayScreen } from '../../src/screens/TodayScreen';
 import { ReportsScreen } from '../../src/screens/ReportsScreen';
+import { TimeTrackingScreen } from '../../src/timeTracking/TimeTrackingScreen';
 import { SessionController } from '../../src/session/controller';
 import { SessionContext } from './session';
 import { WorkspaceNavigation, WorkspaceProvider } from '../../src/restoration/WorkspaceProvider';
 import IndexScreen from '../../app/index';
 import type { Transport } from '../../src/api/client';
+import { useFonts } from 'expo-font';
+import { WorkSans_400Regular } from '@expo-google-fonts/work-sans/400Regular';
+import { WorkSans_600SemiBold } from '@expo-google-fonts/work-sans/600SemiBold';
+import { Newsreader_500Medium } from '@expo-google-fonts/newsreader/500Medium';
+import { FontsReadyContext } from '../../src/ui/Typography';
 
 const role = new URL(window.location.href).searchParams.get('role') || 'owner';
 const capabilities = role === 'crew'
@@ -42,13 +48,14 @@ const workspaceStorage = {
 };
 
 function RootLayout() {
+  const [fontsReady] = useFonts({ WorkSans_400Regular, WorkSans_600SemiBold, Newsreader_500Medium });
   React.useEffect(() => { void controller.restore(); }, []);
-  return <SessionContext.Provider value={controller}>
+  return <FontsReadyContext.Provider value={fontsReady}><SessionContext.Provider value={controller}>
     <WorkspaceProvider session={controller} storage={workspaceStorage}>
       <WorkspaceNavigation session={controller} />
       <Stack screenOptions={{ headerShown: false }} />
     </WorkspaceProvider>
-  </SessionContext.Provider>;
+  </SessionContext.Provider></FontsReadyContext.Provider>;
 }
 function SectionLayout() { return <Stack screenOptions={{ headerShown: false }} />; }
 
@@ -78,6 +85,7 @@ const modules: Record<string, RouteModule> = {
   './(app)/_layout.tsx': { default: AppLayout },
   './(app)/today.tsx': { default: TodayScreen },
   './(app)/reports.tsx': { default: ReportsScreen },
+  './(app)/time-tracking.tsx': { default: TimeTrackingScreen },
   './(app)/inventory.tsx': { default: Destination },
   './(app)/accounts.tsx': { default: Destination },
 };

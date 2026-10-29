@@ -65,6 +65,7 @@ export default function AppLayout() {
       tabBarIcon: ({ focused, size }) => <Ionicons name="person-circle-outline" color={focused ? colors.primary : colors.muted} size={size} /> }} />
     <Tabs.Screen name="team" options={detailTabOptions} />
     <Tabs.Screen name="owner" options={detailTabOptions} />
+    <Tabs.Screen name="time-tracking" options={actor.role === 'owner' ? detailTabOptions : { href: null }} />
     <Tabs.Screen name="catalog" options={detailTabOptions} />
     <Tabs.Screen name="shelves" options={detailTabOptions} />
     <Tabs.Screen name="counts" options={detailTabOptions} />

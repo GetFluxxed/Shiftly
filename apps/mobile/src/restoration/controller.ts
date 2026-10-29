@@ -4,8 +4,9 @@ import { savedRoute, workspaceScope, type SavedRoute } from './policy';
 
 const lifetime = 7 * 24 * 60 * 60 * 1000;
 const maxEntries = 100;
-// A reviewed invoice may contain 60 bounded lines. Images never enter checkpoints.
-const entryLimit = (key: string) => /^receiving\.invoice\.[0-9a-f-]{36}$/i.test(key) ? 40_000 : 12_000;
+// Reviewed invoice lines and the bounded local time-tracking demo need a larger
+// checkpoint. Neither entry stores images, credentials, or authoritative records.
+const entryLimit = (key: string) => key === 'timeTracking.demo' || /^receiving\.invoice\.[0-9a-f-]{36}$/i.test(key) ? 40_000 : 12_000;
 type Entry = { value: unknown; baseline: string; at: number };
 type Document = { version: 1; scope: string; at: number; route: SavedRoute | null; entries: Record<string, Entry> };
 type State = { ready: boolean; scope: string | null; resume: number; route: SavedRoute | null; message: string | null };
@@ -118,7 +119,7 @@ export class WorkspaceController {
     if (!entry || entry.baseline !== baseline || !current(entry.at, this.now())) return initial;
     // Evolving feature drafts can validate optional fields without discarding an
     // older saved draft. Scope, lifetime and bounded JSON checks still apply.
-    const valid = validateRestored ? safeData(entry.value, 0) && validateRestored(entry.value) : sameShape(entry.value, initial);
+    const valid = validateRestored ? safeData(entry.value, 0, key === 'timeTracking.demo' ? 8 : 4) && validateRestored(entry.value) : sameShape(entry.value, initial);
     if (!valid) return initial;
     return entry.value as T;
   }
@@ -150,12 +151,12 @@ function sameShape(value: unknown, initial: unknown): boolean {
 }
 
 /** Empty remembered lists still need bounded JSON rows, such as recipe ingredients. */
-function safeData(value: unknown, depth: number): boolean {
-  if (depth > 4) return false;
+function safeData(value: unknown, depth: number, maxDepth = 4): boolean {
+  if (depth > maxDepth) return false;
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
-  if (Array.isArray(value)) return value.length <= 500 && value.every(item => safeData(item, depth + 1));
+  if (Array.isArray(value)) return value.length <= 500 && value.every(item => safeData(item, depth + 1, maxDepth));
   if (!value || typeof value !== 'object') return false;
   const entries = Object.entries(value);
-  return entries.length <= 30 && entries.every(([key, item]) => validKey(key) && safeData(item, depth + 1));
+  return entries.length <= 30 && entries.every(([key, item]) => validKey(key) && safeData(item, depth + 1, maxDepth));
 }

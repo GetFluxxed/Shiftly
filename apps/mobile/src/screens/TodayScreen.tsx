@@ -48,6 +48,13 @@ export function TodayScreen() {
         title={actor?.role === 'owner' ? 'Owner tools' : 'Manage team'}
         label={can('memberships.manage') ? (actor?.role === 'owner' ? 'Owner tools' : 'Manage team') : 'Manage team. Permission required.'}
         icon="people-outline" disabled={!can('memberships.manage')}
+        footer={actor?.role === 'owner' ? <Pressable accessibilityRole="button" accessibilityLabel="Time Tracking"
+          onPress={() => router.push('/time-tracking')}
+          style={({ pressed }) => [styles.timeTracking, pressed && { backgroundColor: colors.blush }]}>
+          <Ionicons name="time-outline" size={19} color={colors.primary} />
+          <Text style={styles.timeTrackingText}>Time Tracking</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+        </Pressable> : undefined}
         onPress={() => router.push(actor?.role === 'owner' ? '/owner' : '/team')} /> : null}
       {['manager', 'owner'].includes(actor?.role || '') && ['inventory.view', 'receipts.draft', 'receipts.post'].every(can)
         ? <ActionTile title="Invoices" icon="receipt-outline" onPress={() => inventoryNavigation.open('/invoices')} /> : null}
@@ -57,6 +64,9 @@ export function TodayScreen() {
 }
 
 const styles = StyleSheet.create({
+  timeTracking: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14,
+    borderTopWidth: 1, borderColor: colors.line, backgroundColor: colors.soft },
+  timeTrackingText: { flex: 1, flexShrink: 1, color: colors.primary, fontSize: 14, fontWeight: '600' },
   storeCard: { backgroundColor: colors.primary, borderColor: colors.primary, gap: 16 },
   storeLabel: { color: colors.onPrimaryMuted, fontSize: 11, letterSpacing: 1.5, fontWeight: '700', marginBottom: 7 },
   storeName: { color: colors.onPrimary, fontFamily: fonts.display, fontSize: 30, lineHeight: 34 },

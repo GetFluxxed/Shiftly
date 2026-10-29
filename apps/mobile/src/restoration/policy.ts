@@ -24,6 +24,7 @@ export function savedRoute(path: string, params: Record<string, unknown>, actor:
       || new RegExp(`^/invoices/${uuid}(/photo)?$`).test(path)) allowed = canReceive;
   if (path === '/reports') allowed = can('reports.view') || can('reports.submit');
   if (path === '/store') allowed = ['owner', 'manager'].includes(actor.role);
+  if (path === '/time-tracking') allowed = actor.role === 'owner';
   if (path === '/heads-up') allowed = ['manager', 'crew', 'production'].includes(actor.role);
   if (/^\/production(\/recipes|\/logs)?$/.test(path)
       || new RegExp(`^/production/(recipes|logs)/${uuid}$`).test(path)) allowed = can('production.view');
