@@ -79,6 +79,25 @@ Status: **Both** = available on both clients; **Mobile only** / **Browser only**
 Heads Up is store staff communication. Owners and administrators can neither read
 nor edit it on either client (`backend/shiftly/stores/repository.py`).
 
+## Time Tracking device demo
+
+Owners open Today → Owner tools → Time Tracking in the native app. Names need no
+accounts; the roster, shift history and timer timestamps stay in the existing
+account/store-scoped device checkpoint. This is a local demo, with no browser
+compatibility-page equivalent, account-linked delivery or push notifications.
+
+Tap a member name to open details. The modal has the original independent 3:30
+and 5:30 timers plus a separate **Breaks** section with **10 min** and **30 min**
+controls. Each break has its own countdown and reset confirmation. Breaks require
+clock-in, continue while the modal is closed or the app is backgrounded, and stop
+at clock-out. A new shift starts with fresh timers. Starting or resetting a break
+does not pause other timers or deduct time from shift totals. Existing saved
+rosters remain valid; the optional break state is added only when used.
+
+Above three members the roster uses compact rows; up to three it shows expanded
+timer cards. Break controls stay inside the member modal in both layouts. Names,
+shift history and confirmed removal are managed through the same modal.
+
 ## Partial implementations
 
 - **Browser inventory:** `inventory.html` is reachable with `inventory.view` but

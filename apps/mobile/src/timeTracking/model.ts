@@ -1,4 +1,5 @@
 export type TimerId = 'short' | 'long';
+export type BreakTimerId = 'ten' | 'thirty';
 
 export type TimerState = { startedAt: number | null };
 export type Shift = {
@@ -6,6 +7,7 @@ export type Shift = {
   clockIn: number;
   clockOut: number | null;
   timers: Record<TimerId, TimerState>;
+  breakTimers?: Record<BreakTimerId, TimerState>;
 };
 export type CrewMember = { id: string; name: string; shifts: Shift[] };
 export type TrackingState = { version: 1; members: CrewMember[] };
@@ -19,6 +21,11 @@ const MAX_STORED_JSON_LENGTH = 40_000;
 export const PRESETS: ReadonlyArray<{ id: TimerId; label: string; durationMs: number }> = [
   { id: 'short', label: '3:30', durationMs: 3.5 * 60 * 60 * 1_000 },
   { id: 'long', label: '5:30', durationMs: 5.5 * 60 * 60 * 1_000 },
+];
+
+export const BREAK_PRESETS: ReadonlyArray<{ id: BreakTimerId; label: string; durationMs: number }> = [
+  { id: 'ten', label: '10 min', durationMs: 10 * 60 * 1_000 },
+  { id: 'thirty', label: '30 min', durationMs: 30 * 60 * 1_000 },
 ];
 
 export function emptyState(): TrackingState {
@@ -47,12 +54,19 @@ function validTimer(value: unknown): value is TimerState {
 }
 
 function validShift(value: unknown): value is Shift {
-  if (!isObject(value) || !hasExactKeys(value, ['id', 'clockIn', 'clockOut', 'timers'])) return false;
+  if (!isObject(value)) return false;
+  const keys = Object.hasOwn(value, 'breakTimers') ? ['id', 'clockIn', 'clockOut', 'timers', 'breakTimers'] : ['id', 'clockIn', 'clockOut', 'timers'];
+  if (!hasExactKeys(value, keys)) return false;
   if (!validId(value.id) || !validTimestamp(value.clockIn)) return false;
   if (value.clockOut !== null && (!validTimestamp(value.clockOut) || value.clockOut < value.clockIn)) return false;
   if (!isObject(value.timers) || !hasExactKeys(value.timers, ['short', 'long'])) return false;
   if (!validTimer(value.timers.short) || !validTimer(value.timers.long)) return false;
-  for (const timer of [value.timers.short, value.timers.long]) {
+  if (Object.hasOwn(value, 'breakTimers')) {
+    if (!isObject(value.breakTimers) || !hasExactKeys(value.breakTimers, ['ten', 'thirty'])) return false;
+    if (!validTimer(value.breakTimers.ten) || !validTimer(value.breakTimers.thirty)) return false;
+  }
+  const breakTimers = isObject(value.breakTimers) ? [value.breakTimers.ten, value.breakTimers.thirty] : [];
+  for (const timer of [value.timers.short, value.timers.long, ...breakTimers] as TimerState[]) {
     if (timer.startedAt !== null && timer.startedAt < value.clockIn) return false;
     if (timer.startedAt !== null && value.clockOut !== null && timer.startedAt > value.clockOut) return false;
   }
@@ -179,10 +193,37 @@ export function resetTimer(state: TrackingState, memberId: string, timerId: Time
   return ensureStateFits({ ...state, members: state.members.map(candidate => candidate.id === memberId ? { ...candidate, shifts: candidate.shifts.map(item => item.id === shift.id ? { ...item, timers: { ...item.timers, [timerId]: { startedAt: null } } } : item) } : candidate) });
 }
 
+export function startBreakTimer(state: TrackingState, memberId: string, breakTimerId: BreakTimerId, now: number): TrackingState {
+  assertTimestamp(now);
+  const member = findMember(state, memberId);
+  const shift = activeShift(member);
+  if (!shift) throw new Error(`${member.name} must be clocked in to start a break timer.`);
+  if (now < shift.clockIn) throw new Error('Break timer start cannot be before clock-in time.');
+  if (shift.breakTimers?.[breakTimerId].startedAt !== null && shift.breakTimers?.[breakTimerId].startedAt !== undefined) return state;
+  const breakTimers: Record<BreakTimerId, TimerState> = shift.breakTimers ?? { ten: { startedAt: null }, thirty: { startedAt: null } };
+  return ensureStateFits({ ...state, members: state.members.map(candidate => candidate.id === memberId ? { ...candidate, shifts: candidate.shifts.map(item => item.id === shift.id ? { ...item, breakTimers: { ...breakTimers, [breakTimerId]: { startedAt: now } } } : item) } : candidate) });
+}
+
+export function resetBreakTimer(state: TrackingState, memberId: string, breakTimerId: BreakTimerId): TrackingState {
+  const member = findMember(state, memberId);
+  const shift = activeShift(member);
+  if (!shift) throw new Error(`${member.name} must be clocked in to reset a break timer.`);
+  if (!shift.breakTimers || shift.breakTimers[breakTimerId].startedAt === null) return state;
+  return ensureStateFits({ ...state, members: state.members.map(candidate => candidate.id === memberId ? { ...candidate, shifts: candidate.shifts.map(item => item.id === shift.id ? { ...item, breakTimers: { ...item.breakTimers!, [breakTimerId]: { startedAt: null } } } : item) } : candidate) });
+}
+
 export function remainingMs(shift: Shift, timerId: TimerId, now: number): number {
   const startedAt = shift.timers[timerId].startedAt;
   const duration = PRESETS.find(preset => preset.id === timerId)!.durationMs;
   if (startedAt === null) return duration;
+  const end = shift.clockOut === null ? now : shift.clockOut;
+  return Math.max(0, duration - Math.max(0, end - startedAt));
+}
+
+export function breakRemainingMs(shift: Shift, breakTimerId: BreakTimerId, now: number): number {
+  const duration = BREAK_PRESETS.find(preset => preset.id === breakTimerId)!.durationMs;
+  const startedAt = shift.breakTimers?.[breakTimerId].startedAt;
+  if (startedAt === null || startedAt === undefined) return duration;
   const end = shift.clockOut === null ? now : shift.clockOut;
   return Math.max(0, duration - Math.max(0, end - startedAt));
 }

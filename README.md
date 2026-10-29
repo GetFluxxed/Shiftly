@@ -22,7 +22,8 @@ Implemented in the current source:
 - native sign-in, reporting, Heads Up, team and owner administration;
 - an owner-operated [Time Tracking demo](docs/workstreams/time-tracking-demo.md)
   with named crew, clock-in/out history, independent 3:30 / 5:30 timers, and compact
-  rosters with member detail modals for larger teams;
+  rosters with member detail modals for larger teams; each member modal also has
+  separate 10-minute and 30-minute break countdowns;
 - a business catalog, store shelves, package definitions, barcode lookup/capture,
   stock balances and movement history;
 - reviewed whole-store counts with draft, review, and posting transitions;
