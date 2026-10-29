@@ -1,5 +1,8 @@
 # Shiftly native application roadmap
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Updated: 2026-09-22. The user selected **a phone and tablet app with React Native**.
 This supersedes the earlier mobile-web-first decision. React Native with Expo and
 TypeScript is the primary new client in `apps/mobile`; the existing browser app
@@ -14,7 +17,7 @@ baseline. They do not establish native device readiness.
 
 **Inventory update — 2026-09-25:** The next approved native slice adds current
 inventory, server-saved whole-store counts, review/finalization and history.
-See [the inventory count contract](workstreams/inventory-counts.md). This includes
+See [the inventory count contract](inventory-counts.md). This includes
 migration 017 and reuses existing count-entry and count-approval permissions.
 Camera/scale automation and offline stock posting remain later phases. The scoped
 offline count-observation queue is recorded in the count contract below.
@@ -123,7 +126,7 @@ targets. Test tablet portrait/landscape layouts without stretched phone forms.
 
 ### 3. Catalog, SKUs and trusted manual inventory
 
-**First slice implemented, 2026-09-23:** see the [shared company catalog](workstreams/inventory-foundation-and-shared-catalog.md).
+**First slice implemented, 2026-09-23:** see the [shared company catalog](inventory-foundation-and-shared-catalog.md).
 One editable company catalog, store listings and named shelves with product
 assignments are available. Add/edit/archive/restore products centrally; shelf
 removal is local. Rendered phone/tablet journeys and native bundles are verified;
@@ -132,7 +135,7 @@ conversion workflow below remains planned.
 
 Build catalog items, SKU/barcode mappings, pack/base units, weight/tare profiles,
 locations and pars first. Then add movement history, balances, receipts, counts,
-approval and corrections using the rules in [INVENTORY.md](INVENTORY.md).
+approval and corrections using the rules in [INVENTORY.md](../INVENTORY.md).
 Prioritize native count entry and manager review screens around real pilot items.
 
 Add migrations after the existing 001–015 history; rehearse fresh databases,
@@ -168,7 +171,7 @@ thresholds before assistance is enabled beyond the pilot.
 ### 5. Offline resilience and release readiness
 
 Local UI/draft restoration and a dedicated count-observation queue are implemented.
-The [count contract](workstreams/inventory-counts.md#durable-mobile-counting--2026-10-22)
+The [count contract](inventory-counts.md#durable-mobile-counting--2026-10-22)
 defines its encrypted storage, 12-hour restricted access, conflicts and device
 acceptance. Other offline commands require their own idempotency and conflict
 design. Recheck
@@ -290,7 +293,7 @@ commit/push and deployment have not been performed for this change.
 - Expo bundling and browser viewport tests cannot substitute for native-device
   verification or a signed release.
 
-Run instructions are in [apps/mobile/README.md](../apps/mobile/README.md). Framework
+Run instructions are in [apps/mobile/README.md](../../apps/mobile/README.md). Framework
 references: [React application guidance](https://react.dev/learn/creating-a-react-app),
 [Expo project setup](https://docs.expo.dev/get-started/create-a-project/) and
 [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/).
@@ -361,7 +364,7 @@ clear private state. Production history remains server-authoritative.
 
 Type checking, 103 native tests, four rendered production journeys and iOS/Android
 exports passed. The database-backed service, account and browser checks and backup
-recovery are recorded in the [production contract](workstreams/production-and-assisted-inventory.md).
+recovery are recorded in the [production contract](production-and-assisted-inventory.md).
 The local demo schema and API were refreshed after a verified backup without
 changing existing data. Physical-device acceptance and CI remain separate.
 Camera suggestions, hardware scale capture and Forecast are planned next slices;

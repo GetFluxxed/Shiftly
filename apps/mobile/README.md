@@ -2,9 +2,10 @@
 
 Native phone and tablet client built with React Native, Expo and TypeScript.
 It uses the existing Python/FastAPI services and PostgreSQL account system. The
-existing browser application remains available while native workflows expand.
-See the [native roadmap](../../docs/NATIVE_APP_ROADMAP.md) for phase boundaries and
-release acceptance.
+existing browser application remains available. Per-screen access is in
+[WORKFLOWS.md](../../docs/WORKFLOWS.md), and current source status, release
+evidence and device gates are in the
+[implementation plan](../../docs/IMPLEMENTATION_PLAN.md).
 
 The current bounded release target is the
 [October 31 iPhone pilot](../../docs/workstreams/iphone-pilot-2026-10-31.md): an
@@ -33,13 +34,14 @@ an invoice or enter it manually, review catalog/package matches and check receiv
 lines. Inventory → Incoming previews expected totals; it does not update stock.
 Photo reading requires connectivity and the separately running configured worker.
 See [invoice previews](../../docs/workstreams/invoice-receiving-preview.md).
-Shelf-photo counting, receipt posting and offline posting remain later phases. This is a development foundation; bundling is not a
-claim of physical-device or store-release verification.
+Shelf-photo counting, receipt posting and offline posting remain later phases.
+This is a development foundation; bundling is not a claim of physical-device or
+store-release verification.
 
-The [inventory foundation and shared catalog](../../docs/workstreams/inventory-foundation-and-shared-catalog.md)
-documents this implemented slice and its verification. API paths stay under `/api/mobile`; feature code supplies
-uncertain-write guidance. Machine-readable errors distinguish form conflicts from
-session/store invalidation, with conservative fallback for older responses.
+Inventory rules are in [INVENTORY.md](../../docs/INVENTORY.md). API paths stay under
+`/api/mobile`, and feature code supplies uncertain-write guidance. Machine-readable
+errors distinguish form conflicts from session/store invalidation, with
+conservative fallback for older responses (see [API.md](../../docs/API.md#errors-and-recovery)).
 
 ## Requirements
 
@@ -159,9 +161,9 @@ HTTPS. `EXPO_PUBLIC_*` values are embedded in the client and are public, so only
 place the non-secret API origin here.
 
 With simulator tools installed, `pnpm ios` or `pnpm android` starts Expo for that
-platform. These scripts do not create a signed distribution build. The current
-local environment has no Xcode/Android SDK, so native simulator/device validation
-must be recorded separately on a suitable host.
+platform. These scripts do not create a signed distribution build. The development
+machine used through 2026-10 had no Xcode/Android SDK, so simulator and device
+validation must be recorded separately on a suitable host.
 
 ### Expo Go SDK compatibility
 
@@ -235,21 +237,31 @@ message directs the user to reconnect and retry before closing the app.
 
 ## Native account administration
 
-Open **Account → Manage team** to invite someone, add an existing account by their
-Account ID (visible on their own Account screen), or change a store membership.
-Owners can also choose existing people from their business when adding store
-access. Invited people activate their own account and choose their own password.
-Activation codes appear only on the issuing screen, expire after 24 hours, and
-are discarded on navigation/backgrounding; they are never put in routes or storage.
-Reissuing invalidates the earlier code. Editing a pending membership invalidates
-its invitation, so reissue after saving if that membership remains active.
+**Where to find team administration**
+- Managers and owners: **Store → Build team** to invite someone or add an
+  existing account by their Account ID (shown on their own Account screen).
+- **Store → Team members** to view or change a store membership. **Today → Manage
+  team** also opens the team.
+- Delegated admins have no Store tab and use **Account → Team administration**.
 
-Open **Today → Owner workspace** or **Account → Owner workspace** for business
-roles, account suspension/restoration, ownership transfer, and store sign-in
-cutover. Administrator permissions require matching store grants and active
-business delegation. An ownership transfer ends the current owner's business
-sessions and clears the native credential. Global suspension is offered only
-when the owner has authority across the target's complete account history.
+**Invitations and activation codes**
+- Invited people activate their own account and choose their own password.
+- Codes appear only on the issuing screen and expire after 24 hours by default.
+  They are discarded on navigation or backgrounding and never put in routes or
+  storage.
+- Reissuing invalidates the earlier code. Editing a pending membership also
+  invalidates its invitation, so reissue after saving if that membership remains
+  active.
+
+**Owner tools** are reached from **Today → Owner tools** or **Store → Owner tools**.
+They cover business roles, account suspension/restoration, ownership transfer and
+the store sign-in cutover review.
+- Administrator permissions require matching store grants and active business
+  delegation.
+- An ownership transfer ends the current owner's business sessions and clears the
+  native credential.
+- Global suspension is offered only when the owner has authority across the
+  target's complete account history.
 
 `GET /api/mobile/accounts/management` returns selected-store members, form choices
 derived from Python policy, and eligible row actions. Only owners receive the
@@ -300,41 +312,74 @@ Interrupted report sends require checking the inbox/manager before another send.
 
 Checkpoint failure is shown on screen. Force-closing can interrupt the newest
 write; server-saved data remains authoritative. This is not offline submission.
-See the [restoration contract](../../docs/NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
-for scope, storage boundaries and verification. Pilot acceptance should cover
-minimize/return and force-close/relaunch on both supported device platforms.
+
+| Area | Restored | Deliberately transient |
+| --- | --- | --- |
+| All signed-in screens | Last allowed route, safe record IDs, return destination, scroll offset | API responses, request tasks, server errors, confirmation dialogs |
+| Catalog and shelves | Searches, filters, page cursor, product/shelf drafts, assignment picker | Create, assign, remove or archive actions |
+| Current inventory and counts | Searches, shelf selection, count date, unsaved measurements and units | Stock changes and count submission/finalization |
+| Reports | Inbox/composer choice, selected report ID, shift and unsent notes | Fetched report bodies and briefings |
+| Heads Up | Unfinished manager message against the last fetched message | Automatic publication |
+| Recipes and production | Recipe drafts, daily flavor/batch selection, list searches/cursors | Confirmation and recipe saves |
+| Team, Owner and Account | Team selector/search, owner search, permissions/store panel | Passwords, invitation/recovery codes, role/grant/reason edits, ownership transfer and sign-out confirmations |
+
+**Storage**
+- Checkpoints use Expo SecureStore. They are scoped to the API origin and the
+  verified user, business, store, role, capabilities and authorized stores.
+- They are versioned, expire after seven days, and are bounded in size and entry
+  count. A commit-last manifest prevents a partial write replacing a usable
+  checkpoint.
+- Sign-out or any change to account, store or access clears them.
+
+**Restoring**
+- Restoring still requires a valid sign-in and a connection to verify access.
+- A changed server baseline (record version, count state or message) loads the
+  current server value instead of the stale draft.
+- Report sends checkpoint an unconfirmed marker first. A lost response blocks
+  resubmission until the person checks the inbox and acknowledges it.
+
+Pilot acceptance should cover minimize/return and force-close/relaunch on both
+supported device platforms.
 
 
 ## Recipes and production
 
-Managers and owners open **Today → Open Production → New Recipe**. The editor opens
-as a sheet on phones and a centered window on tablets. Enter a flavor name,
-choose **4.5 kg** or **6 kg** for its yield, and add optional instructions, then
-find ingredients in the company catalog. The compact cards match shelves: **+** adds an ingredient, **−** removes
-it, and each ingredient has an amount and unit. Mass ingredients accept g/kg;
-recipes retain the original entry and convert to the catalog base unit exactly.
-**Save Recipe** creates a recipe revision without changing inventory. **Cancel**
-closes the editor and discards unsaved changes. Saved recipes show a clean summary;
-**Edit Recipe** opens their fields. Selecting a yield does not rescale ingredient
-amounts. Earlier yields stay unchanged until explicitly edited.
+**Creating a recipe** (accounts with `recipes.manage`, normally managers and owners)
+- Open **Today → Production → New recipe**, or **Recipe book → New recipe**.
+- The editor opens as a sheet on phones and a centered window on tablets.
+- Enter a flavor name, choose **4.5 kg** or **6 kg** for its yield, and optionally
+  add instructions.
+- Find ingredients in the company catalog. **+** adds an ingredient and **−**
+  removes it; each ingredient has an amount and unit. Mass ingredients accept g/kg.
+  Recipes keep the original entry and convert it to the catalog base unit exactly.
+- **Save Recipe** creates a recipe revision without changing inventory. **Cancel**
+  closes the editor and discards unsaved changes.
+- Saved recipes show a summary; **Edit Recipe** opens their fields.
+- Choosing a yield does not rescale ingredient amounts, and earlier yields stay
+  unchanged until explicitly edited.
 
-Production staff have a separate Production tab and no Reports or Store tab.
-An authorized administrator/owner assigns this role after normal crew invitation
-activation. Managers cannot change a crew member to Production themselves.
+**Production staff** have a separate Production tab and no Reports or Store tab.
+An authorized administrator or owner assigns this role after normal crew
+invitation activation. Managers cannot change a crew member to Production
+themselves.
 
-In **Today's production**, check flavors and use the batch counters. Review shows
-recipe quantities plus a 1% allowance for each ingredient. Only explicit confirmation
-deducts stock, and missing/insufficient inventory blocks the entire submission.
-Production history retains the recipes used at the time. Managers/owners can
-reverse a log with a reason unless a later physical count supersedes it.
+**Recording production**
+- Open **Production → Record today's production**, check flavors and use the
+  batch counters.
+- Review shows recipe quantities plus a 1% allowance for each ingredient
+  (recipe × batches × 1.01).
+- Only explicit confirmation deducts stock. Missing or insufficient inventory
+  blocks the entire submission.
+- Production history keeps the recipes used at the time. Accounts with
+  `production.manage` can reverse a log with a reason, unless a later physical
+  count supersedes it.
 
 Recipe and daily production drafts use the existing private workspace restoration.
 If a save result is uncertain, inputs stay locked: check the original log or retry
 the exact saved submission. This prevents duplicate deductions after a lost
 connection. This is not offline stock posting.
 
-See the [production and assisted inventory contract](../../docs/workstreams/production-and-assisted-inventory.md)
-for implementation evidence and the later camera, scale and Forecast phases.
+Rules are in [INVENTORY.md](../../docs/INVENTORY.md#recipes-and-production).
 
 
 ## Scan products into the catalog
@@ -409,4 +454,29 @@ Queued measurements remain protected for the same user/store after sign-out;
 sign-out removes offline access. Expo Go still needs a loaded development bundle,
 so test by opening Count before entering the storage area. A signed installed
 build needs separate cold-launch/keychain testing. See the
-[count contract](../../docs/workstreams/inventory-counts.md#durable-mobile-counting--2026-10-22).
+[count contract](../../docs/archive/inventory-counts.md#durable-mobile-counting--2026-10-22).
+
+## Device testing
+
+Exports, unit tests and browser-rendered journeys do not establish device behavior.
+Record each physical test with the device model, OS version, app build or Expo
+session, API revision and date. The pilot device matrix is an
+[open decision](../../docs/IMPLEMENTATION_PLAN.md#open-owner-decisions).
+
+**Exercise on each supported phone and tablet**
+- Sign-in and store scope; a revoked session or changed permission while the app
+  is open.
+- Barcode scanning: permission prompt and denial, zoom, small labels, the
+  previously failing labels, and background/return.
+- Mixed package/partial counts, count review and posting.
+- Recipe editing; production review, confirmation and reversal.
+- A lost connection during a save, followed by recovery.
+- Minimize/return and force-close/relaunch with unsaved drafts.
+- Keyboard, text scaling, screen reader basics and tablet landscape.
+
+**Recording results**
+- Expo Go on the LAN is a development delivery, not a release artifact.
+- Signed development or store builds are a separate gate
+  ([DEPLOYMENT.md](../../docs/DEPLOYMENT.md#hosted-staging-and-release-gate)).
+- Record results in the pull request or release notes for the exact revision
+  tested.

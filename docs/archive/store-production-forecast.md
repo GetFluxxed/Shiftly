@@ -1,5 +1,8 @@
 # Store production reports and advisory forecasting
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Decision date: 2026-10-01. The user brought an advisory production forecast forward
 into the native Reports inbox. This is separate from the later sales, supplier,
 reordering and evaluated forecasting phase. No camera, invoice or scale work is

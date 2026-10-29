@@ -1,17 +1,24 @@
-# Camera and invoice readiness plan
+# Camera and invoice plan
 
-Decision date: 2026-10-01. This is the ordered path from today's catalog and
-package work to a reviewed shelf-photo prototype, then to invoice receiving. It
-is a planning contract, not evidence that the unfinished work is verified, a
-promise that camera work will begin by a particular time, or a legal/compliance
-approval.
+Decision date 2026-10-01; reviewed against source revision `df53f98` on 2026-10-21.
+This is the consolidated forward plan for assisted inventory (shelf photos) and
+invoice receiving, and the detailed gate for roadmap items 1–3, 6 and 7 in the
+[implementation plan](../IMPLEMENTATION_PLAN.md#roadmap). It is a planning
+contract, not evidence that the unfinished work is verified, a promise that camera
+work will begin by a particular time, or a legal/compliance approval. Maintained
+stock rules are in [INVENTORY.md](../INVENTORY.md).
 
-The existing camera feature scans barcodes for catalog lookup and creation. It
-does not count shelves or save barcode images. The separately authorized invoice
-preview below now sends explicitly uploaded invoice photos to the configured AI
-provider; it does not receive stock. Production currently deducts the exact recipe quantity multiplied by
-confirmed batches and `1.01`; camera and receiving work must preserve that stock
-history and its version checks.
+**Camera feature boundaries.** Barcode scanning supports catalog lookup and
+creation; it does not count shelves or save barcode images. The separately
+authorized invoice preview sends explicitly uploaded invoice photos to the
+configured AI provider and creates reviewed proposals only; it does not receive
+stock. Shelf-photo counting and receipt posting remain planned. Keep barcode
+scanning, invoice extraction, and shelf-photo analysis distinct in design,
+permissions, and evidence.
+
+Production currently deducts the exact recipe quantity multiplied by confirmed
+batches and `1.01`; camera and receiving work must preserve that stock history and
+its version checks.
 
 ## October 25 scope update
 
@@ -30,7 +37,7 @@ met.
 
 | Stage | Owner | Observable exit evidence |
 | --- | --- | --- |
-| 1. Catalog and package setup | Lead/team implement; store owner or designated catalog manager supplies real product/package facts | Every in-scope ingredient has one stable catalog identity, base unit, active store listing, shelf assignment where applicable, and versioned package/case definitions with explicit barcode mappings. Mixed-count calculations for sealed cases, loose full packages and net partial weight pass preservation, conversion, stale-version, package-breakdown and duplicate-package-ID tests. Migrations `021`–`022` and their implementation are not treated as verified until the lead records review, migration rehearsal and applicable CI/device evidence. |
+| 1. Catalog and package setup | Lead/team implement; store owner or designated catalog manager supplies real product/package facts | Every in-scope ingredient has one stable catalog identity, base unit, active store listing, shelf assignment where applicable, and versioned package/case definitions with explicit barcode mappings. Mixed-count calculations for sealed cases, loose full packages and net partial weight pass preservation, conversion, stale-version, package-breakdown and duplicate-package-ID tests. Migrations `021`–`024` and their implementation passed local rehearsal (2026-10-01–02) and CI on `df53f98`; physical-device evidence is still required. |
 | 2. Recipes | Store owner/production lead supplies and signs off real recipes; team validates behavior | Every active production flavor has a reviewed current recipe, explicit yield and complete ingredient mappings. A test production preview agrees with the recipe and the `× batches × 1.01` rule, and missing/archived ingredient conflicts are resolved. |
 | 3. Opening stock | Authorized counter enters; authorized approver posts | A real whole-store count covers every required product/location, distinguishes uncounted from zero, includes package/partial breakdowns, and is approved. Current inventory and immutable movement history agree after posting; no quantity is invented from catalog/package metadata. |
 | 4. Current issues and release hygiene | Team diagnoses/fixes; lead reviews | Open catalog/package/count/recipe/production defects are triaged with owner and severity; blocking items are fixed and regression evidence is recorded. Physical-device barcode, permission, background/return and relevant mixed-count journeys pass on the intended pilot devices. |
@@ -40,21 +47,21 @@ met.
 | 8. Staff camera pilot | Owner authorizes named stores/users after evidence review | Pilot accuracy, correction effort, latency, cost, privacy, device and recovery thresholds are agreed from real examples and met; all observations still require normal count review/approval. |
 | 9. Invoice receiving | Deferred until stored catalog/package/stock facts are ready; team implements and finance/operations validates | The separate receiving gate below passes. Invoice extraction never posts stock by itself. |
 
-### Timeboxed path toward a camera prototype
+### Readiness checkpoint before a camera prototype
 
-The user hopes to begin camera work tonight. Use a bounded readiness checkpoint
-instead of treating that hope as a deadline:
+Use a bounded go/no-go checkpoint rather than a deadline:
 
-1. Timebox a first checkpoint to inventory the real ingredient/package/recipe and
-   opening-count gaps, name owners, and classify blockers. The checkpoint may end
-   with a go or no-go decision; it does not waive missing data.
-2. If stages 1–4 have recorded evidence and stages 5–6 have no issue that makes
-   even a private prototype unsafe, start the narrow prototype: capture/upload,
-   private storage, durable analysis job, typed proposal, and review UI. Keep it
-   limited to test data or a named internal store and prohibit stock posting.
-3. If those conditions are not met, spend the session closing the highest-value
-   prerequisite and prepare a fixture-driven adapter/evaluation harness that uses
-   no paid provider calls. Do not label scaffolding as a working camera count.
+1. Inventory the real ingredient, package, recipe and opening-count gaps. Name
+   owners and classify blockers. The checkpoint may end with either decision; it
+   does not waive missing data.
+2. **Go:** stages 1–4 have recorded evidence, and stages 5–6 have no issue that
+   makes even a private prototype unsafe. Start the narrow prototype:
+   capture/upload, private storage, a durable analysis job, a typed proposal and a
+   review UI. Limit it to test data or a named internal store and prohibit stock
+   posting.
+3. **No-go:** close the highest-value prerequisite first. A fixture-driven
+   adapter/evaluation harness with no paid provider calls may be prepared. Do not
+   label scaffolding as a working camera count.
 
 ## Readiness checklist before shelf-photo work
 
@@ -290,4 +297,3 @@ provider outage; and exact movement/balance reconciliation. Paid provider evalua
 - California Privacy Protection Agency, [What General Notices Are Required by the CCPA?](https://cppa.ca.gov/pdf/general_notices.pdf): notice-at-collection and privacy-policy checklist, including employee coverage caveat.
 - California Attorney General, [Making Your Privacy Practices Public](https://oag.ca.gov/sites/all/files/agweb/pdfs/cybersecurity/making_your_privacy_practices_public.pdf): CalOPPA policy scope/content guidance. Applicability requires counsel.
 - Federal Trade Commission, [Start with Security](https://www.ftc.gov/business-guidance/resources/start-security-guide-business): data minimization/retention, least-privilege access, authentication, testing and provider oversight guidance.
-

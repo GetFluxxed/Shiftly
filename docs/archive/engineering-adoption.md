@@ -1,5 +1,8 @@
 # Engineering standards adoption — 2026-10-11
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 ## Accepted scope and baseline
 
 Derek requested adoption of the supplied engineering guide and all three work

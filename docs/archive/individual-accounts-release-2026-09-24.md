@@ -1,5 +1,8 @@
 # Individual accounts for the release
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Decision: Shiftly is still in development, with test accounts only. Public sign-in does not retain the shared crew or password-only manager model.
 
 ## Account model

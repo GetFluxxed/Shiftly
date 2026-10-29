@@ -1,5 +1,8 @@
 # Native current inventory and reviewed counts
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Status: implemented and locally verified, based on f9a7c9d. No existing demo quantities
 are invented. Product catalog and shelf configuration remain separate from
 count observations and stock posting.
@@ -128,7 +131,7 @@ searchable. Count flows entered from Current Inventory retain that return
 destination through entry saves, review and history. These are presentation and
 navigation changes; the count contract above remains in force.
 
-The [workspace restoration contract](../NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
+The [workspace restoration contract](NATIVE_APP_ROADMAP.md#workspace-restoration--2026-09-29)
 now covers local count input and navigation continuity. Newer server line versions
 or changed count state/configuration invalidate the corresponding unsaved draft.
 

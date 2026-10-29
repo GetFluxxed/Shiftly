@@ -1,5 +1,8 @@
 # Account settings and Store workspace
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Requested 2026-09-26. Implemented and locally verified; follow-up physical-device
 review is pending. Publication and CI results are tracked in the pull request.
 

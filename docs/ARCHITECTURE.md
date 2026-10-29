@@ -1,9 +1,9 @@
 # Shiftly architecture
 
-Updated 2026-10-11. This is the current source boundary; delivery order lives in
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), operational topology in
-[DEPLOYMENT.md](DEPLOYMENT.md), and policy adoption in
-[engineering-adoption](workstreams/engineering-adoption.md).
+Reviewed against source revision `df53f98` on 2026-10-21. This is the current
+source boundary. Delivery order lives in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md),
+operational topology in [DEPLOYMENT.md](DEPLOYMENT.md), and accepted legacy
+deviations in the [implementation plan](IMPLEMENTATION_PLAN.md#accepted-legacy-deviations).
 
 ## Runtime and clients
 
@@ -17,7 +17,12 @@ process-local, so API replicas require a shared limit design first.
 migrations. Its lifespan opens bounded resources and checks schema readiness.
 `backend/shiftly/runtime/` composes services, database resources, settings, and
 provider adapters. `python server.py` remains a legacy browser runtime and does
-not expose `/api/mobile`.
+not expose `/api/mobile`. In its default `embedded` mode it applies migrations at
+startup and runs only the briefing worker in-process. Forecast jobs need the
+separate worker (`python -m backend.shiftly.jobs.worker`), which processes both
+briefings and forecasts. With `SHIFTLY_WORKER_MODE=external` the legacy server
+only checks the schema and reads shared worker health. Never run both worker modes
+against one queue.
 
 The native application lives in `apps/mobile`. Browser HTML/CSS/JavaScript at
 the repository root is a compatibility surface, not a second product authority.
@@ -91,13 +96,50 @@ cross the API boundary and PostgreSQL `NUMERIC` values remain authoritative.
 
 A whole-store count progresses draft -> review -> posted. Posting checks versions,
 scope, completeness, and authorization, then writes movements and balances in one
-transaction. Production confirmation snapshots recipe inputs, applies the defined
-1% allowance, and deducts stock atomically. Reversal is explicit and constrained
-by later physical counts.
+transaction. Production confirmation snapshots recipe inputs, deducts recipe
+quantity × batches × 1.01, and posts atomically. Reversal is explicit and
+constrained by later physical counts. Forecasts read a bounded store snapshot,
+compute exact facts, and ask the configured provider for structured advisory
+suggestions in the durable worker. Output is validated and cannot write stock or
+recipes. Full rules are in [INVENTORY.md](INVENTORY.md).
 
 Barcode camera capture performs a lookup/catalog workflow without saving a photo.
-Shelf-photo proposals, invoice receiving/OCR, and offline stock posting are future
+Shelf-photo proposals, invoice receiving and offline stock posting are future
 boundaries and must enter stock through reviewed inventory commands.
+
+## Known coupling
+
+Open findings from the 2026-09-23 architecture audit, still present in `df53f98`:
+
+- **Identity internals.** `AccountsService` composes mixins that call each other's
+  private helpers.
+  - The report repository takes the account policy lock directly.
+  - The store repository calls the private `accounts._audit`.
+  - New modules must use the public `require_selected_store(...)` boundary and own
+    their audit records instead of copying this pattern.
+  - Identity value types already moved to `identity/contracts.py`.
+- **Broad reads under a global lock.** The account management projection, the
+  authorized-store evaluation and the unpaginated selected-store report inbox run
+  under the schema-wide policy lock.
+  - This is a measured-later scaling risk, not an observed outage.
+  - Measure before narrowing the lock, and keep concurrent revocation guarantees.
+
+The audit's provider/worker dependency finding was resolved on 2026-10-11. The
+provider transport now lives in `runtime/provider.py`, durable jobs in
+`jobs/reporting.py`, and root `reporting.py` is a facade.
+
+## Architectural decisions
+
+| Date | Decision |
+| --- | --- |
+| 2026-09-22 | React Native/Expo is the primary phone/tablet client. The browser remains a compatibility surface; no separate React web rewrite. |
+| 2026-09-22 | Native clients get opaque bearer tokens over the existing session records; no JWT or second identity store. |
+| 2026-09-23 | Keep the modular Python backend; no rewrite or microservice split. Inventory gets its own service/router boundary. |
+| 2026-09-24 | Individual accounts only; shared crew, password-only manager login and public signup retired. |
+| 2026-09-29 | A single movement ledger plus balance projection serves counts and production; production uses a fixed 1% allowance. |
+| 2026-10-01 | Forecasts run as durable jobs analyzing supplied records with strict structured output; no model training. |
+| 2026-10-02 | Canonical stock units stay `each`/`g`/`kg`; package labels may use pounds; volume needs an explicit net weight. |
+| 2026-10-11 | [ENGINEERING.md](../ENGINEERING.md) adopted. Provider/job implementation moved out of the legacy facade. `psycopg-pool` remains the only runtime pool dependency. |
 
 ## Failure and release boundaries
 

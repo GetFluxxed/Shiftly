@@ -1,10 +1,52 @@
 # Operating and deploying Shiftly
 
-Current source and feature support are in [README](../README.md). This runbook
-covers operation without private assistant state. Derek confirmed ownership of
-GitHub, Render/PostgreSQL, Expo and the AI-provider accounts on 2026-10-11. No
-separate hosted staging environment is confirmed. Repository configuration and
-local recovery evidence do not establish what is currently deployed in Render.
+Reviewed against source revision `df53f98` on 2026-10-21. Current source and
+feature support are in [README](../README.md). This runbook covers operation
+without private assistant state. Derek confirmed ownership of GitHub,
+Render/PostgreSQL, Expo and the AI-provider accounts on 2026-10-11. No separate
+hosted staging environment is confirmed. Repository configuration and local
+recovery evidence do not establish what is currently deployed in Render.
+
+## Hosted environment observations
+
+Dated observations, not verified facts. Re-check before relying on them.
+
+| Date | Observation | Source |
+| --- | --- | --- |
+| 2026-10-21 | Hosted service runs the **legacy browser runtime** (`python server.py`) on a **free** Render web service | Owner-reported for this review; consistent with `render.yaml` |
+| 2026-10-21 | Hosted database is a **paid PostgreSQL 18** instance | Owner-reported; `render.yaml` still declares `plan: free` with no version |
+| 2026-10-21 | The deployed Git revision is not recorded | No deployment record in the repository |
+| 2026-10-21 | No hosted environment serves `/api/mobile`; no staging environment exists | `render.yaml`; owner confirmation of no staging on 2026-10-11 |
+
+Local development, CI and the rehearsals use PostgreSQL 16 (`docker-compose.yml`,
+`deploy/compose.integration.yml`, `.github/workflows/ci.yml`).
+
+## Configuration drift and compatibility checks
+
+Resolve or explicitly accept each item before a hosted pilot (roadmap item 3 in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md#roadmap)):
+
+- **Database version.** The hosted database (owner-reported PostgreSQL 18) differs
+  from the PostgreSQL 16 used by CI and rehearsals. Before relying on it:
+  - run the migrations and the release/account rehearsals against PostgreSQL 18,
+    or pin the hosted version;
+  - use `pg_dump`/`pg_restore` clients at least as new as the server.
+- **Database plan.** `render.yaml` declares `plan: free` for `shiftly-db`, while the
+  hosted database is reported as paid. Align the manifest with the actual resource
+  before applying it, so a sync cannot change the database.
+- **Runtime.** The manifest starts `python server.py` without `SHIFTLY_WORKER_MODE`,
+  so it runs in the legacy **embedded** mode:
+  - it applies migrations at web startup;
+  - it runs only the briefing worker in-process.
+
+  Forecast jobs queued by browser production confirmation are therefore not
+  processed, and the native API is unavailable. Moving to the supported topology
+  (FastAPI + separate worker + explicit migration) is a reviewed cutover, not a
+  manifest edit.
+- **Web plan.** The free web service tier's sleep/resource limits have not been
+  evaluated for staff use. Confirm its current limits before a pilot.
+- **Retired setting.** `ADMIN_SIGNUP_KEY` remains in the manifest but no longer
+  enables signup. Remove it in a reviewed configuration change.
 
 ## Supported processes and reproducible installation
 
@@ -54,19 +96,93 @@ the LAN. Do not use a private `/tmp` launcher as a maintenance prerequisite.
 | `ADMIN_SIGNUP_KEY` | Historical operator configuration; it does not reopen public signup or create owners in the current release. |
 | `EXPO_PUBLIC_API_URL` | Public API origin only, in ignored mobile `.env.local`; never put database/provider credentials here. |
 
-## Accounts and authoring
+Resource defaults (validated by the runtime settings; invalid, non-finite or
+non-positive values fail before any database activity):
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `WEB_CONCURRENCY` | 1 | Any other value is rejected by the modern composition |
+| `DB_POOL_MAX_SIZE` | 4 | Pooled connections per resource-owning process |
+| `DB_POOL_TIMEOUT` | 3 s | Pool checkout and dedicated-capacity wait |
+| `DB_CONNECT_TIMEOUT` | 5 s | libpq connection timeout |
+| `DB_STATEMENT_TIMEOUT_MS` | 10000 | Server-side statement timeout |
+| `DB_LOCK_TIMEOUT_MS` | 2000 | Query and migration lock wait |
+| `DB_IDLE_TRANSACTION_TIMEOUT_MS` | 30000 | Idle-transaction timeout |
+| `SHUTDOWN_TIMEOUT` | 5 s | Worker join deadline and pool-close wait |
+| `WORKER_STALE_SECONDS` | 60 | Maximum age of worker activity before health degrades |
+| `SHIFTLY_WORKER_MODE` | `embedded` | Legacy server only; use `external` alongside the separate worker |
+
+At defaults, budget up to six connections for the API, five for the worker and a
+temporary migration connection.
+
+**Worker rules**
+
+- The separate worker holds a database session lock, so a second worker fails to
+  start. If that connection is lost, the worker exits for supervisor restart.
+- On SIGINT/SIGTERM it stops polling and waits a bounded time. A provider call still
+  blocked after that exits nonzero and leaves its claim for lease recovery. Set the
+  supervisor's termination grace accordingly.
+- Never run the legacy embedded worker and the separate worker against the same
+  queue. To run the legacy browser server beside the separate worker, start it with
+  `SHIFTLY_WORKER_MODE=external python server.py`. That mode checks the schema
+  instead of migrating and reads the shared worker health.
+
+**Health**
+
+- `/api/health` reports database readiness (200/503).
+- `/api/health/worker` returns 200 only for a recently polling or processing
+  worker. It reports state, ages, completed-job count, consecutive errors, queue
+  depth and oldest queued age.
+- Only the worker writes these observations. Stale, stopped or missing workers
+  degrade the status rather than appearing healthy.
+
+## Accounts and operator procedures
 
 A fresh developer can create an empty local demo using the guarded
 [demo setup procedure](../apps/mobile/README.md#create-a-fresh-local-demo).
 That command is not a production enrollment tool. Existing workspaces use a
 single-use invitation from an authorized issuer; elevated roles are assigned after
 activation.
-For real account recovery or explicit ownership mapping, use
-`python -m backend.shiftly.runtime.accounts_admin --help` and the controlled
-[operator procedure](workstreams/codex-accounts-permissions.md#migration-operator-mapping-and-recovery).
-It requires independently verified existing account/store IDs and defaults to
-dry-run. It neither creates the first production identity nor guesses ownership.
-An initial production identity remains an explicitly reviewed operator procedure.
+
+For explicit ownership mapping or account recovery, use
+`python -m backend.shiftly.runtime.accounts_admin --help`. The commands use the
+explicitly exported `DATABASE_URL` and do not load `.env`:
+
+```sh
+python -m backend.shiftly.runtime.accounts_admin bootstrap --manifest mapping.json
+python -m backend.shiftly.runtime.accounts_admin bootstrap --manifest mapping.json --apply
+python -m backend.shiftly.runtime.accounts_admin recovery --user-id 42 --reason 'Verified operator recovery'
+python -m backend.shiftly.runtime.accounts_admin recovery --user-id 42 --reason 'Verified operator recovery' --apply --reveal-token
+```
+
+**Running the commands**
+
+- Both default to a dry run.
+- Applying recovery prints a one-time reset secret for supervised delivery. Keep it
+  out of shared logs.
+- The mapping manifest uses independently verified IDs, never guesses. Synthetic
+  example:
+
+```json
+{"reason":"Synthetic rehearsal only","businesses":[{"id":700,"name":"Example business","owner_user_ids":[42]}],"stores":[{"store_id":12,"business_id":700,"accounts_enabled":false}]}
+```
+
+**What bootstrap requires and refuses**
+
+- Owners must already be active, verified accounts.
+- Bootstrap rejects conflicting business identity or ownership, reassignment,
+  inactive stores, and disabling an already enabled store. It updates dependent
+  membership and invitation scope in one transaction.
+- Set `accounts_enabled: true` only for reviewed enrollment.
+- Shared-crew cutover is a separate owner operation, done after individuals enroll.
+- The command neither creates the first production identity nor guesses ownership.
+  An initial production identity remains an explicitly reviewed operator procedure.
+
+**Before applying to real data**
+
+- Take and test a backup, rehearse with representative data and review the dry run.
+- Never re-enable shared credentials, run a pre-account adapter against an enabled
+  store, or remove account/audit data with a down migration.
 
 Catalog editors maintain company products/packages in the catalog; authorized
 staff assign store shelves. Recipe editors save versioned recipes. Counters save
@@ -97,9 +213,10 @@ commitments require Derek's decision; none are assumed from a free-plan manifest
 
 Before a material dependency addition/update, record purpose, maintainer/maintenance
 status, license compatibility, security exposure, operational cost and exit effort
-in the relevant workstream. Existing dependencies are retained; adoption is not a
-claim that every transitive license or current advisory has been independently
-audited. That inventory review remains recorded in the adoption workstream.
+in the change's pull request and, for a new service, in the register above.
+Existing dependencies are retained; adoption is not a claim that every transitive
+license or current advisory has been independently audited. That review is an
+[accepted deviation](IMPLEMENTATION_PLAN.md#accepted-legacy-deviations).
 
 ## Backup, export and restore
 
@@ -118,7 +235,8 @@ Record a real restore date/result and alert owner. These settings are currently
 unverified; local rehearsals do not provision or monitor hosted backups. Take a
 separate pre-release archive even when automated backups exist.
 
-Use PostgreSQL 16 clients (or compatible clients for the actual server). Configure
+Use `pg_dump`/`pg_restore` clients whose major version is at least the server's
+(PostgreSQL 16 locally; the hosted database is reported as 18). Configure
 `shiftly_source` and `shiftly_restore` as private libpq services in an operator-owned
 service file, with credentials supplied through a protected password file/secret
 manager. The restore service must identify a **new, empty, separate** database.

@@ -1,10 +1,13 @@
 # Accounts & Access backend handoff
 
+> **Archived record.** Dated decisions and evidence as of its own revision; not current
+> guidance. See the [archive index](README.md) and the maintained documents it links.
+
 Date: 2026-09-22. Branch: `codex/accounts-permissions-services`.
 Base: `9a31a930ebf6fa305e8919d1ff398177666b3577`.
 
 Integration update: the completed FastAPI/browser lane and combined evidence are
-recorded in [the integration handoff](copilot-accounts-permissions.md). The text
+recorded in [the integration handoff](https://github.com/GetFluxxed/Shiftly/blob/df53f9852f8856f4ddc943d3212a6bde17379fbe/docs/workstreams/copilot-accounts-permissions.md). The text
 below records the published backend checkpoint and its original peer contract.
 
 This implements the Codex backend lane of A2a and A2b/A1: named accounts,
