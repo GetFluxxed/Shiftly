@@ -82,3 +82,20 @@ These checks used the existing pinned dependencies and direct compiler/test/Expo
 commands because the local package-manager wrapper rejected a shared dependency
 symlink; no packages or lockfiles were changed. No physical-device run, account
 delivery, push delivery, CI run, merge, or deployment was performed for this change.
+
+## Expo Go test delivery — 2026-10-29
+
+After the owner requested mobile testing in the existing Expo Go app, feature
+commit `9dcc381` was fast-forwarded into the clean checkout already serving Metro.
+The existing Expo Go SDK 58 server on port 8081 now serves the updated app. The
+existing LAN mobile API on port 4175 and the app's public API origin were retained;
+no backend restart, migration, account change, or storage namespace change was
+needed. Verification fetched the current iOS development bundle over the LAN and
+confirmed Time Tracking, both timer durations, its persistence key, and the existing
+API origin. The mobile account-status endpoint returned HTTP 200 over the LAN.
+
+Open the existing Shiftly project in Expo Go and reload, or scan the current Expo
+LAN URL from the development machine on the same Wi-Fi. The Mac and both local
+services must remain running. This is local Expo Go delivery, not a Render
+deployment, EAS release, or signed build. The feature commit has not been pushed;
+physical-phone acceptance and remote CI remain unverified.
