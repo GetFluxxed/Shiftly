@@ -34,9 +34,9 @@ class ForecastRepository:
               ON b.business_id=sp.business_id AND b.store_id=sp.store_id AND b.product_id=sp.product_id
             WHERE sp.business_id=%s AND sp.store_id=%s AND sp.active AND p.active
             ORDER BY inventory_key(p.name),p.id LIMIT 501''', (*scope,actor.business_id,actor.store_id))
-        recipes = rows(connection, '''SELECT r.id,r.version,v.name,v.id revision_id,v.yield_amount,v.yield_unit,
+        recipes = rows(connection, '''SELECT r.id,r.version,v.name,v.id revision_id,v.yield_amount,v.yield_unit,v.reference_ingredients,
               jsonb_agg(jsonb_build_object('productId',i.product_id,'name',i.name,'baseUnit',i.base_unit,
-                'baseAmount',i.base_amount::text) ORDER BY i.product_id) ingredients,
+                'baseAmount',i.base_amount::text,'section',i.section) ORDER BY i.product_id,i.section) ingredients,
               bool_and(p.active AND EXISTS (SELECT 1 FROM inventory_store_products listed
                 WHERE listed.business_id=i.business_id AND listed.product_id=i.product_id
                   AND listed.store_id=%s AND listed.active)) active
@@ -81,6 +81,7 @@ class ForecastRepository:
                   'facts': facts, 'coverage': coverage,
                   'recipes': [{'id': str(r['id']), 'version': r['version'], 'revisionId': str(r['revision_id']),
                                'name': r['name'],'active':r['active'],'yieldAmount':decimal_text(r['yield_amount']),'yieldUnit':r['yield_unit'],
+                               'referenceIngredients':[{**i,'inventoryTracked':False} for i in r['reference_ingredients']],
                                'ingredients':[{**i,'productId':str(i['productId'])}
                                               for i in r['ingredients']]} for r in recipes[:100]],
                   'productionEntries':[{'logId':str(r['log_id']),'date':r['business_date'].isoformat(),

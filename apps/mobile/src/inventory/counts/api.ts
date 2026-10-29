@@ -6,6 +6,7 @@ export interface Count {
   startedAt: string; startedBy: string; reviewedAt: string | null; reviewedBy: string | null;
   postedAt: string | null; postedBy: string | null; totalLines: number; countedLines: number; totalProducts: number; countedProducts: number;
   configurationChanged?: boolean;
+  catalogProductsAvailable?: boolean;
 }
 export interface SnapshotProduct { productId: string; name: string; sku: string; baseUnit: StockUnit; containerAmount: string | null; packages?: Package[] }
 export type Entry = { mode: 'total'; amount: string; unit: StockUnit }
@@ -27,14 +28,15 @@ function quantity(value: unknown, signed = false) { return value === null || (ty
 function time(value: unknown) { return typeof value === 'string' && !Number.isNaN(Date.parse(value)); }
 function optionalTime(value: unknown) { return value === null || time(value); }
 function nullableId(value: unknown) { return value === null || validId(value); }
-function count(value: unknown): Count {
+export function parseCount(value: unknown): Count {
   object(value); verify(validId(value.id) && integer(value.storeId, 1) && integer(value.version, 1)
     && ['draft', 'review', 'posted', 'cancelled'].includes(String(value.state)) && time(value.businessDate) && time(value.startedAt)
     && optionalTime(value.reviewedAt) && optionalTime(value.postedAt) && typeof value.startedBy === 'string'
     && (value.reviewedBy === null || typeof value.reviewedBy === 'string') && (value.postedBy === null || typeof value.postedBy === 'string')
     && integer(value.totalLines) && integer(value.countedLines) && Number(value.countedLines) <= Number(value.totalLines) && integer(value.totalProducts)
     && integer(value.countedProducts) && Number(value.countedProducts) <= Number(value.totalProducts)
-    && (value.configurationChanged === undefined || typeof value.configurationChanged === 'boolean'));
+    && (value.configurationChanged === undefined || typeof value.configurationChanged === 'boolean')
+    && (value.catalogProductsAvailable === undefined || typeof value.catalogProductsAvailable === 'boolean'));
   return value as unknown as Count;
 }
 function product(value: unknown): asserts value is Record<string, unknown> {
@@ -43,7 +45,7 @@ function product(value: unknown): asserts value is Record<string, unknown> {
     && (value.packages === undefined || (Array.isArray(value.packages) && value.packages.length <= 40)));
   if (Array.isArray(value.packages)) { const packages = value.packages.map(parsePackage); verify(packages.every((item: Package) => item.productId === value.productId)); value.packages = packages; }
 }
-function line(value: unknown): CountLine {
+export function parseCountLine(value: unknown): CountLine {
   product(value); verify(validId(value.id) && nullableId(value.shelfId) && typeof value.shelfName === 'string'
     && quantity(value.quantity) && integer(value.version, 1) && optionalTime(value.observedAt)
     && (value.observedBy === null || typeof value.observedBy === 'string'));
@@ -80,23 +82,33 @@ export function countsApi(request: Request) {
   return {
     status: async (): Promise<CountStatus> => {
       const value = await request<unknown>('/inventory/count-status'); object(value); verify(integer(value.storeId, 1));
-      return { storeId: Number(value.storeId), openCount: value.openCount === null ? null : count(value.openCount), lastCount: value.lastCount === null ? null : count(value.lastCount) };
+      return { storeId: Number(value.storeId), openCount: value.openCount === null ? null : parseCount(value.openCount), lastCount: value.lastCount === null ? null : parseCount(value.lastCount) };
     },
-    start: async (businessDate: string, identity: MutationIdentity) => count(await write('/inventory/counts', { businessDate }, identity)),
-    detail: async (countId: string) => count(await request(`/inventory/counts/${id(countId)}`)),
-    lines: async (countId: string, q = '', after = '', shelf = '', missing = false) => page(await request(`/inventory/counts/${id(countId)}/lines`, { query: { q, after, shelf, missing: String(missing) } }), line),
-    line: async (countId: string, lineId: string) => line(await request(`/inventory/counts/${id(countId)}/lines/${id(lineId)}`)),
+    start: async (businessDate: string, identity: MutationIdentity) => parseCount(await write('/inventory/counts', { businessDate }, identity)),
+    detail: async (countId: string) => parseCount(await request(`/inventory/counts/${id(countId)}`)),
+    includeCatalog: async (item: Count, requestId: string) => parseCount(await request(`/inventory/counts/${id(item.id)}/include-catalog`, {
+      method: 'POST', body: { version: item.version, requestId: id(requestId) }, uncertainMessage,
+    })),
+    lines: async (countId: string, q = '', after = '', shelf = '', missing = false) => page(await request(`/inventory/counts/${id(countId)}/lines`, { query: { q, after, shelf, missing: String(missing) } }), parseCountLine),
+    line: async (countId: string, lineId: string) => parseCountLine(await request(`/inventory/counts/${id(countId)}/lines/${id(lineId)}`)),
     save: async (countId: string, item: CountLine, entry: Entry, identity: MutationIdentity) => {
       const value = await write(`/inventory/counts/${id(countId)}/lines/${id(item.id)}`, { version: item.version, entry }, identity);
-      object(value); return { line: line(value.line), count: count(value.count) };
+      object(value); return { line: parseCountLine(value.line), count: parseCount(value.count) };
+    },
+    savePersisted: async (countId: string, item: CountLine, entry: Entry, requestId: string) => {
+      id(requestId);
+      const value = await request<unknown>(`/inventory/counts/${id(countId)}/lines/${id(item.id)}`, {
+        method: 'POST', body: { version: item.version, entry, requestId }, uncertainMessage,
+      });
+      object(value); return { line: parseCountLine(value.line), count: parseCount(value.count) };
     },
     comparison: async (countId: string, q = '', after = '') => page(await request(`/inventory/counts/${id(countId)}/comparison`, { query: { q, after } }), comparison),
-    transition: async (item: Count, action: 'review' | 'post' | 'reopen' | 'cancel', identity: MutationIdentity) => count(await write(`/inventory/counts/${id(item.id)}/${action}`, { version: item.version }, identity)),
-    history: async (after = '') => page(await request('/inventory/counts', { query: { after } }), count),
+    transition: async (item: Count, action: 'review' | 'post' | 'reopen' | 'cancel', identity: MutationIdentity) => parseCount(await write(`/inventory/counts/${id(item.id)}/${action}`, { version: item.version }, identity)),
+    history: async (after = '') => page(await request('/inventory/counts', { query: { after } }), parseCount),
     stock: async (q = '', after = '', shelf = '') => page(await request('/inventory/stock', { query: { q, after, shelf } }), stock),
     stockDetail: async (productId: string, after = ''): Promise<StockDetail> => {
       const value = await request<unknown>(`/inventory/stock/${id(productId)}`, { query: { after } }); const parsed = stock(value); object(value);
-      return { ...parsed, locations: page(value.locations, line) };
+      return { ...parsed, locations: page(value.locations, parseCountLine) };
     },
   };
 }

@@ -8,9 +8,10 @@ import { useRememberedState } from '@/src/restoration/WorkspaceProvider';
 import { validId } from '../api';
 import { InventoryItem, InventoryList } from '../InventoryItem';
 import { InventoryPage, LoadError, Pages, useInventoryNavigation, useInventoryResource } from '../shared';
-import { useCounts, CountHeading, Search, ShelfFilter, countBackTo, countRouteParams } from './shared';
+import { useCounts, CountHeading, Search, countBackTo, countRouteParams } from './shared';
 import { quantityLabel } from './measurements';
-import type { Count } from './api';
+import { useOfflineCount } from './OfflineCountsProvider';
+import { CountWorkspaceScreen } from './CountWorkspaceScreen';
 
 function today() { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
 export function CountsScreen() {
@@ -27,7 +28,7 @@ function CountStart({ returnTo }: { returnTo?: string }) {
   return <><Notice message={task.error} kind="error" />
     {open ? <><CountHeading item={open} /><Card><Body>Continue your store’s open count.</Body>
       <Button title={open.state === 'review' ? 'Review open count' : 'Resume count'} onPress={() => nav.open({ pathname: open.state === 'review' ? '/counts/[countId]/review' : '/counts/[countId]', params: { countId: open.id, ...countRouteParams(returnTo) } })} />
-    </Card></> : <Card><Heading>Start a fresh store count</Heading><Body>Count each location. Confirm zero when none remains.</Body>
+    </Card></> : <Card><Heading>Start a fresh store count</Heading><Body>Count every active catalog product, with or without a shelf. Choose “None here” for items you don’t have.</Body>
       <Body muted>Stock updates only when the count is finalized.</Body>
       {canCount ? <><Field label="Count date (YYYY-MM-DD)" value={day} onChangeText={setDay} maxLength={10} editable={!task.pending} autoCorrect={false} />
         <Button title="Start store count" loading={task.pending} disabled={!/^\d{4}-\d{2}-\d{2}$/.test(day)} onPress={() => { void task.run(() => api.start(day, identity), count => { resetDay(); nav.open({ pathname: '/counts/[countId]', params: { countId: count.id, ...countRouteParams(returnTo) } }); }); }} />
@@ -38,36 +39,8 @@ function CountStart({ returnTo }: { returnTo?: string }) {
 }
 export function CountSessionScreen() {
   const { countId, returnTo } = useLocalSearchParams<{ countId: string; returnTo?: string }>();
-  return <InventoryPage title="Count" backTo={{ pathname: '/counts', params: countRouteParams(returnTo) }}>{validId(countId) ? <CountWorkspace id={countId} returnTo={returnTo} /> : <Notice message="This count is unavailable." kind="error" />}</InventoryPage>;
-}
-function CountWorkspace({ id, returnTo }: { id: string; returnTo?: string }) {
-  const { api, actor } = useCounts();
-  const resource = useInventoryResource(useCallback(() => api.detail(id), [api, id]));
-  if (resource.loading) return <Loading label="Loading saved count…" />;
-  if (resource.error || !resource.data || resource.data.storeId !== actor?.storeId) return <LoadError error={resource.error || 'Count unavailable.'} refresh={resource.refresh} />;
-  return <><CountHeading item={resource.data} /><CountEntries count={resource.data} returnTo={returnTo} /></>;
-}
-function CountEntries({ count, returnTo }: { count: Count; returnTo?: string }) {
-  const { api, canCount } = useCounts(); const nav = useInventoryNavigation();
-  const [filters, setFilters] = useRememberedState(`inventory.count.${count.id}.entries`, { query: '', cursor: '', shelf: '', missing: false });
-  const { query, cursor, shelf, missing } = filters;
-  const setCursor = (cursor: string) => setFilters(value => ({ ...value, cursor }));
-  const resource = useInventoryResource(useCallback(() => api.lines(count.id, query, cursor, shelf, missing), [api, count.id, query, cursor, shelf, missing]));
-  return <><Card><Button title={count.state === 'posted' ? 'View count comparison' : 'Review count'} onPress={() => nav.open({ pathname: '/counts/[countId]/review', params: { countId: count.id, ...countRouteParams(returnTo) } })} />
-    <Body>Count only what is at each location.</Body>
-    <Search persistenceKey={`inventory.count.${count.id}.entries.search`} onSearch={query => setFilters(value => ({ ...value, query, cursor: '' }))} /><ShelfFilter persistenceKey={`inventory.count.${count.id}.entries.shelf`} value={shelf} onChange={shelf => setFilters(value => ({ ...value, shelf, cursor: '' }))} />
-    <Button title={missing ? 'Show all entries' : 'Show not counted'} variant="secondary" onPress={() => setFilters(value => ({ ...value, missing: !value.missing, cursor: '' }))} />
-  </Card>
-  {resource.loading ? <Loading label="Loading count entries…" /> : resource.error || !resource.data ? <LoadError {...resource} /> : <>
-    {!resource.data.items.length ? <Card><Body>No matching entries. Try another search or filter.</Body></Card> : null}
-    <InventoryList>{resource.data.items.map(line => <InventoryItem key={line.id}
-      title={line.name}
-      subtitle={line.shelfName}
-      status={line.quantity === null ? 'Not counted' : `Saved: ${quantityLabel(line.quantity, line.baseUnit)}`}
-      label={`${count.state === 'draft' && canCount ? 'Count' : 'View'} ${line.name} · ${line.shelfName}`}
-      onPress={() => nav.open({ pathname: '/counts/[countId]/line/[lineId]', params: { countId: count.id, lineId: line.id, ...countRouteParams(returnTo) } })}
-    />)}</InventoryList><Pages next={resource.data.nextCursor} cursor={cursor} setCursor={setCursor} />
-  </>}</>;
+  if (validId(countId)) return <CountWorkspaceScreen id={countId} returnTo={returnTo} />;
+  return <InventoryPage title="Count" backTo={{ pathname: '/counts', params: countRouteParams(returnTo) }}><Notice message="This count is unavailable." kind="error" /></InventoryPage>;
 }
 export function CountReviewScreen() {
   const { countId, returnTo } = useLocalSearchParams<{ countId: string; returnTo?: string }>();
@@ -76,6 +49,7 @@ export function CountReviewScreen() {
 }
 function CountReview({ id, returnTo }: { id: string; returnTo?: string }) {
   const { api, identity, canCount, canApprove, actor } = useCounts(); const nav = useInventoryNavigation(); const task = useTask();
+  const queue = useOfflineCount();
   const [filters, setFilters] = useRememberedState(`inventory.count.${id}.review`, { query: '', cursor: '' });
   const { query, cursor } = filters; const setCursor = (cursor: string) => setFilters(value => ({ ...value, cursor }));
   const resource = useInventoryResource(useCallback(() => api.detail(id), [api, id]));
@@ -86,6 +60,12 @@ function CountReview({ id, returnTo }: { id: string; returnTo?: string }) {
   const entriesHref = { pathname: '/counts/[countId]', params: { countId: id, ...countRouteParams(returnTo) } } as const;
   const parent = nav.parent(entriesHref);
   const parentPath = typeof parent.href === 'string' ? parent.href : parent.href.pathname;
+  if (queue.status === 'loading' || queue.status === 'idle') return <Loading label="Checking saved entries…" />;
+  if (queue.error || queue.pendingLineIds.length > 0 || queue.syncing
+      || (queue.count?.id === id && (queue.count.totalLines > queue.lines.length || queue.count.catalogProductsAvailable))) return <Card>
+    <Notice message="Sync or resolve your saved entries before reviewing this count." />
+    <Button title="Return to count" onPress={() => nav.open({ pathname: '/counts/[countId]', params: { countId: queue.count?.id || id, ...countRouteParams(returnTo) } })} />
+  </Card>;
   const act = (action: 'review' | 'post' | 'reopen' | 'cancel') => { void task.run(() => api.transition(count, action, identity), () => {
     if (action === 'reopen') {
       if (parentPath === `/counts/${id}`) nav.back(entriesHref); else nav.open(entriesHref);
@@ -94,7 +74,7 @@ function CountReview({ id, returnTo }: { id: string; returnTo?: string }) {
   return <><CountHeading item={count} /><Notice message={task.error} kind="error" />
     {parentPath !== `/counts/${id}` ? <Button title="View count entries" variant="quiet" disabled={task.pending} onPress={() => nav.open(entriesHref)} /> : null}
     <Card><Heading>Changes since the previous count</Heading><Body>Stock changes do not measure ingredient usage.</Body>
-      {!complete ? <Notice message="Count every location, including zero quantities, before submitting." /> : null}
+      {!complete ? <Notice message="Count every product on each shelf, including zero quantities, before submitting." /> : null}
       {count.state === 'draft' && canCount ? <Button title="Submit for review" loading={task.pending} disabled={!complete || count.configurationChanged} onPress={() => act('review')} /> : null}
       {count.state === 'review' && canApprove ? <><Button title="Finalize inventory count" loading={task.pending} disabled={!complete || count.configurationChanged} onPress={() => Alert.alert('Finalize this count?', 'This replaces the counted products’ current stock with these reviewed totals and saves permanent history.', [{ text: 'Keep reviewing', style: 'cancel' }, { text: 'Finalize count', onPress: () => act('post') }])} />
         <Button title="Return to counting" variant="secondary" disabled={task.pending} onPress={() => act('reopen')} /></> : null}
@@ -107,9 +87,9 @@ function CountReview({ id, returnTo }: { id: string; returnTo?: string }) {
       {!comparisons.data.items.length ? <Card><Body>No matching products.</Body></Card> : null}
       <InventoryList>{comparisons.data.items.map(item => <InventoryItem key={item.productId}
         title={item.name}
-        subtitle={`${item.locations} locations`}
+        subtitle={item.locations > 1 ? `${item.locations} shelf entries` : undefined}
         detail={`Previous: ${item.previousQuantity === null ? 'No previous count' : quantityLabel(item.previousQuantity, item.baseUnit)} · New count: ${quantityLabel(item.quantity, item.baseUnit)}`}
-        status={item.missing ? `${item.missing} locations not counted` : item.previousQuantity === null ? 'Opening balance' : `Change: ${item.difference && !item.difference.startsWith('-') && item.difference !== '0' ? '+' : ''}${quantityLabel(item.difference, item.baseUnit)}`}
+        status={item.missing ? `${item.missing} entries still need a count` : item.previousQuantity === null ? 'Opening balance' : `Change: ${item.difference && !item.difference.startsWith('-') && item.difference !== '0' ? '+' : ''}${quantityLabel(item.difference, item.baseUnit)}`}
       />)}</InventoryList><Pages next={comparisons.data.nextCursor} cursor={cursor} setCursor={setCursor} />
     </>}
   </>;

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View, type TextInputInstance } from 'react-native';
 
 import { useSession } from '@/src/session/SessionProvider';
 import { ActionGrid, ActionTile } from '@/src/ui/ActionGrid';
@@ -27,8 +27,8 @@ export function AccountsScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
-  const newPasswordInput = useRef<TextInput>(null);
-  const confirmationInput = useRef<TextInput>(null);
+  const newPasswordInput = useRef<TextInputInstance>(null);
+  const confirmationInput = useRef<TextInputInstance>(null);
   const clearPasswordForm = () => {
     setCurrentPassword('');
     setNewPassword('');

@@ -58,7 +58,7 @@ entry point remains the browser server (`python server.py`). This is not a mobil
 API deployment. Changing dependency configuration does not switch the runtime.
 
 The modern runtime uses one FastAPI process and one separately supervised worker.
-The worker handles report briefings and production forecasts. Export configuration
+The worker handles report briefings, production forecasts and invoice photo jobs. Export configuration
 into **each** process through the operator's shell or hosting secret manager.
 The migration and worker commands deliberately do not load `.env`; do not depend
 on the API's compatibility `.env` loader to configure other processes.
@@ -89,7 +89,7 @@ the LAN. Do not use a private `/tmp` launcher as a maintenance prerequisite.
 | Configuration | Purpose and owner action |
 | --- | --- |
 | `DATABASE_URL` | Explicit target database for API, worker and migration. Keep in the operator/hosting secret store. |
-| `OPENAI_API_KEY`, `OPENAI_MODEL` | Backend-only provider credential/model. An empty key disables forecast availability and report AI cannot complete. Changing a model requires separate evaluation. |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Backend-only provider credential/model. An empty key disables forecast and invoice-photo availability; report AI cannot complete. Changing a model requires separate evaluation. |
 | `SHIFTLY_WORKER_MODE=external`, `WEB_CONCURRENCY=1` | Required modern topology. Multi-process API scaling needs a shared admission-limit design first. |
 | `SECURE_COOKIES=true` | HTTPS browser sessions; use false only for local HTTP. Native uses opaque bearer sessions. |
 | `DB_POOL_*`, `DB_*_TIMEOUT*`, `SHUTDOWN_TIMEOUT`, `WORKER_STALE_SECONDS` | Bounded resources and failure handling; defaults and validation live in `config.py` and runtime settings. Tune from measurements. |
@@ -206,7 +206,7 @@ commitments require Derek's decision; none are assumed from a free-plan manifest
 | GitHub | Git source, reviews, CI configuration and test evidence. Owner: Derek. | Keep an authorized local clone and mirror all branches/tags; source is ordinary Git. Preserve needed issues/release evidence separately. Reproduce CI with documented local commands. |
 | Render | Hosts the checked-in browser deployment and managed PostgreSQL binding. Owner: Derek. Live service settings need inspection before changes. | Run the same Python commands on another supervised host; transfer configuration through the secret manager. Restore PostgreSQL separately; validate HTTPS, worker supervision and access before directing traffic. |
 | PostgreSQL / psycopg | Authoritative accounts, catalog, recipes, counts, movements, reports, jobs and audit. Owner/data access custodian: Derek. | Standard SQL migrations and `pg_dump`/`pg_restore`; restore rehearsal below. No ORM or proprietary data format is required. Preserve history, IDs and sequence state. |
-| OpenAI API | Report quality checks, briefings, weekly summaries and advisory production forecasts. Owner: Derek. | Stored records remain in PostgreSQL. Briefing jobs retry with limits; forecast failures remain visible. Report submission quality gating still depends on the provider. Replacement is through runtime/forecast provider adapters with schema and behavior evaluation; changing credentials alone is not a model migration plan. |
+| OpenAI API | Report quality checks, briefings, weekly summaries, advisory production forecasts and explicitly uploaded invoice images. Owner: Derek. | Stored records remain in PostgreSQL. Briefing jobs retry with limits; forecast failures remain visible. Report submission quality gating still depends on the provider. Replacement is through runtime/forecast provider adapters with schema and behavior evaluation; changing credentials alone is not a model migration plan. |
 | Expo / React Native | Native development, camera/barcode and device integration. Expo account owner: Derek. Signed distribution is a separate gate. | App source, package manifest and frozen lockfile are local. Preserve signing/account access under Derek's control. A future build-service change requires native build/device verification; Expo Go is development delivery, not the release artifact. |
 | FastAPI / Uvicorn / Python | API adapters and one-process runtime. Maintenance: project maintainer under Derek. | Source-controlled service boundaries and standard ASGI; keep runtime pins and migration compatibility when replacing infrastructure. |
 | pnpm / Node / Playwright / pytest | Reproducible mobile tooling and automated checks. Maintenance: project maintainer under Derek. | Lockfiles, scripts and CI specify requirements. These tools do not own production data; retain failure evidence as access-controlled artifacts. |
@@ -220,10 +220,12 @@ license or current advisory has been independently audited. That review is an
 
 ## Backup, export and restore
 
-PostgreSQL backup is the lossless export for existing app data. There is no
-user-facing CSV exporter or image store. No shelf photos or invoices are stored,
-because those workflows are not implemented. Protect database archives as
-private data: they include employee records, credentials and tokens. Keep them
+PostgreSQL backup is the lossless export for existing app data. There is no new
+user-facing CSV exporter. Invoice photo jobs temporarily retain sanitized private
+image bytes in PostgreSQL; proposals, drafts and provenance persist. Database
+archives may contain pending invoice images even after the live worker removes
+them. Protect archives as private data: they include invoice/business information,
+employee records, credentials and tokens. Keep them
 outside Git and restrict/encrypt their storage through the operator's approved
 backup system.
 

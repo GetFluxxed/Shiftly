@@ -8,32 +8,43 @@ reporting and selected administration and production workflows.
 
 ## Status and evidence
 
-This document describes source revision `df53f98` (main, PR #21), reviewed on
-2026-10-21. "Implemented" below means present in that source. CI passed on that
-revision ([run 38652749388](https://github.com/GetFluxxed/Shiftly/actions/runs/38652749388)).
-Hosted deployment of these features, production data mapping, physical-device
-behavior, signed builds and app-store publication are **not** verified. The hosted
-service observed on 2026-10-21 still runs the legacy browser runtime. See the
-[status matrix](docs/IMPLEMENTATION_PLAN.md#status-matrix) for each capability's
-local, CI, device, deployment and operational evidence.
+This document describes the source tree as of 2026-10-25. `604683d` is the clean
+adoption baseline supplied for this review. "Implemented" below means present in
+this checkout. Local or CI verification is evidence only for the revision on
+which it ran. Hosted deployment, production data mapping, physical-device behavior,
+signed builds, and app-store publication are not verified by this documentation
+review.
 
 Implemented in the current source:
 
 - individual invitation-based accounts, opaque revocable sessions, business/store
   memberships, and owner/admin/manager/production/crew policy;
 - native sign-in, reporting, Heads Up, team and owner administration;
+- an owner-operated [Time Tracking demo](docs/workstreams/time-tracking-demo.md)
+  with named crew, clock-in/out history, independent 3:30 / 5:30 timers, and compact
+  rosters with member detail modals for larger teams;
 - a business catalog, store shelves, package definitions, barcode lookup/capture,
   stock balances and movement history;
 - reviewed whole-store counts with draft, review, and posting transitions;
-- recipes, confirmed production deductions (recipe quantity × batches × 1.01),
-  reversal rules, and store-scoped advisory production forecasts;
-- durable briefing and forecast jobs in a separate worker runtime; and
-- additive PostgreSQL migrations `001` through `024`.
+- revisioned recipes with Ingredients/Variegato sections and recipe-only lines,
+  confirmed production deductions with a 1% ingredient allowance,
+  reversal rules, and store-scoped production forecasts;
+- durable briefing jobs and a separate worker runtime; and
+- manager/owner invoice drafts, reviewed photo extraction and incoming stock previews;
+- additive PostgreSQL migrations `001` through `029`.
 
-Shelf-photo counting, invoice receiving and offline stock posting are planned, not
-implemented. Camera barcode scanning is implemented and does not save an image.
-Forecasts analyze the store's own recorded data per request (no model training)
-and never change stock.
+Mobile count observations now have a durable offline queue with a restricted
+prepared-count workspace; device acceptance remains pending. Review and stock
+posting stay online. Invoice photo reading and reviewed incoming previews are
+implemented; receipt posting, shelf-photo counting and offline stock posting remain
+planned. See [invoice previews](docs/workstreams/invoice-receiving-preview.md).
+Camera barcode scanning is implemented and does not save an image. The temporary
+Saved scans inbox keeps up to 100 catalog drafts on the device for explicit online
+review; it never creates stock. Its restricted offline workspace requires online
+preparation and catalog-management permission. See the
+[October 31 iPhone pilot](docs/workstreams/iphone-pilot-2026-10-31.md) for its
+retirement criteria and signed-build/device/hosting gates. Forecasts are
+store-scoped decision support; they do not bypass reviewed stock operations.
 
 Shared crew credentials, password-only manager access, and public signup are
 retired product flows. Existing compatibility data and browser adapters remain

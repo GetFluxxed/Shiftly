@@ -4,6 +4,7 @@ import test from 'node:test';
 import { ApiError } from '../src/api/client';
 import type { RequestOptions } from '../src/api/types';
 import { newUuid, productionApi, validAmount, type Recipe } from '../src/production/api';
+import { validRecipeDraft, validReferenceDraft } from '../src/production/recipeDraft';
 
 const recipe: Recipe = { id: '11111111-1111-4111-8111-111111111111', name: 'Vanilla', version: 2,
   revisionId: '22222222-2222-4222-8222-222222222222', yieldAmount: '1', yieldUnit: 'batch', instructions: '',
@@ -17,6 +18,71 @@ test('production recipes preserve stable product IDs and version the edit', asyn
   assert.equal(call?.options?.body?.version, 2);
   assert.equal(call?.options?.body?.expectedStoreId, 12);
   assert.equal((call?.options?.body?.ingredients as { productId: string }[])[0]?.productId, recipe.ingredients[0]!.productId);
+  assert.equal((call?.options?.body?.ingredients as { section: string }[])[0]?.section, 'base');
+  assert.deepEqual(call?.options?.body?.referenceIngredients, []);
+});
+
+test('recipe-only ingredients normalize old responses and survive edits when omitted by the caller', async () => {
+  const referenceIngredients = [{ name: 'Water', amount: '2', unit: 'kg' as const }];
+  let body: Record<string, unknown> | undefined;
+  const api = productionApi(async <T>(_path: string, options?: RequestOptions) => {
+    body = options?.body;
+    return { ...recipe, referenceIngredients } as T;
+  });
+  const old = await productionApi(async <T>() => recipe as T).recipe(recipe.id);
+  assert.deepEqual(old.referenceIngredients, []);
+  await api.editRecipe({ ...recipe, referenceIngredients }, {
+    name: recipe.name, yieldAmount: recipe.yieldAmount, yieldUnit: recipe.yieldUnit,
+    instructions: recipe.instructions, ingredients: recipe.ingredients,
+  }, newUuid(), 12);
+  assert.deepEqual(body?.referenceIngredients, [{ ...referenceIngredients[0], section: 'base' }]);
+});
+
+test('recipe reads reject malformed recipe-only ingredients and a combined list over fifty', async () => {
+  const malformed = productionApi(async <T>() => ({
+    ...recipe, referenceIngredients: [{ name: '', amount: '1', unit: 'kg' }],
+  }) as T);
+  await assert.rejects(malformed.recipe(recipe.id), ApiError);
+  const tooMany = productionApi(async <T>() => ({
+    ...recipe,
+    ingredients: Array.from({ length: 50 }, () => recipe.ingredients[0]),
+    referenceIngredients: [{ name: 'Water', amount: '1', unit: 'kg' }],
+  }) as T);
+  await assert.rejects(tooMany.recipe(recipe.id), ApiError);
+});
+
+test('recipe sections default legacy rows to ingredients and reject unknown sections', async () => {
+  const legacy = await productionApi(async <T>() => ({
+    ...recipe, referenceIngredients: [{ name: 'Water', amount: '1', unit: 'kg' }],
+  }) as T).recipe(recipe.id);
+  assert.equal(legacy.ingredients[0]?.section, 'base');
+  assert.equal(legacy.referenceIngredients?.[0]?.section, 'base');
+  const dual = await productionApi(async <T>() => ({
+    ...recipe,
+    ingredients: [recipe.ingredients[0], { ...recipe.ingredients[0], amount: '1', section: 'variegato' }],
+  }) as T).recipe(recipe.id);
+  assert.deepEqual(dual.ingredients.map(value => value.section), ['base', 'variegato']);
+  const malformed = productionApi(async <T>() => ({
+    ...recipe, ingredients: [{ ...recipe.ingredients[0], section: 'topping' }],
+  }) as T);
+  await assert.rejects(malformed.recipe(recipe.id), ApiError);
+});
+
+test('recipe draft restoration accepts legacy and section rows but rejects malformed shapes', () => {
+  const ingredient = {
+    productId: recipe.ingredients[0]!.productId, name: 'Cream', sku: '0007', baseUnit: 'kg' as const,
+    previousBaseUnit: null, amount: '1', unit: 'kg' as const,
+  };
+  const draft = { name: 'Draft', yieldAmount: '4.5', yieldUnit: 'kg', instructions: '',
+    ingredients: [ingredient, { ...ingredient, section: 'variegato' as const }], requestId: newUuid(), pending: false };
+  assert.equal(validRecipeDraft(draft), true);
+  assert.equal(validRecipeDraft({ ...draft, ingredients: [{ ...ingredient, unexpected: true }] }), false);
+  assert.equal(validRecipeDraft({ ...draft, ingredients: [{ ...ingredient, section: 'topping' }] }), false);
+  assert.equal(validReferenceDraft([
+    { localId: 'saved:0', name: 'Water', amount: '', unit: 'kg' },
+    { localId: newUuid(), name: 'Ripple', amount: '1', unit: 'kg', section: 'variegato' },
+  ]), true);
+  assert.equal(validReferenceDraft([{ localId: 'saved:0', name: 'Water', amount: '1', unit: 'kg', extra: 1 }]), false);
 });
 
 test('confirm keeps the caller supplied durable log ID and exact batch counts', async () => {

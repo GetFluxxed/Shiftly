@@ -1,0 +1,48 @@
+import { ApiError } from '../../api/client';
+import type { Request } from '../api';
+import { MutationIdentity, validId } from '../api';
+
+export type InvoiceState = 'draft' | 'closed';
+export type InvoiceUnit = '' | 'kg' | 'g' | 'lb' | 'each' | 'package';
+export interface InvoiceLineInput { id: string; description: string; sku: string; productId: string | null; packageId: string | null; quantity: string | null; unit: InvoiceUnit; received: boolean }
+export interface InvoiceLine extends InvoiceLineInput { productName: string | null; baseUnit: string | null; normalizedQuantity: string | null; packageName: string | null; needsCatalogReview: boolean }
+export interface InvoiceSummary { id: string; supplier: string; invoiceNumber: string; state: InvoiceState; version: number; lineCount: number; receivedCount: number; updatedAt: string }
+export interface Invoice extends InvoiceSummary { storeId: number; lines: InvoiceLine[]; needsCountReview: boolean; needsCatalogReview: boolean; photoReadingAvailable: boolean; createdAt: string; baselineCountId: string | null }
+export interface InvoicePage { items: InvoiceSummary[]; nextCursor: string | null; photoReadingAvailable: boolean }
+export interface IncomingRow { productId: string; name: string; baseUnit: string; currentQuantity: string | null; incomingQuantity: string; receivedQuantity: string; projectedQuantity: string | null }
+export interface IncomingPage { items: IncomingRow[]; nextCursor: string | null; unmatchedCount: number; needsCountReview: boolean; needsCatalogReview: boolean }
+export interface PhotoProposalLine { description: string; sku: string; quantity: string | null; unit: InvoiceUnit; productId: string | null; packageId: string | null }
+export interface PhotoAnalysis { id: string | null; state: 'none' | 'queued' | 'running' | 'ready' | 'failed'; canRetry: boolean; message: string | null; supplier: string | null; invoiceNumber: string | null; lines: PhotoProposalLine[] }
+
+const decimal = /^\d{1,15}(?:\.\d{1,9})?$/;
+const cursor = /^[A-Za-z0-9._-]{1,1200}$/;
+function fail(): never { throw new ApiError('The invoice response could not be verified. Please reload.'); }
+function object(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object' || Array.isArray(value)) fail(); return value as Record<string, unknown>; }
+function text(value: unknown, max: number) { if (typeof value !== 'string' || value.length > max) fail(); return value; }
+function nullableText(value: unknown, max: number) { return value === null ? null : text(value, max); }
+function integer(value: unknown, min = 0) { if (!Number.isSafeInteger(value) || Number(value) < min) fail(); return Number(value); }
+function quantity(value: unknown, nullable = false): string | null { if (nullable && value === null) return null; if (typeof value !== 'string' || !decimal.test(value)) fail(); return value; }
+function id(value: unknown, nullable = false): string | null { if (nullable && value === null) return null; if (!validId(value)) fail(); return value; }
+function state(value: unknown): InvoiceState { if (value !== 'draft' && value !== 'closed') fail(); return value; }
+function unit(value: unknown): InvoiceUnit { if (!['', 'kg', 'g', 'lb', 'each', 'package'].includes(String(value))) fail(); return value as InvoiceUnit; }
+function summary(value: unknown): InvoiceSummary { const row = object(value); return { id: id(row.id)!, supplier: text(row.supplier, 120), invoiceNumber: text(row.invoiceNumber, 80), state: state(row.state), version: integer(row.version, 1), lineCount: integer(row.lineCount), receivedCount: integer(row.receivedCount), updatedAt: text(row.updatedAt, 80) }; }
+function line(value: unknown): InvoiceLine { const row = object(value); const parsed: InvoiceLine = { id: id(row.id)!, description: text(row.description, 160), sku: text(row.sku, 64), productId: id(row.productId, true), packageId: id(row.packageId, true), quantity: quantity(row.quantity, true), unit: unit(row.unit), received: row.received === true, productName: nullableText(row.productName, 160), baseUnit: nullableText(row.baseUnit, 16), normalizedQuantity: quantity(row.normalizedQuantity, true), packageName: nullableText(row.packageName, 160), needsCatalogReview: row.needsCatalogReview === true }; if (typeof row.received !== 'boolean' || typeof row.needsCatalogReview !== 'boolean') fail(); return parsed; }
+function invoice(value: unknown): Invoice { const row = object(value), base = summary(row); if (!Array.isArray(row.lines) || row.lines.length > 60 || typeof row.needsCountReview !== 'boolean' || typeof row.needsCatalogReview !== 'boolean' || (row.photoReadingAvailable !== undefined && typeof row.photoReadingAvailable !== 'boolean')) fail(); return { ...base, storeId: integer(row.storeId, 1), lines: row.lines.map(line), needsCountReview: row.needsCountReview, needsCatalogReview: row.needsCatalogReview, photoReadingAvailable: row.photoReadingAvailable === true, createdAt: text(row.createdAt, 80), baselineCountId: id(row.baselineCountId, true) }; }
+function proposal(value: unknown): PhotoAnalysis { const row = object(value); if (!['none', 'queued', 'running', 'ready', 'failed'].includes(String(row.state)) || typeof row.canRetry !== 'boolean' || (row.canRetry && row.state !== 'failed') || !Array.isArray(row.lines) || row.lines.length > 60) fail(); return { id: id(row.id, true), state: row.state as PhotoAnalysis['state'], canRetry: row.canRetry, message: nullableText(row.message, 1000), supplier: nullableText(row.supplier, 120), invoiceNumber: nullableText(row.invoiceNumber, 80), lines: row.lines.map(item => { const value = object(item); return { description: text(value.description, 160), sku: text(value.sku, 64), quantity: quantity(value.quantity, true), unit: unit(value.unit), productId: id(value.productId, true), packageId: id(value.packageId, true) }; }) }; }
+function requestId(identity: MutationIdentity | string, path: string, body: Record<string, unknown>) { return { ...body, requestId: typeof identity === 'string' ? identity : identity.for(path, body) }; }
+
+export function receivingApi(request: Request) {
+  const post = (path: string, body: Record<string, unknown>, identity: MutationIdentity | string) => request<unknown>(path, { method: 'POST', body: requestId(identity, path, body), uncertainMessage: 'We could not confirm this invoice change. Retry the same unchanged form or reload the invoice before editing it.' });
+  return {
+    invoices: async (q = '', after = ''): Promise<InvoicePage> => { const row = object(await request('/inventory/invoices', { query: { ...(q ? { q } : {}), ...(after ? { after } : {}) } })); if (!Array.isArray(row.items) || row.items.length > 40 || (row.nextCursor !== null && (typeof row.nextCursor !== 'string' || !cursor.test(row.nextCursor))) || typeof row.photoReadingAvailable !== 'boolean') fail(); return { items: row.items.map(summary), nextCursor: row.nextCursor as string | null, photoReadingAvailable: row.photoReadingAvailable }; },
+    create: async (storeId: number, identity: MutationIdentity) => invoice(await post('/inventory/invoices', { expectedStoreId: storeId, supplier: '', invoiceNumber: '', lines: [] }, identity)),
+    invoice: async (invoiceId: string) => invoice(await request(`/inventory/invoices/${id(invoiceId)}`)),
+    save: async (item: Invoice, fields: { supplier: string; invoiceNumber: string; lines: InvoiceLineInput[] }, identity: MutationIdentity | string, baseVersion = item.version) => invoice(await post(`/inventory/invoices/${id(item.id)}`, { expectedStoreId: item.storeId, version: baseVersion, ...fields }, identity)),
+    close: async (item: Invoice, identity: MutationIdentity) => invoice(await post(`/inventory/invoices/${id(item.id)}/close`, { expectedStoreId: item.storeId, version: item.version }, identity)),
+    rebase: async (item: Invoice, identity: MutationIdentity) => invoice(await post(`/inventory/invoices/${id(item.id)}/rebase`, { expectedStoreId: item.storeId, version: item.version }, identity)),
+    incoming: async (q = '', after = ''): Promise<IncomingPage> => { const row = object(await request('/inventory/incoming', { query: { ...(q ? { q } : {}), ...(after ? { after } : {}) } })); if (!Array.isArray(row.items) || row.items.length > 40 || typeof row.unmatchedCount !== 'number' || typeof row.needsCountReview !== 'boolean' || typeof row.needsCatalogReview !== 'boolean' || (row.nextCursor !== null && typeof row.nextCursor !== 'string')) fail(); return { items: row.items.map(item => { const value = object(item); return { productId: id(value.productId)!, name: text(value.name, 160), baseUnit: text(value.baseUnit, 16), currentQuantity: quantity(value.currentQuantity, true), incomingQuantity: quantity(value.incomingQuantity)!, receivedQuantity: quantity(value.receivedQuantity)!, projectedQuantity: quantity(value.projectedQuantity, true) }; }), nextCursor: row.nextCursor as string | null, unmatchedCount: integer(row.unmatchedCount), needsCountReview: row.needsCountReview, needsCatalogReview: row.needsCatalogReview }; },
+    uploadPhoto: async (item: Invoice, imageBase64: string, identity: MutationIdentity) => proposal(await post(`/inventory/invoices/${id(item.id)}/photo`, { expectedStoreId: item.storeId, version: item.version, imageBase64 }, identity)),
+    photoAnalysis: async (invoiceId: string) => proposal(await request(`/inventory/invoices/${id(invoiceId)}/photo-analysis`)),
+    retryPhoto: async (item: Invoice, identity: MutationIdentity) => proposal(await post(`/inventory/invoices/${id(item.id)}/photo-analysis/retry`, { expectedStoreId: item.storeId, version: item.version }, identity)),
+  };
+}

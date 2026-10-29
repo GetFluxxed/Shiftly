@@ -3,6 +3,7 @@ import React, { PropsWithChildren, createContext, useCallback, useContext, useRe
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView,
   StyleSheet, TextInput, TextInputProps, View, ViewStyle, useWindowDimensions,
+  type ScrollViewInstance, type TextInputInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -13,11 +14,12 @@ import { useScrollRestoration } from '../restoration/useScrollRestoration';
 const ScrollContext = createContext<() => void>(() => undefined);
 export function useScrollToTop() { return useContext(ScrollContext); }
 
-export function Screen({ children, title, eyebrow, subtitle, trailing, compact = false }: PropsWithChildren<{
+export function Screen({ children, title, eyebrow, subtitle, trailing, compact = false, header, footer }: PropsWithChildren<{
   title: string; eyebrow?: string; subtitle?: string; trailing?: React.ReactNode; compact?: boolean;
+  header?: React.ReactNode; footer?: React.ReactNode;
 }>) {
   const { width } = useWindowDimensions();
-  const scroll = useRef<ScrollView>(null);
+  const scroll = useRef<ScrollViewInstance>(null);
   const position = useScrollRestoration(title, scroll);
   const { toTop: ignoredToTop, ...scrollPosition } = position;
   const positionRef = useRef(position); positionRef.current = position;
@@ -28,7 +30,7 @@ export function Screen({ children, title, eyebrow, subtitle, trailing, compact =
       <ScrollView testID="workspace-scroll" ref={scroll} {...scrollPosition} scrollEventThrottle={150} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         contentContainerStyle={[styles.scroll, { paddingHorizontal: width >= 768 ? 36 : 22 }]}>
         <View style={[styles.container, compact && styles.compactContainer]}>
-          <View style={[styles.header, compact && styles.compactHeader]}>
+          {header ?? <View style={[styles.header, compact && styles.compactHeader]}>
             <View style={styles.flex}>
               <View accessible={false} style={styles.headerAccent} />
               {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
@@ -36,13 +38,14 @@ export function Screen({ children, title, eyebrow, subtitle, trailing, compact =
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
             </View>
             {trailing}
-          </View>
+          </View>}
           <ScrollContext.Provider value={toTop}>
             {workspace.ready && workspace.message ? <Notice message={workspace.message} kind="error" /> : null}
             {children}
           </ScrollContext.Provider>
         </View>
       </ScrollView>
+      {footer}
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
@@ -90,7 +93,7 @@ export function Button({ title, onPress, variant = 'primary', loading = false, d
   </Pressable>;
 }
 
-export function Field({ label, hint, inputRef, ...props }: TextInputProps & { label: string; hint?: string; inputRef?: React.Ref<TextInput> }) {
+export function Field({ label, hint, inputRef, ...props }: TextInputProps & { label: string; hint?: string; inputRef?: React.Ref<TextInputInstance> }) {
   const fontsReady = useFontsReady();
   return <View style={styles.field}>
     <Text style={styles.label}>{label}</Text>

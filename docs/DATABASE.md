@@ -1,15 +1,15 @@
 # Shiftly database
 
-Reviewed against source revision `df53f98` on 2026-10-21. PostgreSQL is the system
-of record. The applied schema is defined by immutable files in `migrations/`; code
-and this summary do not replace those files. Local development, CI and rehearsals
-use PostgreSQL 16. The hosted database is owner-reported as PostgreSQL 18, and that
-version has not been rehearsed; see
+Updated 2026-10-25. PostgreSQL is the system of record. The applied schema is
+defined by immutable files in `migrations/`; code and this summary do not replace
+those files.
+Local development, CI and rehearsals use PostgreSQL 16. The hosted database is
+owner-reported as PostgreSQL 18, and that version has not been rehearsed; see
 [DEPLOYMENT.md](DEPLOYMENT.md#configuration-drift-and-compatibility-checks).
 
 ## Migration history
 
-Migrations `001` through `024` are present and must run in filename order.
+Migrations `001` through `029` are present and must run in filename order.
 
 | Range | Purpose |
 | --- | --- |
@@ -23,6 +23,11 @@ Migrations `001` through `024` are present and must run in filename order.
 | 021-022 | package definitions, package SKU links, canonical product and redirect links |
 | 023 | store forecasts, forecast jobs and idempotent request records |
 | 024 | explicit package/container weight-unit constraints |
+| 025 | guarded draft count expansion for active catalog products without shelf assignments |
+| 026 | immutable recipe-only ingredient quantities on recipe revisions |
+| 027 | recipe ingredient sections; the same catalog product may appear in base and Variegato |
+| 028 | store-scoped invoice drafts and line snapshots; immutable closed history, no stock posting |
+| 029 | private invoice image jobs, leases, provenance and idempotent upload request mapping |
 
 Never edit an applied migration. Add the next numbered migration and document
 forward recovery. Back up valuable data before migration and rehearse fresh setup,
@@ -47,7 +52,13 @@ upgrade/data preservation, and recovery with disposable databases.
 - Counts snapshot product/configuration and baseline versions. A posted count
   creates stock movement(s); drafts and review do not.
 - Recipe revisions and production log ingredient snapshots preserve what was
-  confirmed. Idempotency request tables prevent duplicate posting.
+  confirmed. Recipe revisions also retain `reference_ingredients` as a bounded
+  JSON array of names, exact decimal quantities, units and an optional section.
+  Catalog ingredient rows use `(revision_id, product_id, section)` as their key.
+  Sections are `base` (the default for earlier data) and `variegato`. The same
+  product in both sections still deducts from one product stock total. These recipe-only rows
+  have no catalog identity and never generate stock deductions. Idempotency
+  request tables prevent duplicate posting.
 - Forecast records, jobs, and request keys are store scoped. Forecast output is
   advisory and does not mutate balances.
 

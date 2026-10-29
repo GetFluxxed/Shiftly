@@ -15,7 +15,7 @@ export function WorkspaceGate({session, publicRoute=false, children}:React.Props
   window.__workspaceTest=workspace.controller;
   const snapshot=React.useSyncExternalStore(session.subscribe,session.getSnapshot,session.getSnapshot);
   if(publicRoute) return <>{children}</>;
-  if(snapshot.status!=='ready') return <div>Workspace {snapshot.status}</div>;
+  if(!['ready','offline'].includes(snapshot.status)) return <div>Workspace {snapshot.status}</div>;
   if(!workspace.ready || !snapshot.actor || workspace.scope!==workspaceScope(snapshot.actor,snapshot.stores)) return <div>Restoring workspace</div>;
   return <>{children}</>;
 }

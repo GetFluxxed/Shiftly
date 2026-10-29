@@ -381,12 +381,12 @@ test('a periodic refresh completed after background lock cannot resurrect the wo
   assert.equal(h.controller.getSnapshot().status, 'locked'); assertPrivateCleared(h.controller);
 });
 
-test('overlapping periodic refreshes send one status request and never run while locked', async () => {
+test('overlapping periodic refreshes share one status request and never run while locked', async () => {
   const h = harness(); await h.controller.restore(); const answer = deferred<AccountStatus>();
   h.handle(() => answer.promise); const count = h.calls.length;
-  const first = h.controller.refreshAccess(); await h.controller.refreshAccess();
+  const first = h.controller.refreshAccess(), second = h.controller.refreshAccess();
   assert.equal(h.calls.length, count + 1);
-  answer.resolve(status()); await first;
+  answer.resolve(status()); await Promise.all([first, second]);
   h.controller.lock(); await h.controller.refreshAccess();
   assert.equal(h.calls.length, count + 1);
 });

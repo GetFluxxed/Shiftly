@@ -8,24 +8,26 @@ contract, not evidence that the unfinished work is verified, a promise that came
 work will begin by a particular time, or a legal/compliance approval. Maintained
 stock rules are in [INVENTORY.md](../INVENTORY.md).
 
-**Camera feature boundaries.** The existing camera scans barcodes for catalog
-lookup and creation only. It does not:
-- count shelves or store photos;
-- analyze images;
-- receive invoices;
-- call an AI provider.
+**Camera feature boundaries.** Barcode scanning supports catalog lookup and
+creation; it does not count shelves or save barcode images. The separately
+authorized invoice preview sends explicitly uploaded invoice photos to the
+configured AI provider and creates reviewed proposals only; it does not receive
+stock. Shelf-photo counting and receipt posting remain planned. Keep barcode
+scanning, invoice extraction, and shelf-photo analysis distinct in design,
+permissions, and evidence.
 
-Production currently deducts the recipe quantity × confirmed batches × `1.01`.
-Camera and receiving work must preserve that stock history and its version checks.
+Production currently deducts the exact recipe quantity multiplied by confirmed
+batches and `1.01`; camera and receiving work must preserve that stock history and
+its version checks.
 
-**Three different capabilities.** Keep them separate in design, permissions and
-evidence:
-- **Barcode scanning** (implemented) maps a printed code to a catalog identity.
-- **Shelf-photo analysis** (planned) proposes counts from stored images.
-- **Invoice extraction** (planned) proposes receipt lines from a stored document.
+## October 25 scope update
 
-The two planned capabilities need private image storage and retention rules; the
-barcode scanner needs neither.
+The owner authorized bringing forward a private manager/owner invoice preview,
+including photo reading. [Invoice previews](invoice-receiving-preview.md) records
+the implemented boundary and evidence. It adds drafts, extracted proposals and
+incoming projections only; receipt posting and shelf-photo counting remain future
+work. The original ordered plan below is historical sequencing and still defines
+the broader release gates, not a claim that the new preview completes them.
 
 ## Delivery order and ownership
 
@@ -295,4 +297,3 @@ provider outage; and exact movement/balance reconciliation. Paid provider evalua
 - California Privacy Protection Agency, [What General Notices Are Required by the CCPA?](https://cppa.ca.gov/pdf/general_notices.pdf): notice-at-collection and privacy-policy checklist, including employee coverage caveat.
 - California Attorney General, [Making Your Privacy Practices Public](https://oag.ca.gov/sites/all/files/agweb/pdfs/cybersecurity/making_your_privacy_practices_public.pdf): CalOPPA policy scope/content guidance. Applicability requires counsel.
 - Federal Trade Commission, [Start with Security](https://www.ftc.gov/business-guidance/resources/start-security-guide-business): data minimization/retention, least-privilege access, authentication, testing and provider oversight guidance.
-

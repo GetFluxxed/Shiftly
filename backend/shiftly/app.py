@@ -26,6 +26,8 @@ from backend.shiftly.runtime.application import build_runtime
 from backend.shiftly.runtime.composition import build_services
 from backend.shiftly.runtime.provider import make_provider
 from backend.shiftly.api.forecasts import router as forecasts_router
+from backend.shiftly.api.receiving import router as receiving_router
+from backend.shiftly.api.invoice_photos import router as invoice_photos_router
 
 
 def create_app(
@@ -79,6 +81,8 @@ def create_app(
     app.include_router(counts_router)
     app.include_router(production_router)
     app.include_router(forecasts_router)
+    app.include_router(receiving_router)
+    app.include_router(invoice_photos_router)
     app.include_router(production_browser_router)
     app.include_router(compat_router)
     app.include_router(static_router)

@@ -32,7 +32,7 @@ class ProductionRepository:
         return {str(row['id']) for row in found}
 
     def recipe(self,connection,actor,recipe_id,revision_id=None,*,lock=False,current_only=False):
-        result=rows(connection,'''SELECT r.id,r.version,r.current_revision_id,v.id revision_id,v.name,v.yield_amount,v.yield_unit,v.instructions
+        result=rows(connection,'''SELECT r.id,r.version,r.current_revision_id,v.id revision_id,v.name,v.yield_amount,v.yield_unit,v.instructions,v.reference_ingredients
           FROM production_recipes r JOIN production_recipe_revisions v ON v.recipe_id=r.id
           WHERE r.business_id=%s AND r.id=%s AND v.id=COALESCE(%s::uuid,r.current_revision_id)
             AND (NOT %s OR v.id=r.current_revision_id)'''+(' FOR UPDATE OF r' if lock else ''),
@@ -40,19 +40,23 @@ class ProductionRepository:
         return self.render_recipe(connection,result[0]) if result else None
 
     def render_recipe(self,connection,row):
-        ingredients=rows(connection,'''SELECT i.product_id,i.name,i.sku,i.amount,i.unit,i.base_unit,i.base_amount,p.base_unit current_base_unit
+        ingredients=rows(connection,'''SELECT i.product_id,i.name,i.sku,i.amount,i.unit,i.base_unit,i.base_amount,i.section,p.base_unit current_base_unit
           FROM production_recipe_ingredients i JOIN inventory_products p
             ON p.id=i.product_id AND p.business_id=i.business_id
-          WHERE i.revision_id=%s ORDER BY inventory_key(i.name) COLLATE "C",i.product_id''',(row['revision_id'],))
+          WHERE i.revision_id=%s ORDER BY i.section,inventory_key(i.name) COLLATE "C",i.product_id''',(row['revision_id'],))
+        references=[{key:value for key,value in item.items() if key!='section' or value=='variegato'}
+                    for item in row['reference_ingredients']]
         return {'id':str(row['id']),'name':row['name'],'version':row['version'],'revisionId':str(row['revision_id']),
           'yieldAmount':decimal(row['yield_amount']),'yieldUnit':row['yield_unit'],'instructions':row['instructions'],
+          'referenceIngredients':references,
           'ingredients':[{'productId':str(i['product_id']),'name':i['name'],'sku':i['sku'],'amount':decimal(i['amount']),
                           'unit':i['unit'],'baseUnit':i['base_unit'],'baseAmount':decimal(i['base_amount']),
-                          'currentBaseUnit':i['current_base_unit']} for i in ingredients]}
+                          'currentBaseUnit':i['current_base_unit'],
+                          **({'section':i['section']} if i['section']=='variegato' else {})} for i in ingredients]}
 
     def recipes(self,connection,actor,query,after):
         name,identifier=after or (None,None)
-        found=rows(connection,'''SELECT r.id,r.version,r.current_revision_id,v.id revision_id,v.name,v.yield_amount,v.yield_unit,v.instructions,
+        found=rows(connection,'''SELECT r.id,r.version,r.current_revision_id,v.id revision_id,v.name,v.yield_amount,v.yield_unit,v.instructions,v.reference_ingredients,
           inventory_key(v.name) COLLATE "C" AS sort_name
           FROM production_recipes r JOIN production_recipe_revisions v ON v.id=r.current_revision_id
           WHERE r.business_id=%s AND strpos(lower(v.name),lower(%s))>0
@@ -71,12 +75,15 @@ class ProductionRepository:
         connection.execute('UPDATE production_recipes SET current_revision_id=%s,version=version+1,updated_at=NOW() WHERE id=%s',(revision_id,recipe_id))
 
     def _revision(self,connection,actor,recipe_id,revision_id,number,data,products):
-        connection.execute('''INSERT INTO production_recipe_revisions(id,business_id,recipe_id,revision_number,name,yield_amount,yield_unit,instructions,created_by)
-          VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(revision_id,actor.business_id,recipe_id,number,data['name'],data['yieldAmount'],data['yieldUnit'],data['instructions'],actor.user_id))
+        references=[{'name':item['name'],'amount':decimal(item['amount']),'unit':item['unit'],
+                     **({'section':item['section']} if item['section']=='variegato' else {})}
+                    for item in data['referenceIngredients']]
+        connection.execute('''INSERT INTO production_recipe_revisions(id,business_id,recipe_id,revision_number,name,yield_amount,yield_unit,instructions,reference_ingredients,created_by)
+          VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(revision_id,actor.business_id,recipe_id,number,data['name'],data['yieldAmount'],data['yieldUnit'],data['instructions'],Jsonb(references),actor.user_id))
         for item in data['ingredients']:
             p=products[item['productId']]
-            connection.execute('''INSERT INTO production_recipe_ingredients(business_id,recipe_id,revision_id,product_id,name,sku,amount,unit,base_unit,base_amount)
-              VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(actor.business_id,recipe_id,revision_id,item['productId'],p['name'],p['sku'],item['amount'],item['unit'],p['base_unit'],item['baseAmount']))
+            connection.execute('''INSERT INTO production_recipe_ingredients(business_id,recipe_id,revision_id,product_id,name,sku,amount,unit,base_unit,base_amount,section)
+              VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',(actor.business_id,recipe_id,revision_id,item['productId'],p['name'],p['sku'],item['amount'],item['unit'],p['base_unit'],item['baseAmount'],item['section']))
         connection.execute('UPDATE production_recipe_revisions SET sealed=true WHERE id=%s',(revision_id,))
 
     def request(self,connection,actor,request_id):

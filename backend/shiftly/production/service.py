@@ -19,6 +19,19 @@ def found(value,message='This production record is unavailable.'):
     return value
 
 
+def recipe_payload(data):
+    """Canonical recipe request shape remains compatible with pre-section retries."""
+    result={key:value for key,value in data.items() if key!='ingredientSectionsComplete'}
+    result['ingredients']=[{key:value for key,value in item.items()
+                            if key!='section' or value=='variegato'}
+                           for item in data['ingredients']]
+    if data['referenceIngredients'] is not None:
+        result['referenceIngredients']=[{key:value for key,value in item.items()
+                                         if key!='section' or value=='variegato'}
+                                        for item in data['referenceIngredients']]
+    return result
+
+
 class ProductionService:
     def __init__(self,connect,accounts,forecast_enqueue=None):
         self.connect,self.accounts=connect,accounts
@@ -55,29 +68,48 @@ class ProductionService:
         with self.connect() as connection:
             actor=self.actor(connection,token,'recipes.manage',fields.get('expectedStoreId'),writing=True)
             def change():
-                products=self.repository.products(connection,actor,[i['productId'] for i in data['ingredients']])
-                if len(products)!=len(data['ingredients']): conflict('Every ingredient must be an active product in this business.')
+                product_ids={i['productId'] for i in data['ingredients']}
+                products=self.repository.products(connection,actor,product_ids)
+                if len(products)!=len(product_ids): conflict('Every ingredient must be an active product in this business.')
+                tracked_names={(valid.ingredient_name_key(products[i['productId']]['name']),i['section']) for i in data['ingredients']}
+                if any((valid.ingredient_name_key(item['name']),item['section']) in tracked_names for item in data['referenceIngredients']):
+                    valid.invalid('A reference ingredient cannot duplicate a tracked ingredient name.')
                 for item in data['ingredients']:
                     item['baseAmount']=valid.convert(item['amount'],item['unit'],products[item['productId']]['base_unit'])
                 recipe_id,revision_id=str(uuid4()),str(uuid4())
                 self.repository.create_recipe(connection,actor,recipe_id,revision_id,data,products)
                 return self.repository.recipe(connection,actor,recipe_id)
-            return self._write_request(connection,actor,fields,'recipe.created',data,change)
+            return self._write_request(connection,actor,fields,'recipe.created',recipe_payload(data),change)
 
     def edit_recipe(self,token,recipe_id,fields):
-        recipe_id=identifier(recipe_id); expected=version(fields.get('version')); data=valid.recipe_input(fields)
+        recipe_id=identifier(recipe_id); expected=version(fields.get('version')); data=valid.recipe_input(fields,allow_omitted_references=True)
         with self.connect() as connection:
             actor=self.actor(connection,token,'recipes.manage',fields.get('expectedStoreId'),writing=True)
             def change():
                 current=found(self.repository.recipe(connection,actor,recipe_id,lock=True))
                 if current['version']!=expected: conflict('This recipe changed. Reload the latest version before saving.','stale_record')
-                products=self.repository.products(connection,actor,[i['productId'] for i in data['ingredients']])
-                if len(products)!=len(data['ingredients']): conflict('Every ingredient must be an active product in this business.')
+                if data['referenceIngredients'] is None:
+                    if current['referenceIngredients']:
+                        valid.invalid('Reference ingredients must be included when editing this recipe.')
+                    data['referenceIngredients']=[]
+                if (not data['ingredientSectionsComplete'] and
+                    (any(item.get('section')=='variegato' for item in current['ingredients']) or
+                     any(item.get('section')=='variegato' for item in current['referenceIngredients']))):
+                    valid.invalid('Ingredient sections must be included when editing this recipe.')
+                if not data['ingredients'] and not data['referenceIngredients']:
+                    valid.invalid('A recipe must contain 1 to 50 tracked and reference ingredients in total.')
+                product_ids={i['productId'] for i in data['ingredients']}
+                products=self.repository.products(connection,actor,product_ids)
+                if len(products)!=len(product_ids): conflict('Every ingredient must be an active product in this business.')
+                tracked_names={(valid.ingredient_name_key(products[i['productId']]['name']),i['section']) for i in data['ingredients']}
+                if any((valid.ingredient_name_key(item['name']),item['section']) in tracked_names for item in data['referenceIngredients']):
+                    valid.invalid('A reference ingredient cannot duplicate a tracked ingredient name.')
                 for item in data['ingredients']:
                     item['baseAmount']=valid.convert(item['amount'],item['unit'],products[item['productId']]['base_unit'])
                 self.repository.revise_recipe(connection,actor,recipe_id,str(uuid4()),current['version'],data,products)
                 return self.repository.recipe(connection,actor,recipe_id)
-            return self._write_request(connection,actor,fields,'recipe.revised',[recipe_id,expected,data],change)
+            return self._write_request(connection,actor,fields,'recipe.revised',
+                                       [recipe_id,expected,recipe_payload(data)],change)
 
     def _calculate(self,connection,actor,entry_fields,balances,active_products):
         snapshots=[]; aggregate={}

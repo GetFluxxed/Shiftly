@@ -23,7 +23,10 @@ function RecipeBook() {
     <InventorySearch label="Find a recipe" value={filters.query} onChange={query => setFilters(v => ({ ...v, query }))} submitLabel="Find recipes" onSubmit={() => setFilters(v => ({ ...v, search: v.query.trim(), cursor: '' }))} />
   </Card>{resource.loading ? <Loading label="Opening the recipe book…" /> : resource.error || !resource.data ? <LoadError {...resource} /> : <>
     {!resource.data.items.length ? <Card><EmptyState icon="restaurant-outline" title="No recipes here yet" description={canManageRecipes ? 'Create the first recipe when you are ready.' : 'A manager or owner can add recipes for this store.'} /></Card> : null}
-    <InventoryList>{resource.data.items.map(item => <InventoryItem key={item.id} title={item.name} subtitle={`Makes ${item.yieldAmount} ${item.yieldUnit}`} detail={`${item.ingredients.length} ingredient${item.ingredients.length === 1 ? '' : 's'}`} onPress={() => router.push({ pathname: '/production/recipes/[recipeId]', params: { recipeId: item.id } })} />)}</InventoryList>
+    <InventoryList>{resource.data.items.map(item => {
+      const ingredientCount = item.ingredients.length + (item.referenceIngredients?.length ?? 0);
+      return <InventoryItem key={item.id} title={item.name} subtitle={`Makes ${item.yieldAmount} ${item.yieldUnit}`} detail={`${ingredientCount} ingredient${ingredientCount === 1 ? '' : 's'}`} onPress={() => router.push({ pathname: '/production/recipes/[recipeId]', params: { recipeId: item.id } })} />;
+    })}</InventoryList>
     <Pages next={resource.data.nextCursor} cursor={filters.cursor} setCursor={cursor => setFilters(v => ({ ...v, cursor }))} />
   </>}</>;
 }
@@ -46,9 +49,18 @@ function RecipeLoader({ id }: { id: string }) {
     {canManageRecipes ? <><Button title="Edit recipe" variant="secondary" onPress={() => setEditing(true)} /><Button title="New recipe" icon="add" onPress={() => router.push('/production/recipes/new')} /></> : null}</Card><IngredientSummary item={item} />
     <RecipeEditorModal item={item} visible={editing} onClose={resetEditing} onSaved={() => { resetEditing(); void resource.refresh(); }} /></>;
 }
-function IngredientSummary({ item }: { item: Recipe }) { return <><Heading>Ingredients</Heading><InventoryList>{item.ingredients.map(ingredient => {
-  const changed = ingredient.currentBaseUnit && ingredient.currentBaseUnit !== ingredient.baseUnit;
-  return <InventoryItem key={ingredient.productId} title={ingredient.name}
-    subtitle={changed ? `Stock unit changed to ${ingredient.currentBaseUnit}` : undefined} detail={`${ingredient.amount} ${ingredient.unit}`} />;
-})}</InventoryList></>; }
+function IngredientSummary({ item }: { item: Recipe }) {
+  const renderSection = (section: 'base' | 'variegato', heading: string) => {
+    const tracked = item.ingredients.filter(ingredient => (ingredient.section ?? 'base') === section);
+    const references = (item.referenceIngredients ?? []).filter(ingredient => (ingredient.section ?? 'base') === section);
+    if (!tracked.length && !references.length) return null;
+    return <><Heading>{heading}</Heading><InventoryList>{tracked.map(ingredient => {
+      const changed = ingredient.currentBaseUnit && ingredient.currentBaseUnit !== ingredient.baseUnit;
+      return <InventoryItem key={`${section}:${ingredient.productId}`} title={ingredient.name}
+        subtitle={changed ? `Stock unit changed to ${ingredient.currentBaseUnit}` : undefined} detail={`${ingredient.amount} ${ingredient.unit}`} />;
+    })}{references.map((ingredient, index) => <InventoryItem key={`${section}:reference:${index}:${ingredient.name}`}
+      title={ingredient.name} subtitle="Recipe only" detail={`${ingredient.amount} ${ingredient.unit}`} />)}</InventoryList></>;
+  };
+  return <>{renderSection('base', 'Ingredients')}{renderSection('variegato', 'Variegato')}</>;
+}
 const styles = StyleSheet.create({ recipeTitle: { color: colors.ink, fontSize: 30, lineHeight: 36, fontWeight: '700' } });

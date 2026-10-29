@@ -9,6 +9,7 @@ fastapi==0.141.1
 h11==0.16.0
 httptools==0.8.0
 idna==3.20
+pillow==13.0.0
 psycopg[binary]==3.3.5
 psycopg-binary==3.3.5 ; implementation_name != "pypy"
 psycopg-pool==3.3.2

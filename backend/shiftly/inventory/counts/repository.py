@@ -63,14 +63,14 @@ def stock_item(row):
 
 
 class CountRepository:
-    def scope(self, connection, actor):
+    def scope(self, connection, actor, product_ids=None):
         return rows(connection, '''SELECT p.id AS product_id,p.name,p.sku,p.base_unit,p.container_amount,p.version AS product_version,
                    a.shelf_id,s.name AS shelf_name
-            FROM inventory_store_products sp JOIN inventory_products p ON p.id=sp.product_id AND p.business_id=sp.business_id
-            LEFT JOIN inventory_shelf_products a ON a.store_id=sp.store_id AND a.product_id=p.id AND a.active
-            LEFT JOIN inventory_shelves s ON s.id=a.shelf_id AND s.store_id=sp.store_id
-            WHERE sp.business_id=%s AND sp.store_id=%s AND sp.active AND p.active
-            ORDER BY p.id,a.shelf_id LIMIT %s''', (actor.business_id,actor.store_id,MAX_LINES+1))
+            FROM inventory_products p
+            LEFT JOIN inventory_shelf_products a ON a.business_id=p.business_id AND a.store_id=%s AND a.product_id=p.id AND a.active
+            LEFT JOIN inventory_shelves s ON s.business_id=p.business_id AND s.store_id=%s AND s.id=a.shelf_id
+            WHERE p.business_id=%s AND p.active AND (%s::uuid[] IS NULL OR p.id=ANY(%s::uuid[]))
+            ORDER BY p.id,a.shelf_id LIMIT %s''', (actor.store_id,actor.store_id,actor.business_id,product_ids,product_ids,MAX_LINES+1))
 
     @staticmethod
     def fingerprint(scope):
@@ -112,8 +112,21 @@ class CountRepository:
                 'lastCount':self.summary(connection,actor,last_row[0]) if last_row else None}
 
     def create(self, connection, actor, count_id, business_date, scope):
+        self.ensure_listings(connection,actor,{row['product_id'] for row in scope})
         connection.execute('''INSERT INTO inventory_counts(id,business_id,store_id,business_date,configuration_hash,started_by)
             VALUES(%s,%s,%s,%s,%s,%s)''', (count_id,actor.business_id,actor.store_id,business_date,self.fingerprint(scope),actor.user_id))
+        self.append_scope(connection,actor,count_id,scope)
+
+    def ensure_listings(self, connection, actor, product_ids):
+        if not product_ids:
+            return
+        connection.execute('''INSERT INTO inventory_store_products(business_id,store_id,product_id,active)
+            SELECT p.business_id,%s,p.id,true FROM inventory_products p
+            WHERE p.business_id=%s AND p.active AND p.id=ANY(%s::uuid[])
+            ON CONFLICT (business_id,store_id,product_id) DO UPDATE SET active=true''',
+            (actor.store_id,actor.business_id,list(product_ids)))
+
+    def append_scope(self, connection, actor, count_id, scope):
         products = {row['product_id']:row for row in scope}
         for product in products.values():
             connection.execute('''INSERT INTO inventory_count_products(business_id,store_id,count_id,product_id,name,sku,base_unit,
@@ -129,6 +142,20 @@ class CountRepository:
             cursor.executemany('''INSERT INTO inventory_count_lines(id,business_id,store_id,count_id,product_id,shelf_id,shelf_name)
                 VALUES(%s,%s,%s,%s,%s,%s,%s)''',
                 [(str(uuid4()),actor.business_id,actor.store_id,count_id,row['product_id'],row['shelf_id'],row['shelf_name'] or 'Unassigned') for row in scope])
+
+    def product_ids(self, connection, actor, count_id):
+        return {row['product_id'] for row in rows(connection, '''SELECT product_id FROM inventory_count_products
+            WHERE business_id=%s AND store_id=%s AND count_id=%s ORDER BY product_id''',
+            (actor.business_id,actor.store_id,count_id))}
+
+    def line_count(self, connection, actor, count_id):
+        return connection.execute('''SELECT count(*) FROM inventory_count_lines
+            WHERE business_id=%s AND store_id=%s AND count_id=%s''',
+            (actor.business_id,actor.store_id,count_id)).fetchone()[0]
+
+    def update_configuration(self, connection, count_id, configuration_hash):
+        connection.execute('''UPDATE inventory_counts SET configuration_hash=%s,version=version+1,updated_at=NOW()
+            WHERE id=%s''', (configuration_hash,count_id))
 
     def line(self, connection, actor, count_id, line_id):
         result = rows(connection, '''SELECT l.*,p.name,p.sku,p.base_unit,p.container_amount,p.packages,u.username AS observer_name

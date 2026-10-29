@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   AccessibilityInfo, findNodeHandle, KeyboardAvoidingView, Modal, Platform, Pressable,
-  ScrollView, StyleSheet, View, useWindowDimensions,
+  ScrollView, StyleSheet, View, useWindowDimensions, type ViewInstance,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +42,7 @@ function ProductMeasurementEditor({ item, onClose, onSaved }: {
   const { api, identity, canEdit } = useInventory();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const headingRef = React.useRef<View>(null);
+  const headingRef = React.useRef<ViewInstance>(null);
   const mounted = React.useRef(true);
   const [context, setContext] = React.useState<MeasurementContext | null>(null);
   const [targetUnit, setTargetUnit] = React.useState<StockUnit | null>(null);

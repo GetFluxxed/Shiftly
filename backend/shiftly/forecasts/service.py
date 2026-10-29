@@ -7,7 +7,7 @@ from backend.shiftly.identity.contracts import IdentityError
 from backend.shiftly.inventory.validation import identifier
 from .repository import ForecastRepository
 
-PROMPT_VERSION = 'production-forecast-v1'
+PROMPT_VERSION = 'production-forecast-v3'
 REQUIRED = {'forecasts.view','reports.view','production.view','inventory.view'}
 
 

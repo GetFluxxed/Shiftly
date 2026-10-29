@@ -65,7 +65,17 @@
     else {
       const details = element('div', 'recipe-details hidden');
       if (recipe.instructions) details.append(element('p', '', recipe.instructions));
-      const list = element('ul'); recipe.ingredients.forEach((item) => list.append(element('li', '', `${item.amount} ${item.unit} ${item.name}`))); details.append(list);
+      for (const [section, title] of [['base', 'Ingredients'], ['variegato', 'Variegato']]) {
+        const tracked = recipe.ingredients.filter((item) => (item.section || 'base') === section);
+        const references = (recipe.referenceIngredients || []).filter((item) => (item.section || 'base') === section);
+        if (!tracked.length && !references.length) continue;
+        const group = element('section');
+        const list = element('ul');
+        tracked.forEach((item) => list.append(element('li', '', `${item.amount} ${item.unit} ${item.name}`)));
+        references.forEach((item) => list.append(element('li', '', `${item.amount} ${item.unit} ${item.name} · Recipe only`)));
+        group.append(element('h4', '', title), list);
+        details.append(group);
+      }
       button.setAttribute('aria-expanded', 'false'); button.addEventListener('click', () => { const open = details.classList.toggle('hidden') === false; button.setAttribute('aria-expanded', String(open)); }); card.append(button, details); return card;
     }
     card.append(button);

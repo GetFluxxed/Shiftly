@@ -1,7 +1,7 @@
 /** Inventory-only breadcrumbs: bounded UI context, never account authority. */
 export type InventoryRoute = { pathname: string; params?: Record<string, string> };
 const uuid = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
-const routes = new RegExp(`^/(inventory|catalog|catalog/new|catalog/scan|catalog/${uuid}|catalog/packages/${uuid}|shelves|shelves/${uuid}|stock|stock/${uuid}|counts|counts/history|counts/${uuid}(/review|/line/${uuid})?)$`);
+const routes = new RegExp(`^/(today|inventory|catalog|catalog/new|catalog/scan|catalog/saved-scans|catalog/${uuid}|catalog/packages/${uuid}|invoices|invoices/${uuid}(/photo)?|incoming|shelves|shelves/${uuid}|stock|stock/${uuid}|counts|counts/history|counts/${uuid}(/review|/line/${uuid})?)$`);
 const barcode = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/;
 const barcodeTypes = new Set(['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'itf14', 'codabar',
   'org.gs1.EAN-13', 'org.gs1.EAN-8', 'org.gs1.UPC-E', 'org.iso.Code39', 'com.intermec.Code93', 'org.iso.Code128',
@@ -11,7 +11,7 @@ const maxLength = 4096;
 
 export function inventoryRoute(pathname: string, params: Record<string, unknown> = {}): InventoryRoute | null {
   if (typeof pathname !== 'string' || pathname.length > 220) return null;
-  pathname = pathname.replace(/\[(productId|shelfId|countId|lineId)\]/g, (match, key: string) =>
+  pathname = pathname.replace(/\[(productId|shelfId|countId|lineId|invoiceId)\]/g, (match, key: string) =>
     typeof params[key] === 'string' ? String(params[key]) : match);
   if (!routes.test(pathname)) return null;
   const safe: Record<string, string> = {};
@@ -69,11 +69,13 @@ export function inventoryParent(trail: unknown, fallback: InventoryRoute): Inven
 
 export function inventoryBackLabel(path: string): string {
   const labels: Record<string, string> = {
-    '/inventory': 'Back to inventory', '/catalog': 'Back to catalog', '/catalog/new': 'Back to new product',
-    '/catalog/scan': 'Back to scanner', '/shelves': 'Back to Open Shelves', '/stock': 'Back to current inventory',
+    '/today': 'Back to Today', '/inventory': 'Back to inventory', '/catalog': 'Back to catalog', '/catalog/new': 'Back to new product',
+    '/catalog/scan': 'Back to scanner', '/catalog/saved-scans': 'Back to saved scans', '/shelves': 'Back to Open Shelves', '/stock': 'Back to current inventory',
+    '/invoices': 'Back to invoices', '/incoming': 'Back to incoming inventory',
     '/counts': 'Back to count inventory', '/counts/history': 'Back to count history',
   };
   if (labels[path]) return labels[path];
+  if (path.startsWith('/invoices/')) return 'Back to invoice';
   if (path.startsWith('/catalog/packages/')) return 'Back to packages';
   if (path.startsWith('/catalog/')) return 'Back to product';
   if (path.startsWith('/shelves/')) return 'Back to shelf';

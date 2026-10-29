@@ -8,6 +8,7 @@ import { ProductCard } from './CatalogScreens';
 import { type Product } from './api';
 import { InventoryPage, InventorySearch, LoadError, Pages, useInventory, useInventoryNavigation, useInventoryResource } from './shared';
 import { InventoryItem, InventoryList } from './InventoryItem';
+import { useSavedScans, type SavedScan } from './scans/SavedScansProvider';
 
 const emptyScan = { code: '', barcodeType: '', lookup: false };
 
@@ -16,6 +17,8 @@ export function CatalogScanScreen() {
 }
 
 function CatalogScanner() {
+  const savedScans = useSavedScans();
+  const navigation = useInventoryNavigation(); const { canEdit } = useInventory();
   const [draft, setDraft] = useRememberedState('inventory.catalog.scan', emptyScan);
   const [cameraOpen, setCameraOpen] = useState(false);
   useFocusEffect(useCallback(() => () => setCameraOpen(false), []));
@@ -37,12 +40,15 @@ function CatalogScanner() {
       onSubmitEditing={() => { if (draft.code.trim()) setDraft(value => ({ ...value, code: value.code.trim(), lookup: true })); }} />
     <Button title="Look up code" variant="secondary" disabled={!draft.code.trim()}
       onPress={() => setDraft(value => ({ ...value, code: value.code.trim(), lookup: true }))} />
+    {canEdit ? <Button title={savedScans.offlineReady ? 'Saved scans' : 'Save scans offline'} variant="quiet" icon="bookmark-outline"
+      onPress={() => navigation.open('/catalog/saved-scans')} /> : null}
     <Body muted>Scanning adds products, not stock quantities.</Body>
   </Card></InventoryPage>;
 }
 
-function ScanLookup({ code, barcodeType, onNext, onChange }: {
+export function ScanLookup({ code, barcodeType, onNext, onChange, savedScan, onDone, completionError, completing = false }: {
   code: string; barcodeType: string; onNext: (camera: boolean) => void; onChange: () => void;
+  savedScan?: SavedScan; onDone?: () => void; completionError?: string | null; completing?: boolean;
 }) {
   const { api, canEdit } = useInventory(); const navigation = useInventoryNavigation();
   const [saved, setSaved] = useState<{ product: Product; alreadyExists: boolean } | null>(null);
@@ -53,12 +59,14 @@ function ScanLookup({ code, barcodeType, onNext, onChange }: {
   if (resource.error || !resource.data) return page(<>
     <LoadError {...resource} />
     <Body muted>Scanned code: {code}</Body>
+    {!savedScan && canEdit ? <SaveLookupFailure code={code} barcodeType={barcodeType} /> : null}
     <Button title="Scan again" icon="camera-outline" onPress={() => onNext(true)} />
     <Button title="Change code" variant="quiet" onPress={onChange} />
   </>);
   const product = saved?.product || resource.data.product;
   const created = saved && !saved.alreadyExists;
   if (product) return page(<>
+    <Notice message={completionError || null} kind="error" />
     <Notice message={created ? `${product.name} was added to the catalog.` : product.active
       ? resource.data.package ? resource.data.package.active ? `${product.name} is already in the catalog as ${resource.data.package.name}.` : `${resource.data.package.name} is linked to ${product.name}, but that package is archived and cannot be counted as stock.` : `${product.name} is already in the catalog.`
       : `${product.name} is already in the catalog, but archived. Open it to review or restore it.`} kind={created ? 'success' : 'info'} />
@@ -66,6 +74,7 @@ function ScanLookup({ code, barcodeType, onNext, onChange }: {
     <Button title="Scan next product" icon="camera-outline" onPress={() => onNext(true)} />
     <Button title="View product" variant="secondary" onPress={() => navigation.open({ pathname: '/catalog/[productId]', params: { productId: product.id } })} />
     <Button title="Enter another code" variant="quiet" onPress={() => onNext(false)} />
+    {onDone ? <Button title="Done with saved scan" variant="secondary" loading={completing} onPress={onDone} /> : null}
   </>);
   if (!canEdit) return page(<Card>
     <Heading>Product not found</Heading>
@@ -77,7 +86,26 @@ function ScanLookup({ code, barcodeType, onNext, onChange }: {
   if (missingChoice === 'choose') return page(<Card><Heading>Code not found</Heading><Body>New package or new item?</Body><Button title="Add package to existing item" icon="barcode-outline" onPress={() => setMissingChoice('package')} /><Button title="Create new item" variant="secondary" icon="add" onPress={() => setMissingChoice('product')} /><Button title="Enter another code" variant="quiet" onPress={() => onNext(false)} /></Card>);
   if (missingChoice === 'package') return page(<ExistingProductPicker code={code} barcodeType={barcodeType} onCancel={() => setMissingChoice('choose')} />, () => setMissingChoice('choose'), 'Back to code choices');
   return page(<ProductForm scanned={{ sku: resource.data.sku, barcodeType: barcodeType || undefined,
+    initial: savedScan ? { name: savedScan.name, baseUnit: savedScan.baseUnit, containerAmount: savedScan.containerAmount, containerUnit: savedScan.containerUnit } : undefined,
+    draftKey: savedScan ? `${savedScan.id}.${savedScan.updatedAt}` : undefined,
     onSaved: (product, alreadyExists = false) => setSaved({ product, alreadyExists }), onCancel: () => setMissingChoice('choose'), onCheck: () => { void resource.refresh(); } }} />, () => setMissingChoice('choose'), 'Back to code choices');
+}
+
+function SaveLookupFailure({ code, barcodeType }: { code: string; barcodeType: string }) {
+  const { controller, items } = useSavedScans();
+  const [pending, setPending] = useState(false);
+  const [notice, setNotice] = useState<{ message: string; kind: 'success' | 'error' } | null>(null);
+  const save = async () => {
+    setPending(true); setNotice(null);
+    try {
+      await controller.save({ code, barcodeType, name: '', baseUnit: 'each', containerAmount: '', containerUnit: 'each' });
+      setNotice({ message: 'Code saved on this device for later review.', kind: 'success' });
+    } catch (error) { setNotice({ message: error instanceof Error ? error.message : 'The code could not be saved.', kind: 'error' }); }
+    finally { setPending(false); }
+  };
+  const exists = items.some(item => item.code === code && item.barcodeType === barcodeType);
+  return <><Notice message={notice?.message || null} kind={notice?.kind} />
+    <Button title={exists ? 'Already in saved scans' : 'Save code for later'} variant="secondary" loading={pending} disabled={exists} onPress={() => { void save(); }} /></>;
 }
 
 function ExistingProductPicker({ code, barcodeType, onCancel }: { code: string; barcodeType: string; onCancel: () => void }) {

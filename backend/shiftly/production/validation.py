@@ -9,6 +9,7 @@ from backend.shiftly.identity.contracts import IdentityError
 from backend.shiftly.inventory.validation import identifier, text, version
 
 UNITS = ('each', 'g', 'kg')
+SECTIONS = ('base', 'variegato')
 MAX_QUANTITY = Decimal('999999999999999.999999999')
 
 
@@ -54,20 +55,57 @@ def convert(value, source, target):
     return exact(value * Decimal(1000) if source == 'kg' else value / Decimal(1000))
 
 
-def recipe_input(fields):
+def ingredient_name_key(value):
+    return unicodedata.normalize('NFKC',value).strip().casefold()
+
+
+def ingredient_section(value):
+    if value not in SECTIONS:
+        invalid('Ingredient section must be base or variegato.')
+    return value
+
+
+def recipe_input(fields, *, allow_omitted_references=False):
     if not isinstance(fields, dict):
         invalid('Recipe fields are required.')
     ingredients = fields.get('ingredients')
-    if not isinstance(ingredients, list) or not 1 <= len(ingredients) <= 50:
-        invalid('A recipe must contain 1 to 50 ingredients.')
-    seen = set(); parsed = []
+    if not isinstance(ingredients, list) or len(ingredients) > 50:
+        invalid('Tracked ingredients must be an array of at most 50 items.')
+    seen = set(); parsed = []; sections_complete = True
     for item in ingredients:
         if not isinstance(item, dict): invalid('Each ingredient must be an object.')
         product_id = identifier(item.get('productId'))
-        if product_id in seen: invalid('Each product may appear only once in a recipe revision.')
-        seen.add(product_id)
+        sections_complete = sections_complete and 'section' in item
+        section = ingredient_section(item.get('section','base'))
+        if (product_id,section) in seen: invalid('Each product may appear only once in each recipe section.')
+        seen.add((product_id,section))
         parsed.append({'productId': product_id, 'amount': decimal_amount(item.get('amount'),'Ingredient amount'),
-                       'unit': unit(item.get('unit'),'Ingredient unit')})
+                       'unit': unit(item.get('unit'),'Ingredient unit'),'section':section})
+    if 'referenceIngredients' not in fields and allow_omitted_references:
+        parsed_references = None
+    else:
+        references = fields.get('referenceIngredients', [])
+        if not isinstance(references, list) or len(references) > 50:
+            invalid('Reference ingredients must be an array of at most 50 items.')
+        reference_names = set(); parsed_references = []
+        for item in references:
+            if not isinstance(item, dict): invalid('Each reference ingredient must be an object.')
+            if set(item) not in ({'name','amount','unit'},{'name','amount','unit','section'}):
+                invalid('Each reference ingredient must contain only name, amount, unit, and optional section.')
+            name = text(item.get('name'),'Reference ingredient name',160)
+            sections_complete = sections_complete and 'section' in item
+            section = ingredient_section(item.get('section','base'))
+            name_key = (ingredient_name_key(name),section)
+            if name_key in reference_names:
+                invalid('Each reference ingredient name may appear only once in each recipe section.')
+            reference_names.add(name_key)
+            amount = decimal_amount(item.get('amount'),'Reference ingredient amount')
+            item_unit = unit(item.get('unit'),'Reference ingredient unit')
+            if item_unit == 'each' and amount != amount.to_integral_value():
+                invalid('Reference ingredient amounts in each must be whole numbers.')
+            parsed_references.append({'name':name,'amount':amount,'unit':item_unit,'section':section})
+        if not 1 <= len(parsed)+len(parsed_references) <= 50:
+            invalid('A recipe must contain 1 to 50 tracked and reference ingredients in total.')
     instructions = fields.get('instructions')
     if instructions is None: instructions = ''
     if not isinstance(instructions,str) or len(instructions)>20_000 or any(unicodedata.category(c).startswith('C') and c not in '\n\r\t' for c in instructions):
@@ -75,7 +113,8 @@ def recipe_input(fields):
     return {'name':text(fields.get('name'),'Recipe name',160),
             'yieldAmount':decimal_amount(fields.get('yieldAmount'),'Yield amount'),
             'yieldUnit':yield_unit(fields.get('yieldUnit')), 'instructions':instructions.strip(),
-            'ingredients':parsed}
+            'ingredients':parsed, 'referenceIngredients':parsed_references,
+            'ingredientSectionsComplete':sections_complete}
 
 
 def business_date(value):

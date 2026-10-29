@@ -20,6 +20,7 @@ function OwnerList({ data, changed }: AdminContext) {
   return <><Columns><Column><Card><Heading>People & authority</Heading>
     <Body>Manage administrators, owners, account status, and ownership.</Body>
     <Button title="Manage this store's team" variant="secondary" icon="people-outline" onPress={() => router.push('/team')} />
+    <Button title="Time Tracking" variant="quiet" icon="time-outline" onPress={() => router.push('/time-tracking')} />
   </Card></Column><Column><Card><Heading>Individual sign-in</Heading>
     <Pill label="Individual sign-in required" />
     <Body>Everyone joins by invitation and uses their own username and password.</Body>

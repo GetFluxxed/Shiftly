@@ -32,7 +32,7 @@ future phase is not a claim that its UI, hardware or AI integration exists.
 - Production staff select flavors and use batch counters to record several of
   the same flavor per day. Draft selection and review never deduct stock.
 - An explicit confirmation records production and deducts **recipe quantity ×
-  batches × 1.01 for every ingredient**. This is the user's chosen 1% allowance,
+  batches × 1.01 for every tracked ingredient**. This is the user's chosen 1% allowance,
   replacing the earlier proposed ±1% measured tolerance. For example, 1 kg per
   batch × 2 batches = 2 kg recipe usage + 0.02 kg allowance = 2.02 kg deducted.
   Store recipe usage and allowance separately; label this as estimated usage,
@@ -409,3 +409,105 @@ draft restoration, and a lost recipe response followed by one identical retry.
 Phone/tablet renders were visually reviewed. Device keyboard/VoiceOver acceptance
 remains separate. No schema changes or hosted deployment were needed for this UI
 revision.
+
+
+## Recipe-only ingredients — 2026-10-22
+
+Recipes can include ingredients that are prepared fresh or intentionally omitted
+from inventory. Managers/owners add these in the native recipe editor with
+**Recipe-only ingredient**, entering a name, amount and unit. They appear in the
+native recipe and browser recipe book with a **Recipe only** label. They do not
+create catalog products, count lines, balances, shortages or stock movements.
+Tracked catalog ingredients retain the existing exact recipe quantity plus 1%
+deduction on confirmed production; saving a recipe never changes stock.
+
+The existing `ingredients` API array remains catalog-backed. A separate
+`referenceIngredients` array holds `{name, amount, unit}` with decimal strings and
+`each`, `g` or `kg`; `each` quantities must be whole numbers. A recipe contains
+1–50 ingredients across both arrays. Names cannot duplicate another recipe-only
+line or a tracked ingredient in the same recipe section. All-reference recipes are valid.
+Migration 026 adds the bounded JSON array to sealed recipe revisions, defaulting
+existing revisions to an empty array. Edits create a new immutable revision. An
+older client omitting references cannot accidentally erase existing recipe-only
+lines; deliberate removal requires an explicit empty array.
+
+Forecast context marks these quantities as untracked and the prompt excludes
+them from shortage evidence. Numerical stock and usage facts still derive solely
+from tracked products and confirmed deductions. No provider call, new dependency,
+camera ingestion or automatic receiving is introduced.
+
+For screenshot entry, transcribe the source amounts unchanged, resolve ambiguous
+catalog mappings with the operator, and create the recipe through the existing
+validated service. Keep proprietary source images/import manifests outside Git.
+Do not invent opening stock or silently expand an untracked premix into additional
+deductions. Back up existing data before applying 026; restore the backup to a
+separate database for recovery, or use a forward correction after new recipes
+have been recorded. Do not deploy an older writer that cannot preserve references.
+
+Verification: 26 focused recipe/production/API tests, 23 forecast/provider tests,
+171 native unit tests, TypeScript, the new recipe-only rendered journey and the
+six existing production journeys passed. Browser recipe display and catalog-count
+upgrade checks also passed. Fresh/025 upgrade tests and a synthetic PostgreSQL
+backup/restore rehearsal preserved quantities and immutable revision guards.
+iOS/Android exports passed. Checks used installed local Python 3.14; CI's pinned
+Python environment was not rerun. The local demo was backed up and upgraded to
+026 with pre-existing inventory and production fingerprints preserved. Expo, API
+and worker health checks passed. Physical-device acceptance and hosted deployment
+remain separate; this change has not been committed, pushed or deployed.
+
+
+## Ingredients and Variegato — 2026-10-22
+
+Both catalog-backed and recipe-only lines now accept `section: base | variegato`.
+Missing sections mean `base`. The native editor offers **Ingredients** and
+**Variegato** when adding products; the native viewer and browser recipe book
+group rows under those headings. Variegato identifies the fixed topping amounts
+that must not change when a future partial-tray amount changes. A tray receives
+new toppings on initial construction and again when leftover gelato is combined
+with fresh gelato and remolded. Deduct fresh ingredients only for the amount
+newly made, and fixed toppings once per constructed/remolded tray; do not deduct
+reused leftovers twice. This applies to remodelable flavors such as Belga,
+Pistacchio, Tiramisu and Cookies and Creme. Current production
+still takes whole batches and multiplies all per-batch quantities by batch count.
+Partial-tray controls and scaling are the next recipe/production slice, after the
+recipe library has been entered; they are not part of this change.
+
+One catalog product may occur once per section. Its two recipe lines remain
+separate in the immutable revision, while production aggregates both against one
+product balance, then applies the existing 1% tracked-ingredient allowance.
+Recipe-only rows never deduct stock. A source recipe's nominal yield is preserved
+even when listed additions/toppings take total input above that amount.
+
+Migration 027 adds a default-base section and extends the ingredient key to
+`(revision_id, product_id, section)`. Existing amounts, reference rows, stock, and
+production history are preserved. New edits of sectioned recipes must explicitly
+carry every line's section; an older editor cannot silently flatten toppings.
+Default-base request fingerprints remain compatible with pre-027 retries;
+Variegato remains significant in the fingerprint. Authorization is rechecked on
+every protected write and replay. Forecast recipe context includes the section;
+usage facts still derive from confirmed deductions.
+
+Back up the database before 027 and deploy matching readers/writers together.
+Restore a pre-upgrade backup to a separate database before new sectioned writes
+are accepted, or use a forward correction afterward. Do not roll back to a writer
+that cannot preserve two section lines for the same product.
+
+
+Verification: 32 focused recipe/production/transport checks and 19 forecast/browser
+recipe checks passed, plus 12 provider checks. TypeScript, all 174 native unit
+tests, the rendered Variegato journeys and existing recipe/restoration/uncertain
+save regressions passed. Tests cover duplicate taps, adding the first topping to
+an existing recipe, cold restoration and identical uncertain-write retries.
+Independent review identified a parallel-array race; section metadata now travels
+atomically with each draft row, and the final review found no remaining issue.
+The new draft validators preserve older drafts and keep scope/lifetime/bounded
+JSON checks. iOS/Android exports passed.
+
+Fresh setup, populated 026-to-027 upgrade and a synthetic pg_dump/pg_restore
+rehearsal preserved sections, exact quantities and sealed-revision guards. The
+local demo was backed up and upgraded, preserving 21 inventory/production tables
+(excluding only the added default-base column when comparing old rows). Local
+Expo/API/worker health checks passed. Checks ran on installed Python 3.14; pinned
+CI, physical-device acceptance and hosted deployment were not rerun. All changes
+remain local and uncommitted. Supplied recipe data is saved separately through
+the normal authenticated service and is not included in source control.

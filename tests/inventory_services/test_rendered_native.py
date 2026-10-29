@@ -99,7 +99,7 @@ def test_rendered_owner_creates_product_and_shelf_then_reopens_placement(page,na
     page.get_by_role('button',name='Back to Open Shelves',exact=True).click()
     page.get_by_role('button',name='Back to inventory',exact=True).click()
     page.get_by_role('button',name='Open company catalog',exact=True).click()
-    expect(page.get_by_role('heading',name='White Quella',exact=True)).to_be_visible()
+    expect(page.get_by_role('button',name='View product: White Quella',exact=True)).to_be_visible()
     with i.connect() as c:
         assert c.execute('SELECT count(*) FROM inventory_products').fetchone()[0]==1
         assert str(c.execute('SELECT container_amount FROM inventory_products').fetchone()[0])=='6'
@@ -153,26 +153,51 @@ def test_rendered_existing_product_size_and_alphabetical_search(page, native_inv
     from uuid import uuid4
     url, i = native_inventory
     products = []
-    for name in ('White Quella', 'almond paste', 'Banana topping'):
+    for name, measurement in (
+        ('White Quella', {'baseUnit': 'kg'}),
+        ('almond paste', {'baseUnit': 'kg', 'containerAmount': '6'}),
+        ('Banana topping', {'baseUnit': 'each', 'containerAmount': '12'}),
+        ('Low-Heat Non-Fat Dry Milk', {'baseUnit': 'kg', 'containerAmount': '50', 'containerUnit': 'lb'}),
+    ):
         products.append(i.service.create_product(i.tokens['owner'], {
             'requestId': str(uuid4()), 'expectedStoreId': i.stores[0],
-            'name': name, 'sku': str(uuid4()), 'baseUnit': 'kg'}))
+            'name': name, 'sku': str(uuid4()), **measurement}))
     page.set_viewport_size({'width': 390, 'height': 844})
     page.goto(url)
     page.get_by_role('button', name='Open company catalog', exact=True).click()
-    expect(page.get_by_role('heading', name='White Quella', exact=True)).to_be_visible()
-    headings = page.get_by_role('heading').all_text_contents()
-    names = [name for name in headings if name in ('White Quella', 'almond paste', 'Banana topping')]
-    assert names == ['almond paste', 'Banana topping', 'White Quella']
-    if os.environ.get('INVENTORY_SCREENSHOT_DIR'):
-        for width in (320, 390, 1024):
-            page.set_viewport_size({'width': width, 'height': 900})
-            page.screenshot(path=str(Path(os.environ['INVENTORY_SCREENSHOT_DIR'])/f'catalog-compact-{width}.png'), full_page=True)
-            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.set_viewport_size({'width': 390, 'height': 844})
+    rows = page.get_by_role('button', name=re.compile('^View product: '))
+    expect(rows).to_have_count(4)
+    assert [row.get_attribute('aria-label') for row in rows.all()] == [
+        'View product: almond paste', 'View product: Banana topping',
+        'View product: Low-Heat Non-Fat Dry Milk', 'View product: White Quella']
+    for name, size in (('White Quella', 'Not set'), ('almond paste', '6 kg'),
+                       ('Banana topping', '12 items'), ('Low-Heat Non-Fat Dry Milk', '50 lbs')):
+        expect(page.get_by_role('button', name=f'View product: {name}', exact=True).get_by_text(size, exact=True)).to_be_visible()
+    for width in (320, 390, 768, 1024, 1440):
+        page.set_viewport_size({'width': width, 'height': 900})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        # Resizing crosses Screen's phone/tablet inset breakpoint. Wait for the
+        # whole layout, then measure all targets in one browser frame.
+        page.wait_for_function('''() => {
+            const boxes = [...document.querySelectorAll('[aria-label^="Change measurement: "]')]
+                .map(element => element.getBoundingClientRect());
+            const key = JSON.stringify([innerWidth, ...boxes.map(b => [b.x, b.y, b.width, b.height])]);
+            if (window.__catalogLayout?.key !== key) {
+                window.__catalogLayout = { key, since: performance.now() };
+                return false;
+            }
+            return boxes.length === 4 && performance.now() - window.__catalogLayout.since > 150;
+        }''')
+        actions = page.get_by_role('button', name=re.compile('^Change measurement: '))
+        boxes = actions.evaluate_all('(elements) => elements.map(element => { const b = element.getBoundingClientRect(); return {x:b.x,width:b.width,height:b.height}; })')
+        assert all(box['width'] >= 44 and box['height'] >= 44 for box in boxes)
+        assert max(box['x'] for box in boxes) - min(box['x'] for box in boxes) < 1
+        if directory := os.environ.get('INVENTORY_SCREENSHOT_DIR'):
+            page.screenshot(path=str(Path(directory)/f'catalog-compact-{width}.png'), full_page=True)
+    page.set_viewport_size({'width': 390, 'height': 844})
     page.get_by_label('Find a product or SKU', exact=True).fill('white')
     page.get_by_role('button', name='Search catalog', exact=True).click()
-    expect(page.get_by_role('heading', name='almond paste', exact=True)).to_have_count(0)
+    expect(page.get_by_role('button', name='View product: almond paste', exact=True)).to_have_count(0)
     page.get_by_role('button', name='View product: White Quella', exact=True).click()
     page.get_by_role('button', name='Change measurement: White Quella', exact=True).click()
     amount = page.get_by_label('Full container amount (kg)', exact=True)
@@ -192,4 +217,4 @@ def test_rendered_existing_product_size_and_alphabetical_search(page, native_inv
     expect(page.get_by_role('button', name='Assign White Quella', exact=True)).to_be_visible()
     choices = page.get_by_role('button', name=re.compile('^Assign '))
     assert [item.get_attribute('aria-label') for item in choices.all()] == [
-        'Assign almond paste', 'Assign Banana topping', 'Assign White Quella']
+        'Assign almond paste', 'Assign Banana topping', 'Assign Low-Heat Non-Fat Dry Milk', 'Assign White Quella']
