@@ -13,11 +13,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Shiftly to scan product barcodes with your camera.",
+          "cameraPermission": "Allow Shiftly to scan product barcodes and photograph invoices.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
-      ]
+      ],
+      "expo-font",
+      "expo-status-bar"
     ],
     "experiments": {"typedRoutes": true}
   }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
-import { TextInput, View } from 'react-native';
+import { View, type TextInputInstance } from 'react-native';
 import { useSession } from '@/src/session/SessionProvider';
 import { Body, Brand, Button, Card, Column, Columns, Field, Heading, Loading, Notice, Screen, layout } from '@/src/ui/components';
 import { useTask } from '@/src/ui/useTask';
@@ -14,10 +14,10 @@ export function SignInScreen() {
   const task = useTask();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const usernameInput = useRef<TextInput>(null);
-  const passwordInput = useRef<TextInput>(null);
+  const usernameInput = useRef<TextInputInstance>(null);
+  const passwordInput = useRef<TextInputInstance>(null);
   useSensitiveForm(() => setPassword(''));
-  if (status === 'ready' || status === 'locked') return <Redirect href="/today" />;
+  if (status === 'ready' || status === 'locked' || status === 'offline') return <Redirect href="/today" />;
   if (status === 'loading') return <Loading label="Opening Shiftly…" />;
   const submit = () => { void task.run(async () => {
     const secret = password;
@@ -73,11 +73,11 @@ export function ActivateScreen() {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [complete, setComplete] = useState(false);
-  const passwordInput = useRef<TextInput>(null);
-  const confirmationInput = useRef<TextInput>(null);
+  const passwordInput = useRef<TextInputInstance>(null);
+  const confirmationInput = useRef<TextInputInstance>(null);
   useSensitiveForm(() => { setToken(''); setPassword(''); setConfirmation(''); setDetails(null); });
   if (status === 'ready' && (complete || task.pending)) return <Redirect href="/today" />;
-  if (status === 'ready' || status === 'locked') return <Screen title="An invitation for a new account">
+  if (status === 'ready' || status === 'locked' || status === 'offline') return <Screen title="An invitation for a new account">
     <Card><Body>Sign out of your current account before activating this invitation.</Body>
       <Button title="Sign out to activate" onPress={() => { void signOut(); }} />
       <Button title="Keep my current account" variant="secondary" onPress={() => router.replace('/today')} /></Card>

@@ -41,7 +41,7 @@ export function useWorkspaceCheckpoint() {
 }
 
 /** Only call for explicitly approved UI fields, never credentials or server data. */
-export function useRememberedState<T>(key: string, initial: T | (() => T), baseline = ''):
+export function useRememberedState<T>(key: string, initial: T | (() => T), baseline = '', validateRestored?: (value: unknown) => value is T):
   [T, React.Dispatch<React.SetStateAction<T>>, () => void] {
   const controller = useContext(Context);
   const scope = controller?.getSnapshot().scope ?? null;
@@ -51,8 +51,8 @@ export function useRememberedState<T>(key: string, initial: T | (() => T), basel
   const initialRef = useRef(initial); initialRef.current = initial;
   const makeInitial = () => typeof initialRef.current === 'function' ? (initialRef.current as () => T)() : initialRef.current;
   const identity = `${scope}:${key}:${baseline}`;
-  const [record, setRecord] = useState(() => ({ identity, value: controller?.read(key, makeInitial(), baseline) ?? makeInitial() }));
-  const value = record.identity === identity ? record.value : controller?.read(key, makeInitial(), baseline) ?? makeInitial();
+  const [record, setRecord] = useState(() => ({ identity, value: controller?.read(key, makeInitial(), baseline, validateRestored) ?? makeInitial() }));
+  const value = record.identity === identity ? record.value : controller?.read(key, makeInitial(), baseline, validateRestored) ?? makeInitial();
   const latest = useRef(value); latest.current = value;
   const set = useCallback<React.Dispatch<React.SetStateAction<T>>>((action) => {
     // A delayed request from a former account cannot update its replacement.

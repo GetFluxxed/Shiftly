@@ -16,7 +16,15 @@ baseline. They do not establish native device readiness.
 inventory, server-saved whole-store counts, review/finalization and history.
 See [the inventory count contract](workstreams/inventory-counts.md). This includes
 migration 017 and reuses existing count-entry and count-approval permissions.
-Camera/scale automation, fully offline counting and forecasts remain later phases.
+Camera/scale automation and offline stock posting remain later phases. The scoped
+offline count-observation queue is recorded in the count contract below.
+
+**iPhone pilot update — 2026-10-23:** The current target is a functional,
+installable iPhone release candidate for the general manager's October 31 count.
+This is an eight-day pilot gate, not a promise of App Store publication. Scope is
+frozen to named-account authentication and roles, catalog/barcode capture, the
+temporary Saved scans inbox, and the existing prepared offline count workflow.
+See the [October 31 iPhone pilot contract](workstreams/iphone-pilot-2026-10-31.md).
 
 ## Adopted architecture
 
@@ -159,9 +167,11 @@ thresholds before assistance is enabled beyond the pilot.
 
 ### 5. Offline resilience and release readiness
 
-Local UI/draft restoration is now implemented under the contract below. Introduce
-an offline outbox only after server idempotency and conflict/version checks exist
-for the affected commands. Recheck
+Local UI/draft restoration and a dedicated count-observation queue are implemented.
+The [count contract](workstreams/inventory-counts.md#durable-mobile-counting--2026-10-22)
+defines its encrypted storage, 12-hour restricted access, conflicts and device
+acceptance. Other offline commands require their own idempotency and conflict
+design. Recheck
 identity, selected store and permissions on reconnect before replaying. Keep
 pending work clearly distinct from accepted server records; clear or isolate
 private drafts after account changes. Do not silently resubmit an ambiguous report
@@ -179,6 +189,41 @@ expired and remotely revoked sessions, upgrades, restore/reinstall behavior,
 camera permissions and constrained connectivity. Review and distribution are
 separate from committing the native foundation; no production backend cutover or
 store publication is implied by this phase's code changes.
+
+### October 31 iPhone pilot release gate
+
+The preferred bounded route is a signed internal/ad hoc release candidate with
+the JavaScript bundle embedded and the general manager's iPhone registered in its
+provisioning profile. It must launch without Metro. This route still depends on
+confirmed active Apple Developer membership, signing authority, a unique bundle
+identifier and the device identifier. If those prerequisites are unavailable,
+TestFlight is an alternative distribution path whose Apple processing or review
+timing cannot be guaranteed. Expo Go and a Metro-dependent development client are
+development evidence, not the installable offline pilot.
+
+The installed app must use a stable HTTPS origin that serves FastAPI
+`/api/mobile`. The checked-in Render service still starts `python server.py`, so
+it is not sufficient for the mobile pilot. Hosted acceptance requires the exact
+candidate revision, explicit migrations, a retained backup and rollback plan,
+one supervised API process, and a separately supervised worker when AI-backed
+reports or forecasts are enabled. No paid build, provisioning, public exposure or
+deployment is authorized by this roadmap entry.
+
+The temporary Saved scans inbox may collect at most 100 encrypted, locally scoped
+drafts. An authorized catalog manager opens it while online to prepare a complete
+12-hour grant, then may retain raw barcodes plus proposed name, unit and container
+amount offline. It stores no photos, creates no product or package automatically,
+and performs no background upload. On reconnect, the same account reviews every
+draft through a fresh lookup and explicitly opens an existing/alias/archived
+record or creates the appropriate product or package. Stock never changes. Sign
+out locks pending drafts without deleting them; only the original account and
+scope can resume them after signing in again. They are not server-backed until
+resolved.
+
+Retire only this temporary capture inbox after permanent offline catalog sync and
+review has shipped and every pending draft has been migrated or safely drained.
+The installed app, offline count queue, role checks and server authorization remain
+supported boundaries and are not temporary.
 
 ## Heads Up store announcements — 2026-09-29
 

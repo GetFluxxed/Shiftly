@@ -10,6 +10,8 @@ from backend.shiftly.inventory import InventoryService
 from backend.shiftly.inventory.counts import CountService
 from backend.shiftly.production import ProductionService
 from backend.shiftly.forecasts import ForecastService
+from backend.shiftly.inventory.receiving import ReceivingService
+from backend.shiftly.inventory.receiving.photos import InvoicePhotoService
 from backend.shiftly.stores import StoresRepository, StoresService
 from .prompts import QUALITY_PROMPT, WEEKLY_PROMPT
 
@@ -27,6 +29,8 @@ class Services:
     counts: CountService | None = None
     production: ProductionService | None = None
     forecasts: ForecastService | None = None
+    receiving: ReceivingService | None = None
+    invoice_photos: InvoicePhotoService | None = None
 
 
 def build_services(*, settings, connection_factory, provider, weekly_connection_factory=None,
@@ -62,4 +66,8 @@ def build_services(*, settings, connection_factory, provider, weekly_connection_
     return Services(identity, stores, reports, submission, weekly, admission, identity.accounts,
                     InventoryService(connection_factory, identity.accounts), CountService(connection_factory, identity.accounts),
                     ProductionService(connection_factory, identity.accounts,
-                                      forecast_enqueue=forecasts.enqueue_after_confirmation), forecasts)
+                                      forecast_enqueue=forecasts.enqueue_after_confirmation), forecasts,
+                    ReceivingService(connection_factory, identity.accounts,
+                                     photo_reading_available=bool(settings.openai_api_key)),
+                    InvoicePhotoService(connection_factory, identity.accounts, model=settings.openai_model,
+                                        provider_available=bool(settings.openai_api_key)))

@@ -71,7 +71,7 @@ class CountService:
                 conflict('A count is already open for this store. Resume it before starting another.')
             scope = self.repository.scope(connection,actor)
             if not scope:
-                conflict('Assign at least one product to a store shelf before starting a count.')
+                conflict('Add at least one active product to the business catalog before starting a count.')
             if len(scope)>MAX_LINES:
                 conflict('This store has too many count locations for a single count. Contact your administrator.')
             if any(row['base_unit'] not in ('each','g','kg') for row in scope):
@@ -81,13 +81,57 @@ class CountService:
             return count_id,None,self.repository.summary(connection,actor,count_id)
         return self.write(token,fields,'counts.submit','count.started',day,change)
 
+    def expansion(self, connection, actor, count):
+        existing_ids = self.repository.product_ids(connection,actor,count['id'])
+        existing_scope = self.repository.scope(connection,actor,list(existing_ids))
+        existing_scope_ids = {row['product_id'] for row in existing_scope}
+        if existing_scope_ids != existing_ids or self.repository.fingerprint(existing_scope) != count['configuration_hash']:
+            return None
+        full_scope = self.repository.scope(connection,actor)
+        missing = [row for row in full_scope if row['product_id'] not in existing_ids]
+        if not missing:
+            return {'full':full_scope,'missing':[]}
+        if self.repository.line_count(connection,actor,count['id']) + len(missing) > MAX_LINES:
+            return None
+        if any(row['base_unit'] not in ('each','g','kg') for row in missing):
+            return None
+        return {'full':full_scope,'missing':missing}
+
     def detail(self, token, count_id):
         count_id = valid.identifier(count_id)
         with self.connect() as connection:
             actor = self.actor(connection,token)
             count = found(self.repository.count(connection,actor,count_id))
-            changed = count['state'] in ('draft','review') and count['configuration_hash'] != self.repository.fingerprint(self.repository.scope(connection,actor))
-            return {**self.repository.summary(connection,actor,count_id), 'configurationChanged':changed}
+            current_hash = self.repository.fingerprint(self.repository.scope(connection,actor))
+            changed = count['state'] in ('draft','review') and count['configuration_hash'] != current_hash
+            expansion = self.expansion(connection,actor,count) if count['state']=='draft' and changed else None
+            available = bool(expansion and expansion['missing'])
+            return {**self.repository.summary(connection,actor,count_id), 'configurationChanged':changed,
+                    'catalogProductsAvailable':available}
+
+    def include_catalog(self, token, count_id, fields):
+        count_id = valid.identifier(count_id)
+        version = valid.version(fields.get('version'))
+        def change(connection, actor):
+            count = found(self.repository.count(connection,actor,count_id,lock=True))
+            valid.current(count,version)
+            if count['state'] != 'draft':
+                conflict('Only a draft count can include newly available catalog products.')
+            before = self.repository.summary(connection,actor,count_id)
+            expansion = self.expansion(connection,actor,count)
+            if expansion is None:
+                conflict('The existing count scope changed. Cancel it and start a fresh count.')
+            missing = expansion['missing']
+            if missing:
+                product_ids = {row['product_id'] for row in missing}
+                self.repository.ensure_listings(connection,actor,product_ids)
+                self.repository.append_scope(connection,actor,count_id,missing)
+                self.repository.update_configuration(connection,count_id,self.repository.fingerprint(expansion['full']))
+            result = {**self.repository.summary(connection,actor,count_id),
+                      'configurationChanged':False,'catalogProductsAvailable':False,'addedProducts':len({row['product_id'] for row in missing}),
+                      'addedLines':len(missing)}
+            return count_id,before,result
+        return self.write(token,fields,'counts.submit','count.catalog-included',[count_id,version],change)
 
     def lines(self, token, count_id, *, query='', after=None, shelf='', missing=False):
         count_id = valid.identifier(count_id)

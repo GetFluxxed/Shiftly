@@ -13,7 +13,7 @@ import { colors } from '@/src/ui/theme';
 export default function RootLayout() {
   const [loaded] = useFonts({ WorkSans_400Regular, WorkSans_600SemiBold, Newsreader_500Medium });
   return <FontsReadyContext.Provider value={loaded}><SafeAreaProvider><SessionProvider>
-    <StatusBar barStyle="dark-content" backgroundColor={colors.paper} />
+    <StatusBar barStyle="dark-content" />
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper } }} />
   </SessionProvider></SafeAreaProvider></FontsReadyContext.Provider>;
 }

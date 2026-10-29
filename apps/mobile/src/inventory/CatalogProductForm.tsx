@@ -23,13 +23,13 @@ export function ProductForm({ item, refresh, refreshing = false, scanned }: {
   item?: Product;
   refresh?: (options?: { preserveData?: boolean }) => Promise<void>;
   refreshing?: boolean;
-  scanned?: ScannedProduct;
+  scanned?: ScannedProduct & { initial?: { name?: string; baseUnit?: StockUnit; containerAmount?: string; containerUnit?: ContainerUnit }; draftKey?: string };
 }) {
   const { api, identity, canEdit } = useInventory(); const navigation = useInventoryNavigation(); const task = useTask();
   const [measurementOpen, setMeasurementOpen] = React.useState(false);
   const parent = navigation.parent('/catalog');
-  const initialDraft = () => ({ name: item?.name || '', sku: item?.sku || scanned?.sku || '', unit: 'each' as StockUnit, amount: item?.containerLabelAmount ?? item?.containerAmount ?? (item ? '' : '1'), amountUnit: (item?.containerLabelUnit ?? item?.baseUnit ?? 'each') as ContainerUnit });
-  const [draft, setDraft, resetDraft] = useRememberedState(scanned ? `inventory.catalog.scanned.v2.${scanned.sku}` : `inventory.catalog.product.v2.${item?.id || 'new'}`, initialDraft, item ? String(item.version) : undefined);
+  const initialDraft = () => ({ name: item?.name || scanned?.initial?.name || '', sku: item?.sku || scanned?.sku || '', unit: scanned?.initial?.baseUnit || 'each' as StockUnit, amount: item?.containerLabelAmount ?? item?.containerAmount ?? scanned?.initial?.containerAmount ?? (item ? '' : '1'), amountUnit: (item?.containerLabelUnit ?? item?.baseUnit ?? scanned?.initial?.containerUnit ?? 'each') as ContainerUnit });
+  const [draft, setDraft, resetDraft] = useRememberedState(scanned ? `inventory.catalog.scanned.v2.${scanned.draftKey || scanned.sku}` : `inventory.catalog.product.v2.${item?.id || 'new'}`, initialDraft, item ? String(item.version) : undefined);
   const { name, sku, unit, amount, amountUnit } = draft;
   const setName = (name: string) => setDraft(value => ({ ...value, name }));
   const setSku = (sku: string) => setDraft(value => ({ ...value, sku }));

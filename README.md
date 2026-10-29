@@ -8,7 +8,7 @@ reporting and selected administration and production workflows.
 
 ## Status and evidence
 
-This document describes the source tree as of 2026-10-11. `604683d` is the clean
+This document describes the source tree as of 2026-10-25. `604683d` is the clean
 adoption baseline supplied for this review. "Implemented" below means present in
 this checkout. Local or CI verification is evidence only for the revision on
 which it ran. Hosted deployment, production data mapping, physical-device behavior,
@@ -23,13 +23,24 @@ Implemented in the current source:
 - a business catalog, store shelves, package definitions, barcode lookup/capture,
   stock balances and movement history;
 - reviewed whole-store counts with draft, review, and posting transitions;
-- recipes, confirmed production deductions with a 1% ingredient allowance,
+- revisioned recipes with Ingredients/Variegato sections and recipe-only lines,
+  confirmed production deductions with a 1% ingredient allowance,
   reversal rules, and store-scoped production forecasts;
 - durable briefing jobs and a separate worker runtime; and
-- additive PostgreSQL migrations `001` through `024`.
+- manager/owner invoice drafts, reviewed photo extraction and incoming stock previews;
+- additive PostgreSQL migrations `001` through `029`.
 
-Shelf-photo counting, invoice receiving/OCR, and offline stock posting are planned.
-Camera barcode scanning is implemented and does not save an image. Forecasts are
+Mobile count observations now have a durable offline queue with a restricted
+prepared-count workspace; device acceptance remains pending. Review and stock
+posting stay online. Invoice photo reading and reviewed incoming previews are
+implemented; receipt posting, shelf-photo counting and offline stock posting remain
+planned. See [invoice previews](docs/workstreams/invoice-receiving-preview.md).
+Camera barcode scanning is implemented and does not save an image. The temporary
+Saved scans inbox keeps up to 100 catalog drafts on the device for explicit online
+review; it never creates stock. Its restricted offline workspace requires online
+preparation and catalog-management permission. See the
+[October 31 iPhone pilot](docs/workstreams/iphone-pilot-2026-10-31.md) for its
+retirement criteria and signed-build/device/hosting gates. Forecasts are
 store-scoped decision support; they do not bypass reviewed stock operations.
 
 Shared crew credentials, password-only manager access, and public signup are

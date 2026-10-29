@@ -6,6 +6,11 @@ existing browser application remains available while native workflows expand.
 See the [native roadmap](../../docs/NATIVE_APP_ROADMAP.md) for phase boundaries and
 release acceptance.
 
+The current bounded release target is the
+[October 31 iPhone pilot](../../docs/workstreams/iphone-pilot-2026-10-31.md): an
+installable release candidate for the general manager's physical count. It is not
+yet signed, device verified, hosted or released.
+
 ## Current slice
 
 Individual sign-in, activation/recovery, store selection, account/password and
@@ -18,11 +23,17 @@ archive and restore, package definitions and links, plus named store shelves and
 assignment/removal of existing products. Owners or delegated catalog administrators manage shared products;
 store configuration permission controls shelf changes. Catalog products now
 include an editable full-container amount, exact gram/kilogram equivalents and
-A–Z catalog ordering. New unit choices are each, grams and kilograms. Current stock,
+A–Z catalog ordering. The catalog uses a compact Product/Container table matching
+Current Inventory, with SKUs beneath names and a separate Change action for
+authorized catalog managers. New unit choices are each, grams and kilograms. Current stock,
 reviewed counts, confirmed production with its 1% ingredient allowance, and
 store-scoped production forecasts are implemented. Barcode capture assists
-catalog/package entry; shelf-photo counting, invoice receiving, and offline posting
-remain later phases. This is a development foundation; bundling is not a
+catalog/package entry. Managers and owners can open Invoices on Today, photograph
+an invoice or enter it manually, review catalog/package matches and check received
+lines. Inventory → Incoming previews expected totals; it does not update stock.
+Photo reading requires connectivity and the separately running configured worker.
+See [invoice previews](../../docs/workstreams/invoice-receiving-preview.md).
+Shelf-photo counting, receipt posting and offline posting remain later phases. This is a development foundation; bundling is not a
 claim of physical-device or store-release verification.
 
 The [inventory foundation and shared catalog](../../docs/workstreams/inventory-foundation-and-shared-catalog.md)
@@ -34,8 +45,9 @@ session/store invalidation, with conservative fallback for older responses.
 
 - Node.js 22.13+ (22.x) or 24.3+ (24.x), matching the selected React Native
   dependency requirements, and the pinned `pnpm@11.19.0` package manager.
-- Expo Go on a compatible phone/tablet for initial development, or separately
-  installed iOS/Android simulator tooling.
+- Expo Go supporting **SDK 58** on the test phone/tablet, or a development build
+  compiled for this dependency set. The client uses Expo 58, React Native 0.88
+  and React 19.3. An Expo Go update does not update this project automatically.
 - The Shiftly **FastAPI** server reachable from the device, a migrated development
   PostgreSQL database and a named account with a store membership. Historical
   shared-credential rows are migration data, not supported account credentials.
@@ -151,6 +163,22 @@ platform. These scripts do not create a signed distribution build. The current
 local environment has no Xcode/Android SDK, so native simulator/device validation
 must be recorded separately on a suitable host.
 
+### Expo Go SDK compatibility
+
+If Expo Go reports an SDK mismatch, compare its supported SDK with the `expo`
+dependency in `package.json` and the running project's manifest. Restart from
+this mobile directory after an upgrade with `pnpm start --go --lan --clear`.
+Changing a manifest SDK label cannot replace upgrading the matching native
+packages. Follow the [official Expo upgrade guide](https://expo.dev/blog/how-to-upgrade-to-sdk-58),
+keep the pinned package manager/lockfile, and run dependency diagnostics, mobile
+checks, native exports and affected rendered journeys before device testing.
+
+Keep the API origin and encrypted storage namespaces stable during an SDK
+upgrade. Do not uninstall Expo Go or clear device storage to repair a mismatch
+while count observations or Saved scans are pending. A separately installed
+Shiftly build needs its own authenticated preparation; it does not automatically
+inherit Expo Go's private data.
+
 ## Checks
 
 ```sh
@@ -189,11 +217,13 @@ content and drafts must be cleared. Foreground refresh rechecks access before
 enabling actions. While the app remains active, access is checked every 60 seconds;
 unchanged access preserves the screen/draft, while changed permissions or authorized
 stores replace the workspace and invalidate older responses. A network failure
-during that check pauses private access until the server can verify it again.
+during that check pauses ordinary private access. A prepared count has the
+restricted offline exception described below.
 The manager inbox can include multiple authorized stores and
 must label each report's store; a selected store is not a grant of access to every
-report. Failed or uncertain writes must not be silently queued/replayed: offline
-outbox support requires future server idempotency and conflict handling.
+report. Ordinary failed/uncertain writes must not be silently replayed. Count
+observations use the dedicated durable queue below with immutable request IDs,
+version conflicts and fresh access checks.
 
 Invitation/recovery codes are entered explicitly. Do not persist them, passwords,
 report bodies or account rosters in ordinary device storage, links or diagnostics.
@@ -336,3 +366,47 @@ use a manufacturer barcode or stable internal SKU when the code changes by deliv
 Physical device checks are still required for scanning, permissions, zoom, torch and
 background return. The browser-rendered test client uses manual code entry; this
 does not add camera scanning to the existing hosted browser portal.
+
+## Temporary Saved scans for disconnected intake
+
+Saved scans is an implemented temporary pilot capture inbox. Local type/unit
+checks, rendered offline journeys and iOS/Android bundle exports pass. Exact-revision
+CI, physical-iPhone acceptance, signing and deployment remain pending. An account with `catalog.manage` opens Saved scans
+while connected and finishes preparing its encrypted inbox and 12-hour offline grant.
+It may then save up to 100 encrypted drafts containing a raw barcode and proposed
+name, unit and container amount. It saves no photo, does not create a product or
+package, does not change stock and does not upload in the background.
+
+After reconnecting, review every saved scan while online. The app performs a fresh
+lookup so existing products, aliases and archived records are handled before the
+user explicitly creates a new product or attaches a package. A draft is not backed
+up to the server until that review is resolved. Sign-out locks pending drafts but
+does not delete them; the original account must sign in again under the same API
+origin, business and store scope to continue. Resolve pending scans before changing
+the API address or reinstalling; a different address cannot adopt the old queue.
+Another account or store must never display or resolve them.
+
+Expo Go can exercise the connected development flow after loading its Metro
+bundle, but it does not prove a cold launch in airplane mode. The pilot requires
+the installed release candidate to demonstrate cold launch and encrypted-storage
+recovery without Metro. This temporary inbox may be removed only after permanent
+offline catalog sync/review ships and all pending drafts have been migrated or
+safely drained. The offline count workflow below remains supported.
+
+## Counting with an unreliable connection
+
+Open Count while connected and let its products finish preparing. Save then keeps
+each measurement in encrypted device storage before returning to the list. A
+checkmark at the top right means every saved entry reached the server; the sync
+icon means work remains. Tap it to retry or resolve a conflicting entry. Keep
+Shiftly open after reconnecting. Review and approval require a connection and no
+queued entries.
+
+A prepared count can reopen offline for up to 12 hours after the last
+successful account check. Saved scans is also available if separately prepared by
+a catalog manager; other app areas stay unavailable until reconnection.
+Queued measurements remain protected for the same user/store after sign-out;
+sign-out removes offline access. Expo Go still needs a loaded development bundle,
+so test by opening Count before entering the storage area. A signed installed
+build needs separate cold-launch/keychain testing. See the
+[count contract](../../docs/workstreams/inventory-counts.md#durable-mobile-counting--2026-10-22).

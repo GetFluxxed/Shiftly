@@ -1,6 +1,6 @@
 # Shiftly security model
 
-Updated 2026-10-11. This records implemented controls in the current source.
+Updated 2026-10-23. This records implemented controls in the current source.
 Hosted configuration and operational verification remain separate evidence; see
 [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -20,6 +20,55 @@ tokens are never trusted for role or store claims.
 Shared crew login, password-only manager login, and public signup are retired
 product flows. Compatibility tables/adapters may preserve existing data during
 migration but do not authorize new feature access.
+
+## Restricted offline counts
+
+A completed count download can grant only that count's local workspace up to 12
+hours after a successful account validation. Its SecureStore authorization binds
+the session token, user, business, store, role and capabilities. Offline access
+cannot learn about remote revocation until reconnection; this exposure is bounded
+by the authorization window. Normal network requests remain blocked offline.
+Backgrounding hides private UI, and every upload requires a new access check plus
+the backend transaction's authorization. Explicit revocation/sign-out removes the
+offline authorization. Expiry prevents local access without deleting queued work.
+
+Count snapshots and immutable queued observations use separate encrypted
+SecureStore checkpoints, isolated by service origin and individual account/store.
+They survive app closure and sign-out for recovery by the same authorized account.
+Replacing a clean active count retires the prior cache; pending data cannot be
+evicted by UI draft limits. Device storage failure prevents a success indication.
+Review and stock posting remain online. Physical keychain, expiry/revocation and
+cold-launch acceptance are still required before release; see the
+[count contract](workstreams/inventory-counts.md#durable-mobile-counting--2026-10-22).
+
+## Temporary offline catalog intake
+
+Catalog managers with `inventory.view` may save local capture drafts while their
+session is online and verified. Opening Saved scans also explicitly prepares a
+12-hour offline capture grant, bound to the same bearer session, user, business,
+store, role and capabilities as the count grant. Each present grant is validated
+independently; a count grant does not imply catalog access, nor vice versa.
+Concurrent preparation preserves both grants without extending offline expiry.
+Network writes remain blocked in the restricted offline workspace.
+
+At most 100 raw-code/name/measurement drafts use an atomic encrypted checkpoint
+partitioned by service origin and owner. No photo, stock balance or full catalog
+cache is stored here. Captures are acknowledged only after durable commitment;
+failed, corrupt or full storage cannot silently evict drafts. Permission changes,
+lock, sign-out and expiry hide the inbox. Pending drafts remain for the same
+account to recover after revalidation, with every local action checking scope.
+
+Online review performs a fresh lookup before offering a product/package action.
+Existing products, aliases, archived records and uncertain writes use the normal
+catalog conflict flow. The draft is removed only after explicit completion or
+discard, never on a lookup/network error. Backend authorization still controls
+all catalog writes. Local intake is not a server backup; resolve pending scans
+before changing the API origin, reinstalling or handing off the device. A new
+origin cannot adopt another origin's queued work automatically.
+
+Retire this temporary inbox only after a replacement safely migrates or drains
+pending drafts. Physical SecureStore, permission and cold-launch acceptance are
+still pending; see the [pilot contract](workstreams/iphone-pilot-2026-10-31.md).
 
 ## Authorization and tenancy
 
@@ -47,8 +96,14 @@ and reversal paths preserve actor and reason where their contracts require it.
 - Count posting and production posting use idempotency/version checks and update
   movement history plus balance projection atomically.
 - Decimal quantities and explicit units prevent floating-point stock changes.
-- Barcode camera capture saves no photo. Shelf-photo analysis and invoice/OCR
-  are planned and therefore have no implemented storage/retention claim.
+- Barcode capture saves no photo. Invoice photos use explicit upload consent,
+  manager/owner scope plus inventory/receipt capabilities, decoded JPEG/PNG byte
+  and pixel limits, orientation normalization and metadata stripping. Private
+  database bytes are removed after successful/terminal analysis or expiry cleanup
+  by the worker; backups have their own operator-controlled retention. No public
+  media URL or arbitrary image URL fetch exists. See [invoice previews](workstreams/invoice-receiving-preview.md).
+- Invoice extraction is a validated proposal. Review, received flags and incoming
+  projections never write balances or movements. Shelf-photo counting is planned.
 - Forecast output is advisory, store scoped, and cannot post stock.
 - Private native checkpoints exclude passwords, invitation/recovery codes, and
   ordinary account rosters; access changes invalidate stored private state.

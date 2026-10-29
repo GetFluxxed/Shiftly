@@ -1,4 +1,5 @@
 from uuid import uuid4
+from datetime import timedelta
 from types import SimpleNamespace
 import json
 
@@ -215,7 +216,10 @@ def test_selected_log_is_focus_context_while_history_keeps_seven_production_days
     forecasts=service(inventory); production=ProductionService(inventory.connect,inventory.accounts)
     ingredient=stock(inventory,amount='50'); made=recipe(inventory,production,ingredient,amount='1')
     selected=None
-    for day in ('2026-09-25','2026-09-26','2026-09-27','2026-09-28','2026-09-29','2026-09-30','2026-10-01'):
+    with inventory.connect() as db:
+        today=db.execute('SELECT CURRENT_DATE').fetchone()[0]
+    for offset in range(6,-1,-1):
+        day=(today-timedelta(days=offset)).isoformat()
         selected=production.confirm(inventory.tokens['owner'],{**submission(inventory,made),'businessDate':day})
     result=forecasts.generate(inventory.tokens['owner'],fields(inventory,logId=selected['id']))
     assert result['forecast']['logId']==selected['id']
@@ -224,3 +228,44 @@ def test_selected_log_is_focus_context_while_history_keeps_seven_production_days
         source=db.execute('SELECT source_snapshot FROM store_forecasts WHERE id=%s',(result['forecast']['id'],)).fetchone()[0]
     assert source['focusProductionLogId']==selected['id']
     assert len({row['date'] for row in source['productionEntries']})==7
+
+
+def test_recipe_only_quantities_are_context_not_inventory_facts(inventory):
+    production=ProductionService(inventory.connect,inventory.accounts)
+    ingredient=stock(inventory,amount='20')
+    made=production.create_recipe(inventory.tokens['owner'],fields(
+        inventory,name='Recipe with water',yieldAmount='6',yieldUnit='kg',instructions='',
+        ingredients=[{'productId':ingredient['id'],'amount':'1','unit':'kg'}],
+        referenceIngredients=[{'name':'Water','amount':'5','unit':'kg'}]))
+    production.confirm(inventory.tokens['owner'],submission(inventory,made))
+    with inventory.connect() as connection:
+        actor=production.actor(connection,inventory.tokens['owner'])
+        facts,coverage,source,_=ForecastRepository().sources(connection,actor)
+    assert source['recipes'][0]['referenceIngredients']==[
+        {'name':'Water','amount':'5','unit':'kg','inventoryTracked':False}]
+    assert len(facts['ingredients'])==1
+    assert facts['ingredients'][0]['productId']==ingredient['id']
+    assert facts['ingredients'][0]['usedAmount']=='2.02'
+    assert all(row['name']!='Water' for row in source['productionDeductions'])
+
+
+def test_forecast_recipe_sections_preserve_one_stock_total(inventory):
+    production=ProductionService(inventory.connect,inventory.accounts)
+    ingredient=stock(inventory,amount='20')
+    made=production.create_recipe(inventory.tokens['owner'],fields(
+        inventory,name='Mix and topping',yieldAmount='6',yieldUnit='kg',instructions='',
+        ingredients=[
+            {'productId':ingredient['id'],'amount':'0.3','unit':'kg','section':'base'},
+            {'productId':ingredient['id'],'amount':'0.03','unit':'kg','section':'variegato'},
+        ],referenceIngredients=[]))
+    production.confirm(inventory.tokens['owner'],{
+        **submission(inventory,made),
+        'entries':[{'recipeId':made['id'],'revisionId':made['revisionId'],'batches':1}],
+    })
+    with inventory.connect() as connection:
+        actor=production.actor(connection,inventory.tokens['owner'])
+        facts,_,source,_=ForecastRepository().sources(connection,actor)
+    assert {row['section'] for row in source['recipes'][0]['ingredients']}=={'base','variegato'}
+    assert len(facts['ingredients'])==1
+    assert facts['ingredients'][0]['usedAmount']=='0.3333'
+    assert len(source['productionDeductions'])==1

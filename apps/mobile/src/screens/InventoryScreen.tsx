@@ -27,6 +27,9 @@ export function InventoryScreen() {
       <ActionTile title="Begin Count" icon="clipboard-outline" onPress={() => nav.open('/counts')} />
       <ActionTile title="Open Shelves" label="Open shelves" icon="albums-outline" onPress={() => nav.open('/shelves')} />
       <ActionTile title="Catalog" label="Open company catalog" icon="cube-outline" onPress={() => nav.open('/catalog')} />
+      {['manager', 'owner'].includes(actor?.role || '')
+        && ['receipts.draft', 'receipts.post'].every(permission => actor?.capabilities.includes(permission))
+        ? <ActionTile title="Incoming" label="View incoming inventory" icon="download-outline" onPress={() => nav.open('/incoming')} /> : null}
     </ActionGrid>
   </Screen>;
 }

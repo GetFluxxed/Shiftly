@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import type { ScrollView } from 'react-native';
+import type { ScrollViewInstance } from 'react-native';
 import { useWorkspace } from './WorkspaceProvider';
 
 /** Screen instances retain only their offset, not the server data they display. */
-export function useScrollRestoration(title: string, scroll: React.RefObject<ScrollView | null>) {
+export function useScrollRestoration(title: string, scroll: React.RefObject<ScrollViewInstance | null>) {
   const { controller, scope, ready, resume } = useWorkspace();
   const params = useLocalSearchParams();
   const ids = ['productId', 'shelfId', 'countId', 'lineId', 'userId'].map(key => {

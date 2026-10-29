@@ -8,6 +8,8 @@ import { InventoryScreen } from '../../src/screens/InventoryScreen';
 import { ReportsScreen } from '../../src/screens/ReportsScreen';
 import { CatalogScreen, NewProductScreen, ProductScreen } from '../../src/inventory/CatalogScreens';
 import { CatalogScanScreen } from '../../src/inventory/CatalogScanScreen';
+import { SavedScansScreen } from '../../src/inventory/scans/SavedScansScreen';
+import { SavedScansProvider } from '../../src/inventory/scans/SavedScansProvider';
 import { StockScreen, StockDetailScreen } from '../../src/inventory/counts/StockScreens';
 import { CountsScreen, CountSessionScreen, CountReviewScreen, CountHistoryScreen } from '../../src/inventory/counts/CountScreens';
 import { CountEntryScreen } from '../../src/inventory/counts/CountEntryScreen';
@@ -21,7 +23,12 @@ import { SessionContext } from './session';
 import { RouterContext, destination } from './router';
 import { WorkspaceProvider, WorkspaceNavigation } from '../../src/restoration/WorkspaceProvider';
 import { WorkspaceGate, workspaceStorage } from './workspace';
+import { OfflineCountsProvider } from '../../src/inventory/counts/OfflineCountsProvider';
+import { createOfflineCountStorage } from '../../src/inventory/counts/offline/storage';
+import { OfflineInventoryWorkspace } from '../../src/inventory/OfflineInventoryWorkspace';
+import type { OfflineCountPermit } from '../../src/session/offlinePermit';
 import { cameraBoundary } from './camera-module';
+import { savedScansStorage, savedScansTest } from './saved-scans';
 
 const catalogCamera = {
   allow: () => {
@@ -34,18 +41,30 @@ const catalogCamera = {
 };
 declare global { interface Window {
   __testToken: string; __inventoryTest: SessionController; __catalogCameraTest: typeof catalogCamera;
+  __savedScansTest: typeof savedScansTest;
 } }
 window.__catalogCameraTest = catalogCamera;
+window.__savedScansTest = savedScansTest;
 // Android focus/blur events have no browser implementation. State changes and
 // workspace invalidation remain exercised through the actual controller.
 const subscribe = AppState.addEventListener.bind(AppState);
 AppState.addEventListener = (event, listener) => event === 'change' ? subscribe(event, listener) : { remove() {} };
 let token: string | null=window.__testToken;
-const controller=new SessionController(createTransport(location.origin),{read:async()=>token,write:async value=>{token=value;},remove:async()=>{token=null;}});
+const permitStore = {
+ read: async () => JSON.parse(localStorage.getItem('test.offline-permit') || 'null') as OfflineCountPermit | null,
+ write: async (value: OfflineCountPermit) => localStorage.setItem('test.offline-permit', JSON.stringify(value)),
+ remove: async () => localStorage.removeItem('test.offline-permit'),
+};
+const countStorage = createOfflineCountStorage({
+ get: async key => localStorage.getItem(key),
+ set: async (key, value) => { localStorage.setItem(key, value); },
+ remove: async key => { localStorage.removeItem(key); },
+}, 'test.offline-count');
+const controller=new SessionController(createTransport(location.origin),{read:async()=>token,write:async value=>{token=value;},remove:async()=>{token=null;}},permitStore);
 window.__inventoryTest=controller;
 // React Native Web does not implement the native Alert dialog. Use a browser
 // confirmation so the actual screen's confirmation callback is exercised.
-Alert.alert=(_title,message,buttons)=>{ if(window.confirm(message)) buttons?.at(-1)?.onPress?.(); };
+Alert.alert=(_title,message,buttons)=>{ if(window.confirm(message ?? undefined)) buttons?.at(-1)?.onPress?.(); };
 function App() {
  const snapshot=React.useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
  const [route,setRoute]=React.useState(() => destination(location.pathname === '/' ? '/today' : location.pathname));
@@ -54,15 +73,16 @@ function App() {
    setRoute(destination(value));
  },[]);
  const ctx=React.useMemo(()=>({go,path:route.path,params:route.params,setParams:()=>{}}),[go,route]);
- const Screen=({'/today':InventoryScreen,'/reports':ReportsScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,
+ const Screen=({'/today':InventoryScreen,'/reports':ReportsScreen,'/inventory':InventoryScreen,'/catalog':CatalogScreen,'/catalog/new':NewProductScreen,'/catalog/scan':CatalogScanScreen,'/catalog/saved-scans':SavedScansScreen,
    '/stock':StockScreen,'/stock/[productId]':StockDetailScreen,'/counts':CountsScreen,
    '/counts/[countId]':CountSessionScreen,'/counts/[countId]/review':CountReviewScreen,'/counts/history':CountHistoryScreen,
    '/counts/[countId]/line/[lineId]':CountEntryScreen,'/catalog/[productId]':ProductScreen,'/catalog/packages/[productId]':PackagesScreen,'/shelves':ShelvesScreen,'/shelves/[shelfId]':ShelfScreen,
    '/production':ProductionScreen,'/production/run':ProductionRunScreen,'/production/review':ProductionReviewScreen,
    '/production/recipes':RecipesScreen,'/production/recipes/new':NewRecipeScreen,'/production/recipes/[recipeId]':RecipeScreen,
    '/production/logs':ProductionLogsScreen,'/production/logs/[logId]':ProductionLogScreen} as Record<string,React.ComponentType>)[route.path]!;
- return <SessionContext.Provider value={controller}><WorkspaceProvider session={controller} storage={workspaceStorage}><SafeAreaProvider><RouterContext.Provider value={ctx}>
-   <WorkspaceNavigation session={controller}/><WorkspaceGate session={controller}><Screen key={`${route.path}:${JSON.stringify(route.params)}:${snapshot.revision}`} /></WorkspaceGate>
- </RouterContext.Provider></SafeAreaProvider></WorkspaceProvider></SessionContext.Provider>;
+ return <SessionContext.Provider value={controller}><SavedScansProvider session={controller} storage={savedScansStorage}><OfflineCountsProvider session={controller} storage={countStorage}><WorkspaceProvider session={controller} storage={workspaceStorage}><SafeAreaProvider><RouterContext.Provider value={ctx}>
+   <WorkspaceNavigation session={controller}/><WorkspaceGate session={controller}>{snapshot.status === 'offline'
+     ? <OfflineInventoryWorkspace /> : <Screen key={`${route.path}:${JSON.stringify(route.params)}:${snapshot.revision}`} />}</WorkspaceGate>
+ </RouterContext.Provider></SafeAreaProvider></WorkspaceProvider></OfflineCountsProvider></SavedScansProvider></SessionContext.Provider>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

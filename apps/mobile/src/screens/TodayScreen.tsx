@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSession } from '@/src/session/SessionProvider';
+import { useInventoryNavigation } from '@/src/inventory/shared';
 import { Card, Pill, Screen, layout } from '@/src/ui/components';
 import { colors, fonts, roleLabels } from '@/src/ui/theme';
 import { HeadsUpCard } from '@/src/headsUp/HeadsUpCard';
@@ -12,6 +13,7 @@ import { ActionGrid, ActionTile } from '@/src/ui/ActionGrid';
 export function TodayScreen() {
   const { actor, stores } = useSession();
   const router = useRouter();
+  const inventoryNavigation = useInventoryNavigation();
   const can = (permission: string) => Boolean(actor?.capabilities.includes(permission));
   const reports = can('reports.view') || can('reports.submit');
   const showHeadsUp = actor?.role === 'crew' || actor?.role === 'manager' || actor?.role === 'production';
@@ -47,6 +49,8 @@ export function TodayScreen() {
         label={can('memberships.manage') ? (actor?.role === 'owner' ? 'Owner tools' : 'Manage team') : 'Manage team. Permission required.'}
         icon="people-outline" disabled={!can('memberships.manage')}
         onPress={() => router.push(actor?.role === 'owner' ? '/owner' : '/team')} /> : null}
+      {['manager', 'owner'].includes(actor?.role || '') && ['inventory.view', 'receipts.draft', 'receipts.post'].every(can)
+        ? <ActionTile title="Invoices" icon="receipt-outline" onPress={() => inventoryNavigation.open('/invoices')} /> : null}
       <ActionTile title="Account" icon="person-circle-outline" onPress={() => router.push('/accounts')} />
     </ActionGrid>
   </Screen>;

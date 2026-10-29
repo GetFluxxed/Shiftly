@@ -27,7 +27,7 @@ declare global { interface Window { __accountsTest: SessionController } }
 window.__accountsTest=controller;
 const subscribe=AppState.addEventListener.bind(AppState);
 AppState.addEventListener=(event,listener)=>event==='change'?subscribe(event,listener):{remove(){}};
-Alert.alert=(_title,message,buttons)=>{if(confirm(message))buttons?.at(-1)?.onPress?.();};
+Alert.alert=(_title,message,buttons)=>{if(confirm(message ?? undefined))buttons?.at(-1)?.onPress?.();};
 function App(){
  const snapshot=React.useSyncExternalStore(controller.subscribe,controller.getSnapshot,controller.getSnapshot);
  type Route = {path:string;params:Record<string,string>};

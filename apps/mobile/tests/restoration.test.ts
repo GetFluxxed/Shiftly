@@ -120,6 +120,31 @@ test('the ready gate rejects reads and writes until hydration completes and enfo
   assert.equal(controller.read('draft', 'initial'), 'initial');
 });
 
+test('feature draft validation restores optional fields without bypassing scope or JSON bounds', async () => {
+  const controller = new WorkspaceController(new MemoryStorage(), () => NOW);
+  await open(controller);
+  type Draft = { name: string; note?: string };
+  const initial: Draft = { name: '' };
+  const validate = (value: unknown): value is Draft => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const row = value as Record<string, unknown>;
+    return Object.keys(row).every(key => key === 'name' || key === 'note')
+      && typeof row.name === 'string' && (row.note === undefined || typeof row.note === 'string');
+  };
+  const saved = { name: 'Recipe', note: 'Topping' };
+  controller.write('feature.draft', saved, 'revision-1', controller.getSnapshot().scope);
+  assert.deepEqual(controller.read('feature.draft', initial, 'revision-1'), initial);
+  assert.deepEqual(controller.read('feature.draft', initial, 'revision-1', validate), saved);
+  assert.deepEqual(controller.read('feature.draft', initial, 'revision-2', validate), initial);
+  controller.write('feature.draft', { name: 5 }, 'revision-1', controller.getSnapshot().scope);
+  assert.deepEqual(controller.read('feature.draft', initial, 'revision-1', validate), initial);
+  controller.write('feature.draft', { a: { b: { c: { d: { e: 'too deep' } } } } }, 'revision-1', controller.getSnapshot().scope);
+  assert.deepEqual(controller.read('feature.draft', initial, 'revision-1', (_value): _value is Draft => true), initial);
+  controller.write('feature.draft', saved, 'revision-1', controller.getSnapshot().scope);
+  controller.accept(locked);
+  assert.deepEqual(controller.read('feature.draft', initial, 'revision-1', validate), initial);
+});
+
 test('a fixed forty-package count map restores exactly and rejects corrupt map shapes', async () => {
   const controller = new WorkspaceController(new MemoryStorage(), () => NOW);
   await open(controller);
@@ -298,4 +323,38 @@ test('inventory checkpoints preserve safe immediate origins and drop inaccessibl
   });
   assert.deepEqual(savedRoute('/stock', { inventoryTrail: JSON.stringify([{ pathname: 'https://example.com' }]) }, actor()), { pathname: '/stock' });
   assert.equal(savedRoute('/stock', { inventoryTrail }, actor({ capabilities: [] })), null);
+});
+
+
+test('sixty invoice lines persist with retry identity while other entry and total limits remain bounded', async () => {
+  const storage = new MemoryStorage();
+  const first = new WorkspaceController(storage, () => NOW);
+  const person = actor({role: 'owner', capabilities: ['inventory.view', 'receipts.draft', 'receipts.post']});
+  await open(first, ready(person));
+  const draft = {baseVersion: 1, supplier: 'Supplier', invoiceNumber: '42', mutation: {requestId: UUID_A},
+    lines: Array.from({length:60}, (_, n) => ({id: UUID_A.slice(0,-2) + String(n).padStart(2,'0'),
+      description: 'D'.repeat(160), sku: 'S'.repeat(64), productId: UUID_A, packageId: UUID_B,
+      quantity:'999999999999999.999999999',unit:'package',received:false}))};
+  assert.ok(JSON.stringify(draft).length > 12000);
+  assert.ok(JSON.stringify(draft).length < 40000);
+  first.write(`receiving.invoice.${UUID_A}`, draft, UUID_A, first.getSnapshot().scope);
+  assert.equal(await first.flush(), true);
+  const restored = new WorkspaceController(storage, () => NOW);
+  await open(restored, ready(person));
+  assert.deepEqual(restored.read(`receiving.invoice.${UUID_A}`, draft, UUID_A), draft);
+  restored.write('unrelated.large', 'x'.repeat(12001), '', restored.getSnapshot().scope);
+  assert.ok(restored.getSnapshot().message);
+  assert.equal(restored.read('unrelated.large', ''), '');
+  restored.write(`receiving.invoice.${UUID_B}`, {text:'x'.repeat(40001)}, '', restored.getSnapshot().scope);
+  assert.deepEqual(restored.read(`receiving.invoice.${UUID_B}`, null), null);
+});
+
+test('invoice restoration retains authorized parents and drops receiving routes after role loss', () => {
+  const manager = actor({role:'manager', capabilities:['inventory.view','receipts.draft','receipts.post']});
+  const trail=JSON.stringify([{pathname:'/today'},{pathname:'/invoices'}]);
+  assert.equal(savedRoute(`/invoices/${UUID_A}`, {inventoryTrail:trail}, manager)?.pathname, `/invoices/${UUID_A}`);
+  assert.equal(savedRoute(`/invoices/${UUID_A}`, {}, actor()), null);
+  assert.equal(savedRoute('/incoming', {}, actor()), null);
+  assert.equal(savedRoute('/catalog', {inventoryTrail:trail}, actor())?.params?.inventoryTrail,
+    JSON.stringify([{pathname:'/today'}]));
 });

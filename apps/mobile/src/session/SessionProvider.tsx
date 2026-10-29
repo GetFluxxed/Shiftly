@@ -3,13 +3,18 @@ import { AppState } from 'react-native';
 import { apiOrigin, createTransport, ApiError, type Transport } from '../api/client';
 import { secureCredentials } from './credentials';
 import { SessionController } from './controller';
+import { secureOfflineCountPermit } from './offlinePermitStorage';
+import { SavedScansProvider } from '../inventory/scans/SavedScansProvider';
+import { secureSavedScansStorage } from '../inventory/scans/secureStorage';
+import { OfflineCountsProvider } from '../inventory/counts/OfflineCountsProvider';
+import { secureOfflineCountStorage } from '../inventory/counts/offline/secureStorage';
 import { WorkspaceProvider, WorkspaceNavigation } from '../restoration/WorkspaceProvider';
 import { secureWorkspaceStorage } from '../restoration/secureStorage';
 
 function buildController() {
   try {
     const origin = apiOrigin(process.env.EXPO_PUBLIC_API_URL, __DEV__);
-    return new SessionController(createTransport(origin), secureCredentials(origin));
+    return new SessionController(createTransport(origin), secureCredentials(origin), secureOfflineCountPermit(origin));
   } catch (error) {
     const fail = async (): Promise<never> => { throw error instanceof ApiError ? error : new ApiError('The app could not connect to Shiftly.'); };
     return new SessionController({ send: fail } as Transport, { read: fail, write: fail, remove: async () => undefined });
@@ -22,6 +27,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
     try { return secureWorkspaceStorage(apiOrigin(process.env.EXPO_PUBLIC_API_URL, __DEV__)); }
     catch { return { read: async () => null, write: async () => { throw new Error('Workspace storage is unavailable.'); }, remove: async () => undefined }; }
   });
+  const [countStorage] = useState(() => secureOfflineCountStorage(
+    // An invalid service configuration still fails closed in the session controller.
+    (() => { try { return apiOrigin(process.env.EXPO_PUBLIC_API_URL, __DEV__); } catch { return 'unconfigured'; } })(),
+  ));
+  const [scanStorage] = useState(() => secureSavedScansStorage(
+    (() => { try { return apiOrigin(process.env.EXPO_PUBLIC_API_URL, __DEV__); } catch { return 'unconfigured'; } })(),
+  ));
   useEffect(() => {
     void controller.restore();
     const listener = AppState.addEventListener('change', state => {
@@ -36,9 +48,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }, 60_000);
     return () => { listener.remove(); blur.remove(); focus.remove(); clearInterval(verification); controller.lock(); };
   }, [controller]);
-  return <Context.Provider value={controller}><WorkspaceProvider session={controller} storage={workspaceStorage}>
+  return <Context.Provider value={controller}><SavedScansProvider session={controller} storage={scanStorage}><OfflineCountsProvider session={controller} storage={countStorage}><WorkspaceProvider session={controller} storage={workspaceStorage}>
     <WorkspaceNavigation session={controller} />{children}
-  </WorkspaceProvider></Context.Provider>;
+  </WorkspaceProvider></OfflineCountsProvider></SavedScansProvider></Context.Provider>;
 }
 export function useSession() {
   const controller = useContext(Context);
@@ -46,5 +58,5 @@ export function useSession() {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return { ...snapshot, signIn: controller.signIn, activate: controller.activate, resetPassword: controller.resetPassword,
     switchStore: controller.switchStore, invitationDetails: controller.invitationDetails, changePassword: controller.changePassword, signOut: controller.signOut,
-    retry: controller.retry, request: controller.request, transferOwnership: controller.transferOwnership };
+    retry: controller.retry, refreshAccess: controller.refreshAccess, request: controller.request, transferOwnership: controller.transferOwnership };
 }

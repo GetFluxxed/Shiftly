@@ -1,6 +1,6 @@
 # Shiftly implementation plan
 
-Updated 2026-10-11. This plan separates source implementation from release
+Updated 2026-10-25. This plan separates source implementation from release
 evidence. An item marked **implemented** exists in this checkout. Local/CI,
 physical-device, and hosted verification are recorded independently; none implies
 another.
@@ -35,8 +35,12 @@ are proven.
 | Recipes and production | Implemented, including 1% allowance and reversals | pilot operational acceptance |
 | Store-scoped forecasts | Implemented as advisory output | provider budget/quality monitoring and hosted worker evidence |
 | Shelf-photo assisted counts | Planned | privacy, retention, samples, accuracy and review design |
-| Receiving/invoice workflow | Planned | supplier/barcode mapping and posting contract |
-| Offline stock posting | Planned | idempotency/conflict design; local checkpoints are not an outbox |
+| Invoice review and incoming previews | Implemented: manager/owner manual drafts, private photo extraction, received flags and non-posting projections | real invoice quality, device/privacy/worker and hosted acceptance |
+| Receipt posting | Planned | partial receipts, duplicate receipt prevention, corrections/reversals and atomic stock posting contract |
+| Offline count observations | Implemented in the native Count workspace; durable local queue | physical-device storage, reconnection and conflict acceptance |
+| Temporary Saved scans inbox | Implemented; local checks, rendered journeys and native bundle exports passed | encrypted offline capture, reconnection review and original-account isolation on the pilot iPhone |
+| October 31 iPhone pilot | Goal: installable GM count release candidate | Apple membership/signing, registered device or TestFlight path, HTTPS FastAPI, production data/account mapping and end-to-end device rehearsal |
+| Offline stock posting | Planned; review/approval remain online | separate posting and release gate |
 
 ## Implemented foundations
 
@@ -89,7 +93,10 @@ zero. See [inventory counts](workstreams/inventory-counts.md).
 
 ### Recipes, production, and forecasts
 
-Recipes are business-scoped and revisioned. Confirmed production snapshots its
+Recipes are business-scoped and revisioned, with separate Ingredients and
+Variegato sections and optional recipe-only lines. Variegato identifies fixed
+toppings for the planned partial-tray workflow. Current production still accepts
+whole batches; partial amounts are not implemented. Confirmed production snapshots its
 recipe, adds the defined 1% ingredient allowance, rejects missing/insufficient
 stock as one transaction, and posts deductions once. Reversals require a reason
 and cannot erase later physical-count authority.
@@ -100,6 +107,22 @@ idempotent requests. They are planning support only and never edit recipes,
 production, or inventory.
 
 ## Next work packages
+
+The immediate schedule is the eight-day October 23–31
+[iPhone pilot](workstreams/iphone-pilot-2026-10-31.md). Freeze its product scope to
+named-account authentication and roles, catalog/barcode capture, temporary Saved
+scans, and count preparation/offline observation/synchronization. Defer production
+expansion, shelf-photo counts and offline stock posting until after the count.
+On October 25 the owner explicitly brought forward a bounded invoice photo/review
+preview for managers and owners. This is an additional local feature, not evidence
+that the signed-count pilot or hosted/privacy gates have passed. Its scope and
+verification are in [invoice previews](workstreams/invoice-receiving-preview.md). A functional pilot requires an installed signed binary and a
+reachable supported backend; source completion alone does not satisfy the goal.
+
+The [interface consistency pass](workstreams/iphone-pilot-2026-10-31.md#interface-consistency-before-october-31)
+aligns existing native inventory, production and account/workspace screens before
+the pilot. Start with the catalog table and retain current theme, permissions and
+workflows; broader feature additions remain deferred.
 
 1. **Engineering adoption and release operability.** Complete the provider/job
    ownership boundary, reproducible dependency locks, service/dependency ownership,
@@ -116,9 +139,29 @@ production, or inventory.
 5. **Shelf-photo discovery.** Only after privacy/retention, provider cost, consent,
    representative samples, and measurable accuracy gates are approved, design a
    reviewed proposal flow. A photo cannot infer partial weight by itself.
-6. **Receiving discovery.** Define supplier identifiers, invoice ownership,
-   partial/substitution/damage behavior, and idempotent receipt posting. OCR is a
-   separate optional evaluation.
+6. **Receiving follow-up.** Evaluate invoice photo accuracy on representative
+   supplier documents. Extend reviewed drafts only after defining partial receipts,
+   substitutions/damage, duplicate receipt detection and idempotent posting/reversal.
+   Keep extraction and checkboxes unable to change stock until that contract passes.
+
+### Recipe entry and partial-tray follow-up
+
+Finish entering the supplied recipes and confirming their catalog mappings first.
+Then extend the existing production preview/confirmation workflow to accept the
+amount to make for a tray. Scale base ingredients by requested amount divided by
+the recipe reference yield; add fixed Variegato once per tray construction or
+remolding. Leftover gelato is reused without deducting its ingredients again.
+Track fresh gelato amount and the number of trays being finished separately. Store the requested
+amount and recipe revision in immutable production snapshots, retain the tracked
+1% allowance, and preserve exact units, shortage checks, and retry safety. Do not
+model a partial tray as fractional batches that also scale its toppings.
+
+Nominal tray yield is not a requirement that all listed inputs sum to that yield:
+inside additions and toppings can make the total input larger. Keep the source
+amounts intact and show the planned quantities for review before confirmation.
+The October 25 invoice-preview scope change does not complete this refinement or
+waive the later stock-posting and shelf-photo gates.
+See [the production contract](workstreams/production-and-assisted-inventory.md).
 
 ## Cross-workstream invariants
 

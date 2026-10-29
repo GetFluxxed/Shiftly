@@ -11,11 +11,12 @@ REVISION_ID = "22222222-2222-4222-8222-222222222222"
 PRODUCT_ID = "33333333-3333-4333-8333-333333333333"
 
 
-def browser_contract(page, *, uncertain=False, can_submit=True):
+def browser_contract(page, *, uncertain=False, can_submit=True, reference_ingredients=None, ingredients=None):
     state = {"posted": None, "attempts": [], "recovery": "unknown", "store": 7, "post_status": 200}
     recipe = {"id": RECIPE_ID, "revisionId": REVISION_ID, "version": 1, "name": "Vanilla bean",
               "yieldAmount": "6", "yieldUnit": "tubs", "instructions": "Fold slowly.",
-              "ingredients": [{"productId": PRODUCT_ID, "name": "Cream", "sku": "001", "amount": "2",
+              "referenceIngredients": reference_ingredients or [],
+              "ingredients": ingredients if ingredients is not None else [{"productId": PRODUCT_ID, "name": "Cream", "sku": "001", "amount": "2",
                                "unit": "kg", "baseUnit": "kg", "baseAmount": "2"}]}
 
     def log(log_id):
@@ -149,3 +150,39 @@ def test_definitive_conflict_unlocks_same_draft_for_correction(page):
     expect(page.get_by_role("button", name="Retry saved submission")).to_be_hidden()
     current = page.evaluate("JSON.parse(sessionStorage.getItem('shiftly.production.draft.v2')).draft")
     assert current == original
+
+
+def test_recipe_only_ingredients_remain_visible_without_stock_deductions(page):
+    browser_contract(page, reference_ingredients=[
+        {'name':'Water','amount':'1.86','unit':'kg'},
+        {'name':'Raspberries','amount':'2.508','unit':'kg'},
+    ])
+    page.get_by_role('button',name='Recipes',exact=True).click()
+    book=page.locator('#recipes-view')
+    book.get_by_role('button',name='Vanilla bean Makes 6 tubs per batch',exact=True).click()
+    expect(book.get_by_text('1.86 kg Water · Recipe only',exact=True)).to_be_visible()
+    expect(book.get_by_text('2.508 kg Raspberries · Recipe only',exact=True)).to_be_visible()
+    page.get_by_role('button',name='Today',exact=True).click()
+    select_and_review(page)
+    expect(page.locator('#production-deductions').get_by_text('Water',exact=True)).to_have_count(0)
+    expect(page.locator('#production-deductions').get_by_text('Raspberries',exact=True)).to_have_count(0)
+
+
+def test_recipe_book_separates_variegato_from_base_for_the_same_product(page):
+    common = {'productId': PRODUCT_ID, 'name': 'Cocoa crumble', 'sku': 'CRUMBLE',
+              'unit': 'kg', 'baseUnit': 'kg'}
+    browser_contract(page, ingredients=[
+        {**common, 'amount': '0.3', 'baseAmount': '0.3', 'section': 'base'},
+        {**common, 'amount': '0.03', 'baseAmount': '0.03', 'section': 'variegato'},
+    ], reference_ingredients=[
+        {'name': 'Fresh garnish', 'amount': '1', 'unit': 'each', 'section': 'variegato'},
+    ])
+    page.get_by_role('button', name='Recipes', exact=True).click()
+    book = page.locator('#recipes-view')
+    book.get_by_role('button', name='Vanilla bean Makes 6 tubs per batch', exact=True).click()
+    base = book.locator('section').filter(has=page.get_by_role('heading', name='Ingredients', exact=True))
+    toppings = book.locator('section').filter(has=page.get_by_role('heading', name='Variegato', exact=True))
+    expect(base.get_by_text('0.3 kg Cocoa crumble', exact=True)).to_be_visible()
+    expect(base.get_by_text('0.03 kg Cocoa crumble', exact=True)).to_have_count(0)
+    expect(toppings.get_by_text('0.03 kg Cocoa crumble', exact=True)).to_be_visible()
+    expect(toppings.get_by_text('1 each Fresh garnish · Recipe only', exact=True)).to_be_visible()

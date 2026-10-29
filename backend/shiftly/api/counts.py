@@ -56,6 +56,11 @@ async def comparison(count_id: str, request: Request, context: AppContext = Depe
     return await dispatch(request,context,context.services.counts.comparisons,count_id,query=request.query_params.get('q',''),after=request.query_params.get('after'))
 
 
+@router.post('/counts/{count_id}/include-catalog')
+async def include_catalog(count_id: str, request: Request, context: AppContext = Depends(get_app_context)):
+    return await dispatch(request,context,context.services.counts.include_catalog,count_id)
+
+
 @router.post('/counts/{count_id}/{action}')
 async def transition(count_id: str, action: str, request: Request, context: AppContext = Depends(get_app_context)):
     return await dispatch(request,context,context.services.counts.transition,count_id,action)

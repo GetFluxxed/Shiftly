@@ -7,10 +7,20 @@ promise that camera work will begin by a particular time, or a legal/compliance
 approval.
 
 The existing camera feature scans barcodes for catalog lookup and creation. It
-does not count shelves, save shelf photos, receive invoices or call an AI
-provider. Production currently deducts the exact recipe quantity multiplied by
+does not count shelves or save barcode images. The separately authorized invoice
+preview below now sends explicitly uploaded invoice photos to the configured AI
+provider; it does not receive stock. Production currently deducts the exact recipe quantity multiplied by
 confirmed batches and `1.01`; camera and receiving work must preserve that stock
 history and its version checks.
+
+## October 25 scope update
+
+The owner authorized bringing forward a private manager/owner invoice preview,
+including photo reading. [Invoice previews](invoice-receiving-preview.md) records
+the implemented boundary and evidence. It adds drafts, extracted proposals and
+incoming projections only; receipt posting and shelf-photo counting remain future
+work. The original ordered plan below is historical sequencing and still defines
+the broader release gates, not a claim that the new preview completes them.
 
 ## Delivery order and ownership
 
