@@ -31,6 +31,16 @@ def timer_button(page: Page, member: str, hours: int):
     return page.get_by_role("button", name=re.compile(rf"^{re.escape(member)}, {spoken} timer,"))
 
 
+def member_details_button(page: Page, name: str):
+    return page.get_by_role("button", name=f"View {name} timers and shift details", exact=True)
+
+
+def open_member_details(page: Page, name: str):
+    member_details_button(page, name).click()
+    expect(page.get_by_role("heading", name=name, exact=True)).to_be_visible()
+    expect(page.get_by_role("dialog")).to_have_count(1)
+
+
 def test_today_shortcut_is_nested_under_owner_tools_and_role_guarded(page: Page, router_url: str):
     page.goto(f"{router_url}/today?role=owner")
     owner = page.get_by_role("button", name="Owner tools", exact=True)
@@ -164,3 +174,122 @@ def test_storage_failure_preserves_single_change_surfaces_error_and_does_not_ret
     assert page.evaluate("window.__timeTrackingWrites") == 1
     page.wait_for_timeout(500)
     assert page.evaluate("window.__timeTrackingWrites") == 1
+
+
+def test_large_roster_compacts_and_member_management_returns_to_details(page: Page, router_url: str):
+    open_tracking(page, router_url)
+    for name in ("Avery", "Jordan", "Morgan"):
+        add_member(page, name)
+    expect(timer_button(page, "Avery", 3)).to_be_visible()
+    add_member(page, "Casey")
+    expect(timer_button(page, "Avery", 3)).to_have_count(0)
+    expect(page.get_by_role("button", name=re.compile(r"^View .* timers and shift details$"))).to_have_count(4)
+
+    page.evaluate("""() => {
+        window.__detailInputFocuses = 0;
+        document.addEventListener('focusin', event => {
+            if (event.target.tagName === 'INPUT') window.__detailInputFocuses += 1;
+        });
+    }""")
+    open_member_details(page, "Avery")
+    assert page.evaluate("document.activeElement.tagName") != "INPUT"
+    assert page.evaluate("window.__detailInputFocuses") == 0
+    expect(timer_button(page, "Avery", 3)).to_be_disabled()
+    page.get_by_role("dialog").get_by_role("button", name="Clock in Avery", exact=True).click()
+    expect(timer_button(page, "Avery", 3)).to_be_enabled()
+    page.get_by_role("button", name="Edit member", exact=True).click()
+    page.get_by_label("Name", exact=True).fill("Discarded draft")
+    page.get_by_role("button", name="Cancel", exact=True).click()
+    page.get_by_role("button", name="Edit member", exact=True).click()
+    expect(page.get_by_label("Name", exact=True)).to_have_value("Avery")
+    page.get_by_label("Name", exact=True).fill("Jordan")
+    page.get_by_role("button", name="Save", exact=True).click()
+    expect(page.get_by_role("dialog").get_by_text(re.compile(r"already exists"))).to_be_visible()
+    page.get_by_label("Name", exact=True).fill("Avery Stone")
+    page.get_by_role("button", name="Save", exact=True).click()
+    expect(page.get_by_role("heading", name="Avery Stone", exact=True)).to_be_visible()
+    expect(page.get_by_role("dialog")).to_have_count(1)
+    page.get_by_role("button", name="Close", exact=True).click()
+    expect(member_details_button(page, "Avery Stone")).to_be_visible()
+
+    open_member_details(page, "Casey")
+    page.get_by_role("button", name="Edit member", exact=True).click()
+    page.get_by_role("button", name="Remove member", exact=True).click()
+    page.get_by_role("button", name="Keep member", exact=True).click()
+    page.get_by_role("button", name="Remove member", exact=True).click()
+    page.get_by_role("button", name="Remove Casey", exact=True).click()
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    expect(member_details_button(page, "Avery Stone")).to_have_count(0)
+    expect(timer_button(page, "Avery Stone", 3)).to_be_visible()
+    expect(page.get_by_role("button", name="Clock out Avery Stone", exact=True)).to_be_visible()
+
+
+def test_compact_timers_keep_running_and_reset_within_one_modal(page: Page, router_url: str):
+    page.clock.install(time=2_000_000_000_000)
+    open_tracking(page, router_url)
+    for name in ("Avery", "Jordan", "Morgan", "Casey"):
+        add_member(page, name)
+    page.get_by_role("button", name="Clock in Avery", exact=True).click()
+    open_member_details(page, "Avery")
+    timer_button(page, "Avery", 3).click()
+    page.clock.fast_forward(60 * 60 * 1000)
+    timer_button(page, "Avery", 5).click()
+    page.get_by_role("button", name="Close", exact=True).click()
+    page.clock.fast_forward(int(2.5 * 60 * 60 * 1000))
+    expect(member_details_button(page, "Avery")).to_contain_text("Complete")
+    page.reload()
+    expect(member_details_button(page, "Avery")).to_contain_text("Complete")
+
+    open_member_details(page, "Avery")
+    expect(timer_button(page, "Avery", 3)).to_have_attribute("aria-label", re.compile(r"complete$"))
+    expect(timer_button(page, "Avery", 5)).to_have_attribute("aria-label", re.compile(r"2:59:5[0-9] remaining$"))
+    timer_button(page, "Avery", 5).click()
+    expect(page.get_by_role("dialog")).to_have_count(1)
+    page.get_by_role("button", name="Cancel", exact=True).click()
+    expect(page.get_by_role("heading", name="Avery", exact=True)).to_be_visible()
+    expect(timer_button(page, "Avery", 5)).to_have_attribute("aria-label", re.compile(r"remaining$"))
+    timer_button(page, "Avery", 3).click()
+    expect(page.get_by_role("dialog")).to_have_count(1)
+    page.get_by_role("button", name="Reset timer", exact=True).click()
+    expect(page.get_by_role("heading", name="Avery", exact=True)).to_be_visible()
+    expect(timer_button(page, "Avery", 3)).to_have_attribute("aria-label", re.compile(r"ready$"))
+    expect(timer_button(page, "Avery", 5)).to_have_attribute("aria-label", re.compile(r"remaining$"))
+    page.get_by_role("dialog").get_by_role("button", name="Clock out Avery", exact=True).click()
+    expect(timer_button(page, "Avery", 3)).to_be_disabled()
+    expect(page.get_by_text("RECENT SHIFTS · UP TO 10 SAVED", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Close", exact=True).click()
+    expect(page.get_by_role("button", name="Clock in Avery", exact=True)).to_be_visible()
+
+
+def test_compact_roster_and_member_sheet_fit_phone_and_tablet(page: Page, router_url: str):
+    screenshot_dir = os.environ.get("TIME_TRACKING_SCREENSHOT_DIR")
+    if screenshot_dir:
+        Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
+    long_name = "Alexandria Montgomery-Wellington"
+    page.set_viewport_size({"width": 390, "height": 900})
+    open_tracking(page, router_url)
+    for name in (long_name, "Jordan Lee", "Morgan Chen", "Casey Rivera", "Sam Patel", "Taylor Brooks"):
+        add_member(page, name)
+    page.get_by_role("button", name=f"Clock in {long_name}", exact=True).click()
+    for width in (320, 390, 1024):
+        page.set_viewport_size({"width": width, "height": 900})
+        member_details_button(page, long_name).scroll_into_view_if_needed()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        row = member_details_button(page, long_name).bounding_box()
+        clock = page.get_by_role("button", name=f"Clock out {long_name}", exact=True).bounding_box()
+        assert row["height"] >= 44
+        assert clock["height"] >= 44
+        assert clock["x"] >= 0 and clock["x"] + clock["width"] <= width
+        if width == 390:
+            assert row["height"] < 170, "Compact rows should be much shorter than expanded timer cards"
+        if screenshot_dir:
+            page.screenshot(path=str(Path(screenshot_dir) / f"time-tracking-compact-{width}.png"), full_page=True)
+        open_member_details(page, long_name)
+        expect(timer_button(page, long_name, 3)).to_be_visible()
+        expect(timer_button(page, long_name, 5)).to_be_visible()
+        for timer in (timer_button(page, long_name, 3), timer_button(page, long_name, 5)):
+            box = timer.bounding_box()
+            assert box["x"] >= 0 and box["x"] + box["width"] <= width
+        if screenshot_dir:
+            page.screenshot(path=str(Path(screenshot_dir) / f"time-tracking-member-sheet-{width}.png"), full_page=True)
+        page.get_by_role("button", name="Close", exact=True).click()

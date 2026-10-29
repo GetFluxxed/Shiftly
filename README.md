@@ -21,7 +21,8 @@ Implemented in the current source:
   memberships, and owner/admin/manager/production/crew policy;
 - native sign-in, reporting, Heads Up, team and owner administration;
 - an owner-operated [Time Tracking demo](docs/workstreams/time-tracking-demo.md)
-  with named crew, clock-in/out history, and independent 3:30 / 5:30 timers;
+  with named crew, clock-in/out history, independent 3:30 / 5:30 timers, and compact
+  rosters with member detail modals for larger teams;
 - a business catalog, store shelves, package definitions, barcode lookup/capture,
   stock balances and movement history;
 - reviewed whole-store counts with draft, review, and posting transitions;

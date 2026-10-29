@@ -11,12 +11,19 @@ names require no accounts. The confirmed presets are **3 hours 30 minutes** and
 Use the existing cocoa/cream/rose theme and inventory-style name-entry modal.
 Keep one Add member action, one clock action per person, and two timer controls.
 Renaming, recent shift history, and confirmed removal belong in the member modal.
+For four or more members, use compact roster rows with the full timer controls
+nested inside a member detail modal. Up to three members retain expanded cards.
 
 ## Implemented behavior and boundaries
 
 - An empty roster accepts up to 20 named demo members. Normalized duplicate names
   and empty names are rejected. Removing a member requires a named confirmation
   and warns when an active shift will be discarded.
+- The roster automatically compacts above three members. Each row retains a clock
+  action, shift status and time, and a summary of each timer, including completion.
+  Tapping a name opens both timer controls, clock actions and recent shifts;
+  editing and removal are secondary views within the same modal. Timer reset
+  confirmation returns to the member details without stacking native modals.
 - Clock in starts one shift; clock out saves its end time and stops both timers.
   A member retains the most recent 10 shifts. Times use local device timestamps;
   elapsed time and countdowns are calculated from those timestamps, including
@@ -99,3 +106,20 @@ LAN URL from the development machine on the same Wi-Fi. The Mac and both local
 services must remain running. This is local Expo Go delivery, not a Render
 deployment, EAS release, or signed build. The feature commit has not been pushed;
 physical-phone acceptance and remote CI remain unverified.
+
+## Compact roster refinement — 2026-10-29
+
+The owner requested less scrolling when managing more than three members. Four
+or more now use compact rows; removing back to three restores expanded cards.
+Rows show minute-resolution shift and timer summaries, while member details keep
+second-resolution countdowns. Details, editing, removal and reset confirmation
+share one native modal. Opening details never mounts the name field, avoiding an
+unwanted keyboard; cancelling an edit discards the draft name. Existing timer
+timestamps, stored records and account scope are unchanged.
+
+Local verification passed TypeScript checking, all nine focused Chromium journeys
+(including threshold transitions, nested editing/reset, no initial name focus,
+independent running/completed timers after reload, and 320/390/1024-pixel layouts),
+and iOS/Android exports containing the compact-roster source. The existing model
+and persistence code were not changed. This is local verification; physical-device
+acceptance of the revised layout and remote CI remain separate.
