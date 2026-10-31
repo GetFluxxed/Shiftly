@@ -6,9 +6,10 @@ import { savedRoute } from '../src/restoration/policy';
 import type { CheckpointStorage } from '../src/restoration/storage';
 import type { Snapshot } from '../src/session/controller';
 import {
-  MAX_MEMBERS, MAX_SHIFTS, PRESETS, activeShift, addMember, clockIn, clockOut, elapsedMs,
-  emptyState, formatDuration, isTrackingState, remainingMs, removeMember, renameMember,
-  resetTimer, startTimer, workedTodayMs, type CrewMember, type TrackingState,
+  BREAK_PRESETS, MAX_MEMBERS, MAX_SHIFTS, PRESETS, activeShift, addMember, breakRemainingMs,
+  clockIn, clockOut, elapsedMs, emptyState, formatDuration, isTrackingState, remainingMs,
+  removeMember, renameMember, resetBreakTimer, resetTimer, startBreakTimer, startTimer,
+  workedTodayMs, type CrewMember, type TrackingState,
 } from '../src/timeTracking/model';
 
 const HOUR = 60 * 60 * 1_000;
@@ -61,6 +62,46 @@ test('clock-out freezes elapsed time and both timer countdowns', () => {
   assert.equal(remainingMs(shift, 'long', 200_000), 5.5 * HOUR - 8_000);
   assert.throws(() => startTimer(state, 'member-1', 'short', 21_000), /clocked in/);
   assert.throws(() => resetTimer(state, 'member-1', 'short'), /clocked in/);
+});
+
+test('break presets run independently from work timers, each other, and other members', () => {
+  let state = addMember(memberState(), 'Jordan', 'member-2');
+  state = clockIn(state, 'member-1', 'shift-1', 1_000);
+  state = clockIn(state, 'member-2', 'shift-2', 1_000);
+  state = startTimer(state, 'member-1', 'short', 2_000);
+  state = startBreakTimer(state, 'member-1', 'ten', 3_000);
+  state = startBreakTimer(state, 'member-1', 'thirty', 4_000);
+  const avery = activeShift(state.members[0]!)!;
+  const jordan = activeShift(state.members[1]!)!;
+  assert.deepEqual(BREAK_PRESETS.map(preset => [preset.label, preset.durationMs]), [['10 min', 600_000], ['30 min', 1_800_000]]);
+  assert.equal(breakRemainingMs(avery, 'ten', 8_000), 595_000);
+  assert.equal(breakRemainingMs(avery, 'thirty', 8_000), 1_796_000);
+  assert.equal(remainingMs(avery, 'short', 8_000), 3.5 * HOUR - 6_000);
+  assert.equal(breakRemainingMs(jordan, 'ten', 8_000), 600_000);
+  assert.equal(jordan.breakTimers, undefined);
+  assert.strictEqual(startBreakTimer(state, 'member-1', 'ten', 9_000), state);
+
+  state = resetBreakTimer(state, 'member-1', 'ten');
+  const reset = activeShift(state.members[0]!)!;
+  assert.equal(breakRemainingMs(reset, 'ten', 50_000), 600_000);
+  assert.equal(breakRemainingMs(reset, 'thirty', 50_000), 1_754_000);
+  assert.equal(reset.timers.short.startedAt, 2_000);
+  assert.strictEqual(resetBreakTimer(state, 'member-2', 'ten'), state);
+});
+
+test('break countdown uses wall time, expires at zero, freezes at clock-out, and a fresh shift has none', () => {
+  let state = clockIn(memberState(), 'member-1', 'shift-1', 10_000);
+  state = startBreakTimer(state, 'member-1', 'ten', 20_000);
+  assert.equal(breakRemainingMs(activeShift(state.members[0]!)!, 'ten', 620_001), 0);
+  state = clockOut(state, 'member-1', 320_000);
+  const closed = state.members[0]!.shifts[0]!;
+  assert.equal(breakRemainingMs(closed, 'ten', 9_000_000), 300_000);
+  assert.throws(() => startBreakTimer(state, 'member-1', 'thirty', 330_000), /clocked in/);
+  assert.throws(() => resetBreakTimer(state, 'member-1', 'ten'), /clocked in/);
+  state = clockIn(state, 'member-1', 'shift-2', 330_000);
+  const fresh = activeShift(state.members[0]!)!;
+  assert.equal(fresh.breakTimers, undefined);
+  assert.equal(breakRemainingMs(fresh, 'ten', 999_000), 600_000);
 });
 
 test('repeated shift actions and stale mutations fail clearly', () => {
@@ -121,6 +162,11 @@ test('restore validation accepts exact bounded data and rejects corrupt or unsaf
     { version: 1, members: [valid.members[0], { ...valid.members[0] }] },
     { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], clockOut: 0 }] }] },
     { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], timers: { short: { startedAt: Number.NaN }, long: { startedAt: null } } }] }] },
+    { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], breakTimers: { ten: { startedAt: null } } }] }] },
+    { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], breakTimers: { ten: { startedAt: null }, thirty: { startedAt: null }, extra: { startedAt: null } } }] }] },
+    { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], breakTimers: null }] }] },
+    { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], breakTimers: { ten: { startedAt: 999 }, thirty: { startedAt: null } } }] }] },
+    { version: 1, members: [{ ...valid.members[0], shifts: [{ ...valid.members[0]!.shifts[0], breakTimers: { ten: { startedAt: 2_001 }, thirty: { startedAt: null } } }] }] },
     { version: 1, members: [{ ...valid.members[0], shifts: [
       { ...valid.members[0]!.shifts[0], id: 'newer', clockIn: 1_500, clockOut: 2_500 },
       { ...valid.members[0]!.shifts[0], id: 'older', clockIn: 1_000, clockOut: 2_000 },
@@ -144,6 +190,9 @@ test('IDs, capacity, formatting, and timestamps are bounded', () => {
   assert.throws(() => addMember(emptyState(), 'Name', ' '), /ID is invalid/);
   assert.throws(() => clockIn(memberState(), 'member-1', 'shift', -1), /nonnegative finite/);
   assert.throws(() => clockIn(memberState(), 'member-1', 'shift', 8.64e15 + 1), /nonnegative finite/);
+  const active = clockIn(memberState(), 'member-1', 'shift', 1_000);
+  assert.throws(() => startBreakTimer(active, 'member-1', 'ten', 999), /before clock-in/);
+  assert.throws(() => startBreakTimer(active, 'member-1', 'ten', 8.64e15 + 1), /nonnegative finite/);
   assert.equal(formatDuration(3_661_999), '1:01:01');
   assert.equal(formatDuration(-1), '0:00:00');
 });
@@ -166,6 +215,25 @@ test('workspace checkpoint writes, flushes, and cold-restores the validated mode
   const cold = new WorkspaceController(storage, () => NOW);
   await open(cold);
   assert.deepEqual(cold.read('timeTracking.demo', emptyState(), 'v1', isTrackingState), tracked);
+});
+
+test('workspace cold-restores optional running break timers without changing the v1 baseline', async () => {
+  const storage = new MemoryStorage();
+  const first = new WorkspaceController(storage, () => NOW);
+  await open(first);
+  let tracked = clockIn(memberState(), 'member-1', 'shift-1', NOW - HOUR);
+  tracked = startBreakTimer(tracked, 'member-1', 'ten', NOW - 5 * 60_000);
+  tracked = startBreakTimer(tracked, 'member-1', 'thirty', NOW - 2 * 60_000);
+  first.write('timeTracking.demo', tracked, 'v1', first.getSnapshot().scope);
+  assert.equal(await first.flush(), true);
+
+  const cold = new WorkspaceController(storage, () => NOW);
+  await open(cold);
+  const restored = cold.read('timeTracking.demo', emptyState(), 'v1', isTrackingState);
+  assert.deepEqual(restored, tracked);
+  const shift = activeShift(restored.members[0]!)!;
+  assert.equal(breakRemainingMs(shift, 'ten', NOW), 5 * 60_000);
+  assert.equal(breakRemainingMs(shift, 'thirty', NOW), 28 * 60_000);
 });
 
 test('workspace scope isolation never restores another account or store tracking state', async () => {

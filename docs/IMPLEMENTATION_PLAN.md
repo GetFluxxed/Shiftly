@@ -191,6 +191,7 @@ These are unresolved. Documentation does not decide them.
 | FastAPI/service foundation | Implemented | exact-revision hosted cutover, supervision and rollback |
 | Individual accounts/invitations | Implemented; shared/public login retired | production ownership mapping and hosted enrollment rehearsal |
 | Native reports, Heads Up, team/owner | Implemented | supported-device and signed-build acceptance |
+| Time Tracking device demo | Implemented: named crew, shift history, compact roster, independent 3:30 / 5:30 timers and modal-only 10 / 30 minute break countdowns; local model/rendered checks and native exports passed | owner accepted compact layout in Expo Go; break device acceptance, account linking, push delivery and operational use remain pending |
 | Business catalog and store shelves | Implemented | pilot data review |
 | Packages and barcode capture | Implemented | physical camera/permission/zoom/torch matrix |
 | Current stock and reviewed counts | Implemented | pilot concurrency and recovery rehearsal |

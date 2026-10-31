@@ -31,6 +31,10 @@ def timer_button(page: Page, member: str, hours: int):
     return page.get_by_role("button", name=re.compile(rf"^{re.escape(member)}, {spoken} timer,"))
 
 
+def break_button(page: Page, member: str, minutes: int):
+    return page.get_by_role("button", name=re.compile(rf"^{re.escape(member)}, {minutes} minute break,"))
+
+
 def member_details_button(page: Page, name: str):
     return page.get_by_role("button", name=f"View {name} timers and shift details", exact=True)
 
@@ -219,7 +223,7 @@ def test_large_roster_compacts_and_member_management_returns_to_details(page: Pa
     page.get_by_role("button", name="Remove member", exact=True).click()
     page.get_by_role("button", name="Remove Casey", exact=True).click()
     expect(page.get_by_role("dialog")).to_have_count(0)
-    expect(member_details_button(page, "Avery Stone")).to_have_count(0)
+    expect(member_details_button(page, "Avery Stone")).to_be_visible()
     expect(timer_button(page, "Avery Stone", 3)).to_be_visible()
     expect(page.get_by_role("button", name="Clock out Avery Stone", exact=True)).to_be_visible()
 
@@ -292,4 +296,88 @@ def test_compact_roster_and_member_sheet_fit_phone_and_tablet(page: Page, router
             assert box["x"] >= 0 and box["x"] + box["width"] <= width
         if screenshot_dir:
             page.screenshot(path=str(Path(screenshot_dir) / f"time-tracking-member-sheet-{width}.png"), full_page=True)
+        page.get_by_role("button", name="Close", exact=True).click()
+
+
+def test_break_timers_are_modal_only_independent_and_survive_reload(page: Page, router_url: str):
+    page.clock.install(time=2_000_000_000_000)
+    page.set_viewport_size({"width": 390, "height": 900})
+    open_tracking(page, router_url)
+    add_member(page, "Avery")
+    add_member(page, "Jordan")
+    expect(break_button(page, "Avery", 10)).to_have_count(0)
+    open_member_details(page, "Avery")
+    dialog = page.get_by_role("dialog")
+    expect(break_button(page, "Avery", 10)).to_be_disabled()
+    expect(break_button(page, "Avery", 30)).to_be_disabled()
+    dialog.get_by_role("button", name="Clock in Avery", exact=True).click()
+    # Expanded cards remain behind the modal, so scope work timer actions to it.
+    dialog.get_by_role("button", name=re.compile(r"^Avery, 3 hours 30 minutes timer,")).click()
+    dialog.get_by_role("button", name=re.compile(r"^Avery, 5 hours 30 minutes timer,")).click()
+    break_button(page, "Avery", 10).click()
+    page.clock.fast_forward(2 * 60_000)
+    break_button(page, "Avery", 30).click()
+    page.get_by_role("button", name="Close", exact=True).click()
+    page.clock.fast_forward(8 * 60_000)
+    page.reload()
+    open_member_details(page, "Avery")
+    expect(break_button(page, "Avery", 10)).to_have_attribute("aria-label", re.compile(r"complete$"))
+    expect(break_button(page, "Avery", 30)).to_have_attribute("aria-label", re.compile(r"21:5[0-9] remaining$"))
+    short = dialog.get_by_role("button", name=re.compile(r"^Avery, 3 hours 30 minutes timer,"))
+    long = dialog.get_by_role("button", name=re.compile(r"^Avery, 5 hours 30 minutes timer,"))
+    expect(short).to_have_attribute("aria-label", re.compile(r"3:19:5[0-9] remaining$"))
+    expect(long).to_have_attribute("aria-label", re.compile(r"5:19:5[0-9] remaining$"))
+
+    break_button(page, "Avery", 10).click()
+    expect(page.get_by_role("heading", name="10 minute break", exact=True)).to_be_visible()
+    expect(dialog).to_have_count(1)
+    page.get_by_role("button", name="Cancel", exact=True).click()
+    expect(break_button(page, "Avery", 10)).to_have_attribute("aria-label", re.compile(r"complete$"))
+    break_button(page, "Avery", 10).click()
+    page.get_by_role("button", name="Reset break", exact=True).click()
+    expect(page.get_by_role("heading", name="Avery", exact=True)).to_be_visible()
+    expect(break_button(page, "Avery", 10)).to_have_attribute("aria-label", re.compile(r"ready$"))
+    expect(break_button(page, "Avery", 30)).to_have_attribute("aria-label", re.compile(r"remaining$"))
+    expect(short).to_have_attribute("aria-label", re.compile(r"3:19:5[0-9] remaining$"))
+    # Resetting a work timer also leaves the active break untouched.
+    short.click()
+    page.get_by_role("button", name="Reset", exact=True).click()
+    expect(break_button(page, "Avery", 30)).to_have_attribute("aria-label", re.compile(r"remaining$"))
+    page.get_by_role("button", name="Close", exact=True).click()
+
+    open_member_details(page, "Jordan")
+    expect(break_button(page, "Jordan", 10)).to_have_attribute("aria-label", re.compile(r"disabled$"))
+    dialog.get_by_role("button", name="Clock in Jordan", exact=True).click()
+    expect(break_button(page, "Jordan", 10)).to_have_attribute("aria-label", re.compile(r"ready$"))
+    expect(break_button(page, "Jordan", 30)).to_have_attribute("aria-label", re.compile(r"ready$"))
+    page.get_by_role("button", name="Close", exact=True).click()
+
+    open_member_details(page, "Avery")
+    dialog.get_by_role("button", name="Clock out Avery", exact=True).click()
+    expect(break_button(page, "Avery", 30)).to_be_disabled()
+    dialog.get_by_role("button", name="Clock in Avery", exact=True).click()
+    expect(break_button(page, "Avery", 10)).to_have_attribute("aria-label", re.compile(r"ready$"))
+    expect(break_button(page, "Avery", 30)).to_have_attribute("aria-label", re.compile(r"ready$"))
+
+
+def test_break_section_fits_small_phones_and_tablets(page: Page, router_url: str):
+    screenshot_dir = os.environ.get("TIME_TRACKING_SCREENSHOT_DIR")
+    if screenshot_dir:
+        Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
+    open_tracking(page, router_url)
+    for name in ("Avery Stone", "Jordan Lee", "Morgan Chen", "Casey Rivera"):
+        add_member(page, name)
+    page.get_by_role("button", name="Clock in Avery Stone", exact=True).click()
+    for width in (320, 390, 1024):
+        page.set_viewport_size({"width": width, "height": 900})
+        open_member_details(page, "Avery Stone")
+        for minutes in (10, 30):
+            button = break_button(page, "Avery Stone", minutes)
+            button.scroll_into_view_if_needed()
+            box = button.bounding_box()
+            assert box["height"] >= 44
+            assert box["x"] >= 0 and box["x"] + box["width"] <= width
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        if screenshot_dir:
+            page.screenshot(path=str(Path(screenshot_dir) / f"time-tracking-breaks-{width}.png"), full_page=True)
         page.get_by_role("button", name="Close", exact=True).click()
